@@ -60,4 +60,11 @@
 .image-grid-meta {
   font-size: 0.625rem;
   color: var(--text-secondary);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.image-grid-meta .file-size {
+  opacity: 0.8;
 }

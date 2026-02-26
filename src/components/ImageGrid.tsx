@@ -1,11 +1,15 @@
-import { useRef, memo, useState, useEffect } from 'react'
+import { useRef, memo, useState, useEffect, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import './ImageGrid.css'
 
-interface ImageGridItem {
+export interface ImageGridItem {
   id: number
   src: string
   alt: string
+  width?: number
+  height?: number
+  fileSize?: number
+  format?: string
 }
 
 interface ImageGridProps {
@@ -14,6 +18,8 @@ interface ImageGridProps {
   onImageClick?: (image: ImageGridItem) => void
   onImageDoubleClick?: (image: ImageGridItem) => void
   thumbnailSize?: number
+  scrollPosition?: number
+  onScrollChange?: (position: number) => void
 }
 
 export function ImageGrid({
@@ -21,10 +27,13 @@ export function ImageGrid({
   selectedId,
   onImageClick,
   onImageDoubleClick,
-  thumbnailSize = 200
+  thumbnailSize = 200,
+  scrollPosition = 0,
+  onScrollChange,
 }: ImageGridProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const scrollRestoreRef = useRef<boolean>(true)
 
   // 计算每行能放多少张图片
   const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 32)))
@@ -48,6 +57,38 @@ export function ImageGrid({
     estimateSize: () => thumbnailSize + 60,
     overscan: 5,
   })
+
+  // 恢复滚动位置
+  useEffect(() => {
+    if (parentRef.current && scrollRestoreRef.current && scrollPosition > 0) {
+      parentRef.current.scrollTop = scrollPosition
+      scrollRestoreRef.current = false
+    }
+  }, [scrollPosition])
+
+  // 监听滚动事件
+  const handleScroll = useCallback(() => {
+    if (parentRef.current && onScrollChange) {
+      onScrollChange(parentRef.current.scrollTop)
+    }
+  }, [onScrollChange])
+
+  useEffect(() => {
+    const element = parentRef.current
+    if (element) {
+      element.addEventListener('scroll', handleScroll, { passive: true })
+      return () => element.removeEventListener('scroll', handleScroll)
+    }
+  }, [handleScroll])
+
+  // 格式化文件大小
+  const formatFileSize = (bytes?: number): string => {
+    if (!bytes || bytes === 0) return ''
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+  }
 
   return (
     <div
@@ -92,6 +133,7 @@ export function ImageGrid({
                   onClick={() => onImageClick?.(image)}
                   onDoubleClick={() => onImageDoubleClick?.(image)}
                   thumbnailSize={thumbnailSize}
+                  formatFileSize={formatFileSize}
                 />
               ))}
             </div>
@@ -108,6 +150,7 @@ interface ImageGridItemProps {
   onClick: () => void
   onDoubleClick: () => void
   thumbnailSize: number
+  formatFileSize: (bytes?: number) => string
 }
 
 const ImageGridItem = memo(function ImageGridItem({
@@ -116,6 +159,7 @@ const ImageGridItem = memo(function ImageGridItem({
   onClick,
   onDoubleClick,
   thumbnailSize,
+  formatFileSize,
 }: ImageGridItemProps) {
   return (
     <div
@@ -135,9 +179,16 @@ const ImageGridItem = memo(function ImageGridItem({
         <span className="image-grid-name" title={image.alt}>
           {image.alt}
         </span>
-        <span className="image-grid-meta">
-          1920×1080
-        </span>
+        <div className="image-grid-meta">
+          {image.width && image.height ? (
+            <span>{image.width}×{image.height}</span>
+          ) : (
+            <span>1920×1080</span>
+          )}
+          {image.fileSize && (
+            <span className="file-size">{formatFileSize(image.fileSize)}</span>
+          )}
+        </div>
       </div>
     </div>
   )
