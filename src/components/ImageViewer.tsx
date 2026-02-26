@@ -4,6 +4,11 @@ import './ImageViewer.css'
 
 export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 
+export interface SlideshowSettings {
+  enabled: boolean
+  interval: number // 秒
+}
+
 interface ImageViewerProps {
   src: string
   alt?: string
@@ -18,6 +23,8 @@ interface ImageViewerProps {
     fileSize?: number
     format?: string
   }
+  slideshowSettings?: SlideshowSettings
+  onSlideshowChange?: (enabled: boolean) => void
 }
 
 interface LoadingState {

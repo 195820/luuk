@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { ImageViewer } from './components/ImageViewer'
+import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
 import type { ImageGridItem } from './components/ImageGrid'
 import './App.css'
@@ -15,18 +15,25 @@ const IMAGES = Array.from({ length: 100 }, (_, i) => ({
   format: 'jpg',
 }))
 
+const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
+
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
   const [thumbnailSize, setThumbnailSize] = useState(200)
+  const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
   const gridScrollRef = useRef<number>(0)
+  const slideshowTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex(prev => Math.max(0, prev - 1))
   }, [])
 
   const handleNext = useCallback(() => {
-    setCurrentIndex(prev => Math.min(IMAGES.length - 1, prev + 1))
+    setCurrentIndex(prev => {
+      if (prev >= IMAGES.length - 1) return 0 // 循环播放
+      return prev + 1
+    })
   }, [])
 
   const handleFirst = useCallback(() => {
@@ -48,7 +55,39 @@ function App() {
 
   const handleClose = useCallback(() => {
     setViewMode('grid')
+    setSlideshow(prev => ({ ...prev, enabled: false }))
   }, [])
+
+  // 幻灯片播放控制
+  const toggleSlideshow = useCallback(() => {
+    setSlideshow(prev => {
+      const newEnabled = !prev.enabled
+      return { ...prev, enabled: newEnabled }
+    })
+  }, [])
+
+  const changeSlideshowInterval = useCallback((interval: number) => {
+    setSlideshow(prev => ({ ...prev, interval }))
+  }, [])
+
+  // 幻灯片定时器
+  useEffect(() => {
+    if (slideshow.enabled && viewMode === 'viewer') {
+      slideshowTimerRef.current = setInterval(() => {
+        handleNext()
+      }, slideshow.interval * 1000)
+    } else {
+      if (slideshowTimerRef.current) {
+        clearInterval(slideshowTimerRef.current)
+      }
+    }
+
+    return () => {
+      if (slideshowTimerRef.current) {
+        clearInterval(slideshowTimerRef.current)
+      }
+    }
+  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext])
 
   // 键盘导航
   useEffect(() => {
@@ -67,6 +106,12 @@ function App() {
         if (e.key === 'Home') handleFirst()
         if (e.key === 'End') handleLast()
         if (e.key === 'Escape') handleClose()
+
+        // 幻灯片控制
+        if (e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault()
+          toggleSlideshow()
+        }
 
         // 视图控制
         if (e.key === '0') {
@@ -116,7 +161,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, currentIndex])
+  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, currentIndex, toggleSlideshow])
 
   return (
     <div className="app-container">
@@ -124,7 +169,7 @@ function App() {
         <h1>📷 图片查看器</h1>
         <div className="header-actions">
           <span className="image-count">{IMAGES.length} 张图片</span>
-          
+
           {/* 缩略图尺寸调节 */}
           {viewMode === 'grid' && (
             <div className="thumbnail-size-control">
@@ -141,7 +186,7 @@ function App() {
               <span>{thumbnailSize}px</span>
             </div>
           )}
-          
+
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
             className="view-toggle-btn"
@@ -177,9 +222,32 @@ function App() {
               fileSize: IMAGES[currentIndex].fileSize,
               format: IMAGES[currentIndex].format,
             }}
+            slideshowSettings={slideshow}
+            onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
           />
         )}
       </main>
+
+      {/* 幻灯片控制栏 */}
+      {viewMode === 'viewer' && slideshow.enabled && (
+        <div className="slideshow-bar">
+          <span>🎬 幻灯片播放中</span>
+          <div className="slideshow-controls">
+            <span>间隔:</span>
+            <select
+              value={slideshow.interval}
+              onChange={(e) => changeSlideshowInterval(Number(e.target.value))}
+            >
+              {SLIDESHOW_INTERVALS.map(interval => (
+                <option key={interval} value={interval}>{interval}秒</option>
+              ))}
+            </select>
+            <button onClick={toggleSlideshow} className="slideshow-stop-btn">
+              ⏸ 暂停
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 快捷键提示 */}
       <footer className="app-footer">
@@ -190,6 +258,7 @@ function App() {
         <span>R: 重置</span>
         <span>H/V: 翻转</span>
         <span>I: 信息</span>
+        <span>Space: 幻灯片</span>
         <span>Esc: 关闭</span>
       </footer>
     </div>

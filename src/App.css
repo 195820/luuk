@@ -113,3 +113,53 @@
 .app-footer span {
   -webkit-app-region: no-drag;
 }
+
+/* 幻灯片控制栏 */
+.slideshow-bar {
+  height: 44px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: var(--accent);
+  color: white;
+  font-size: 0.875rem;
+  -webkit-app-region: drag;
+}
+
+.slideshow-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.slideshow-controls select {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: none;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.slideshow-controls select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.slideshow-stop-btn {
+  padding: 6px 12px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  color: white;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.slideshow-stop-btn:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
