@@ -1,45 +1,88 @@
-import { useState, useEffect } from 'react'
+import { useState, useCallback } from 'react'
+import { ImageViewer } from './components/ImageViewer'
+import { ImageGrid } from './components/ImageGrid'
 import './App.css'
 
-function App() {
-  const [version, setVersion] = useState<string>('')
+// 模拟图片列表
+const IMAGES = Array.from({ length: 100 }, (_, i) => ({
+  id: i + 1,
+  src: `https://picsum.photos/seed/${i + 1}/800/600`,
+  alt: `图片 ${i + 1}`,
+}))
 
-  useEffect(() => {
-    // 获取应用版本
-    window.electronAPI?.getAppVersion().then(setVersion).catch(console.error)
+function App() {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
+
+  const handlePrevious = useCallback(() => {
+    setCurrentIndex(prev => Math.max(0, prev - 1))
   }, [])
+
+  const handleNext = useCallback(() => {
+    setCurrentIndex(prev => Math.min(IMAGES.length - 1, prev + 1))
+  }, [])
+
+  const handleImageClick = (image: typeof IMAGES[0]) => {
+    setCurrentIndex(image.id - 1)
+  }
+
+  const handleImageDoubleClick = (image: typeof IMAGES[0]) => {
+    setCurrentIndex(image.id - 1)
+    setViewMode('viewer')
+  }
+
+  const handleClose = useCallback(() => {
+    setViewMode('grid')
+  }, [])
+
+  // 键盘导航
+  useCallback(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (viewMode === 'viewer') {
+        if (e.key === 'ArrowLeft') handlePrevious()
+        if (e.key === 'ArrowRight') handleNext()
+        if (e.key === 'Escape') handleClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [viewMode, handlePrevious, handleNext, handleClose])
 
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>图片查看器</h1>
-        {version && <span className="version">v{version}</span>}
-      </header>
-      
-      <main className="app-main">
-        <div className="welcome-content">
-          <h2>欢迎使用图片查看器</h2>
-          <p>专为大量高清写真图片设计的本地图片查看器</p>
-          
-          <div className="features">
-            <div className="feature-card">
-              <h3>🚀 快速加载</h3>
-              <p>支持 100MB+ 大图秒开，缩略图智能缓存</p>
-            </div>
-            <div className="feature-card">
-              <h3>📁 多库管理</h3>
-              <p>支持多个硬盘独立库，统一入口管理</p>
-            </div>
-            <div className="feature-card">
-              <h3>🔍 智能搜索</h3>
-              <p>跨库搜索、标签分类、收藏评分</p>
-            </div>
-            <div className="feature-card">
-              <h3>✨ AI 修图</h3>
-              <p>超分辨率、智能去水印、自动调色（即将推出）</p>
-            </div>
-          </div>
+        <h1>📷 图片查看器</h1>
+        <div className="header-actions">
+          <span className="image-count">{IMAGES.length} 张图片</span>
+          <button 
+            onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
+            className="view-toggle-btn"
+          >
+            {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
+          </button>
         </div>
+      </header>
+
+      <main className="app-main">
+        {viewMode === 'grid' ? (
+          <ImageGrid
+            images={IMAGES}
+            selectedId={IMAGES[currentIndex]?.id}
+            onImageClick={handleImageClick}
+            onImageDoubleClick={handleImageDoubleClick}
+            thumbnailSize={200}
+          />
+        ) : (
+          <ImageViewer 
+            src={IMAGES[currentIndex].src.replace('800/600', '1920/1080')}
+            alt={IMAGES[currentIndex].alt}
+            currentIndex={currentIndex}
+            totalImages={IMAGES.length}
+            onPrevious={handlePrevious}
+            onNext={handleNext}
+            onClose={handleClose}
+          />
+        )}
       </main>
     </div>
   )
