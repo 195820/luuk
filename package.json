@@ -1,0 +1,38 @@
+{
+  "name": "image-viewer",
+  "version": "1.0.0",
+  "description": "高清写真图片查看器 - 支持大量图片快速浏览",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && electron-builder",
+    "build:dir": "vite build && electron-builder --dir",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "image",
+    "viewer",
+    "electron",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@tanstack/react-virtual": "^3.13",
+    "react": "^19.2",
+    "react-dom": "19.2",
+    "react-zoom-pan-pinch": "^3.7",
+    "zustand": "^5.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2",
+    "@types/react-dom": "^19.2",
+    "@vitejs/plugin-react": "^5.1",
+    "electron": "^40.6.1",
+    "electron-builder": "26.0",
+    "typescript": "^5.9",
+    "vite": "^7.3",
+    "vite-plugin-electron": "^0.29"
+  }
+}
