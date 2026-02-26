@@ -161,6 +161,9 @@ const ImageGridItem = memo(function ImageGridItem({
   thumbnailSize,
   formatFileSize,
 }: ImageGridItemProps) {
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState(false)
+
   return (
     <div
       className={`image-grid-item ${isSelected ? 'selected' : ''}`}
@@ -169,10 +172,27 @@ const ImageGridItem = memo(function ImageGridItem({
       style={{ width: thumbnailSize, flexShrink: 0 }}
     >
       <div className="image-grid-thumbnail">
+        {isLoading && <div className="image-grid-loading">加载中...</div>}
+        {error && (
+          <div className="image-grid-error">
+            <span>加载失败</span>
+          </div>
+        )}
         <img
           src={image.src}
           alt={image.alt}
           loading="lazy"
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setError(true)
+            setIsLoading(false)
+          }}
+          style={{
+            display: isLoading || error ? 'none' : 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
         />
       </div>
       <div className="image-grid-info">

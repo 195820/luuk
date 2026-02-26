@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "build:dir": "vite build && electron-builder --dir",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:generate": "tsx scripts/generate-test-images.ts"
   },
   "keywords": [
     "image",
@@ -20,17 +21,21 @@
   "license": "ISC",
   "dependencies": {
     "@tanstack/react-virtual": "^3.13",
+    "better-sqlite3": "^12.6.2",
     "react": "^19.2",
     "react-dom": "19.2",
     "react-zoom-pan-pinch": "^3.7",
+    "sharp": "^0.34.5",
     "zustand": "^5.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/react": "^19.2",
     "@types/react-dom": "^19.2",
     "@vitejs/plugin-react": "^5.1",
     "electron": "^40.6.1",
     "electron-builder": "26.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.9",
     "vite": "^7.3",
     "vite-plugin-electron": "^0.29"

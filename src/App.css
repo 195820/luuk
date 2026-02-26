@@ -163,3 +163,279 @@
 .slideshow-stop-btn:hover {
   background-color: rgba(255, 255, 255, 0.3);
 }
+
+/* 库管理面板 */
+.library-panel {
+  position: absolute;
+  top: 50px;
+  left: 20px;
+  width: 360px;
+  max-height: 400px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.library-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.library-panel-header h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.library-panel-header .close-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.library-panel-header .close-btn:hover {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.library-panel-content {
+  padding: 12px 16px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.add-library-btn {
+  width: 100%;
+  padding: 10px 16px;
+  background-color: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.add-library-btn:hover {
+  background-color: var(--accent-hover);
+}
+
+.empty-hint {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  padding: 20px 0;
+}
+
+.library-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0 0;
+}
+
+.library-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+
+.library-item.active {
+  border-color: var(--accent);
+  background-color: rgba(59, 130, 246, 0.1);
+}
+
+.library-item:hover {
+  background-color: var(--bg-secondary);
+}
+
+.library-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.library-item-info strong {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.library-path {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.library-status {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.library-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.library-item-actions button {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.scan-btn {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.scan-btn:hover {
+  background-color: var(--accent);
+}
+
+.remove-btn {
+  background-color: transparent;
+  color: var(--text-secondary);
+}
+
+.remove-btn:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+/* 库选择器 */
+.library-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.library-selector select {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.library-selector select:focus {
+  border-color: var(--accent);
+}
+
+.library-selector select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.library-btn {
+  padding: 6px 10px;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.library-btn:hover {
+  background-color: var(--bg-secondary);
+}
+
+/* 无库提示 */
+.no-library-hint,
+.no-images-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+
+.no-library-hint h2,
+.no-images-hint h2 {
+  font-size: 1.25rem;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.no-library-hint p,
+.no-images-hint p {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.add-library-btn-large,
+.scan-btn-large {
+  padding: 12px 24px;
+  background-color: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 16px;
+}
+
+.add-library-btn-large:hover,
+.scan-btn-large:hover {
+  background-color: var(--accent-hover);
+}
+
+/* 全局加载/错误状态 */
+.global-loading,
+.global-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: var(--text-secondary);
+}
+
+.global-loading .loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.global-error .error-icon {
+  font-size: 2rem;
+  color: #ef4444;
+}

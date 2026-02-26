@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/ipc/library-handlers'
+import { closeAllDatabases } from '../src/main/services/database'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -33,7 +35,10 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // 注册 IPC 处理器
+  registerLibraryHandlers()
+  
   createWindow()
 
   app.on('activate', () => {
@@ -44,12 +49,22 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // 清理资源
+  unregisterLibraryHandlers()
+  closeAllDatabases()
+  
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// IPC 处理
+app.on('before-quit', () => {
+  // 清理资源
+  unregisterLibraryHandlers()
+  closeAllDatabases()
+})
+
+// 原有的 IPC 处理
 ipcMain.handle('get-app-version', () => {
   return app.getVersion()
 })

@@ -2,9 +2,63 @@
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
+  // 库管理
+  getLibraries: () => Promise<Library[]>
+  addLibrary: (name: string, rootPath: string, autoScan?: boolean) => Promise<Library>
+  removeLibrary: (id: number) => Promise<void>
+  scanLibrary: (id: number) => Promise<ScanResult>
+  // 图片查询
+  getImages: (libraryId: number, options: ImageQueryOptions) => Promise<Image[]>
+  getImageCount: (libraryId: number) => Promise<number>
+  getImagePath: (libraryId: number, imageId: number) => Promise<string>
+  // 缩略图
+  getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => Promise<string>
+  getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => Promise<Map<number, string>>
+  // 收藏
+  toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) => Promise<boolean>
+  getFavorites: () => Promise<Favorite[]>
+  // 缓存
+  getCacheStats: () => Promise<{ count: number; sizeMB: number; utilization: number }>
+  clearCache: () => Promise<void>
 }
 
-// 图片类型
+// 扫描结果
+export interface ScanResult {
+  added: number
+  updated: number
+  deleted: number
+  skipped: number
+  total: number
+}
+
+// 图片查询选项
+export interface ImageQueryOptions {
+  limit: number
+  offset: number
+  orderBy?: 'created_time' | 'modified_time' | 'relative_path'
+  order?: 'ASC' | 'DESC'
+}
+
+// 图片类型 (数据库记录)
+export interface Image {
+  id: number
+  relative_path: string
+  file_hash?: string
+  width: number
+  height: number
+  file_size: number
+  format: string
+  orientation: number
+  created_time?: string
+  modified_time?: string
+  indexed_time: string
+  is_deleted: number
+  // 附加字段 (非数据库)
+  library_id?: number
+  library_name?: string
+}
+
+// 图片类型 (前端使用)
 export interface ImageInfo {
   id: number
   relativePath: string
@@ -35,10 +89,14 @@ export interface Library {
   id: number
   name: string
   rootPath: string
+  root_path: string  // 数据库字段兼容
   status: 'online' | 'offline'
   lastScan?: string
+  last_scan?: string  // 数据库字段兼容
   imageCount: number
+  image_count: number  // 数据库字段兼容
   createdAt: string
+  created_at: string  // 数据库字段兼容
 }
 
 // 收藏信息

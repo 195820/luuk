@@ -2,18 +2,9 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
 import type { ImageGridItem } from './components/ImageGrid'
+import { useImageStore } from './stores/imageStore'
+import type { Library } from './types'
 import './App.css'
-
-// 模拟图片列表（带详细信息）
-const IMAGES = Array.from({ length: 100 }, (_, i) => ({
-  id: i + 1,
-  src: `https://picsum.photos/seed/${i + 1}/1920/1080`,
-  alt: `图片 ${i + 1}`,
-  width: 1920,
-  height: 1080,
-  fileSize: 2 * 1024 * 1024 + i * 10240, // 模拟 2MB+ 文件大小
-  format: 'jpg',
-}))
 
 const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 
@@ -22,8 +13,71 @@ function App() {
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
   const [thumbnailSize, setThumbnailSize] = useState(200)
   const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
+  const [selectedInterval, setSelectedInterval] = useState(5)
   const gridScrollRef = useRef<number>(0)
   const slideshowTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const {
+    libraries,
+    currentLibraryId,
+    images,
+    totalImages,
+    currentImage,
+    isLoading,
+    error,
+    initialize,
+    loadLibraries,
+    addLibrary,
+    removeLibrary,
+    setCurrentLibrary,
+    scanLibrary,
+    loadImages,
+    setCurrentImage,
+    getThumbnail,
+  } = useImageStore()
+
+  const [showLibraryPanel, setShowLibraryPanel] = useState(false)
+
+  // 初始化服务
+  useEffect(() => {
+    const init = async () => {
+      await initialize()
+      await loadLibraries()
+    }
+    init()
+  }, [])
+
+  // 加载当前库的图片
+  useEffect(() => {
+    if (currentLibraryId) {
+      loadImages()
+    }
+  }, [currentLibraryId])
+
+  // 将数据库图片转换为 Grid 需要的格式
+  const gridImages: ImageGridItem[] = images.map((img: any) => ({
+    id: img.id,
+    src: '',
+    alt: img.relative_path.split('/').pop() || img.relative_path,
+    width: img.width,
+    height: img.height,
+    fileSize: img.file_size,
+    format: img.format.toLowerCase(),
+  }))
+
+  // 异步加载缩略图
+  useEffect(() => {
+    if (viewMode === 'grid' && images.length > 0) {
+      images.forEach((img: any) => {
+        getThumbnail(img.id, 'medium').then(thumbnail => {
+          const gridElement = document.querySelector(`[data-image-id="${img.id}"] img`) as HTMLImageElement
+          if (gridElement && thumbnail) {
+            gridElement.src = thumbnail
+          }
+        })
+      })
+    }
+  }, [viewMode, images, currentLibraryId])
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex(prev => Math.max(0, prev - 1))
@@ -31,26 +85,34 @@ function App() {
 
   const handleNext = useCallback(() => {
     setCurrentIndex(prev => {
-      if (prev >= IMAGES.length - 1) return 0 // 循环播放
+      if (prev >= images.length - 1) return 0
       return prev + 1
     })
-  }, [])
+  }, [images.length])
 
   const handleFirst = useCallback(() => {
     setCurrentIndex(0)
   }, [])
 
   const handleLast = useCallback(() => {
-    setCurrentIndex(IMAGES.length - 1)
-  }, [])
+    setCurrentIndex(images.length - 1)
+  }, [images.length])
 
   const handleImageClick = (image: ImageGridItem) => {
-    setCurrentIndex(image.id - 1)
+    const img = images.find((i: any) => i.id === image.id)
+    if (img) {
+      setCurrentImage(img)
+      setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
+    }
   }
 
   const handleImageDoubleClick = (image: ImageGridItem) => {
-    setCurrentIndex(image.id - 1)
-    setViewMode('viewer')
+    const img = images.find((i: any) => i.id === image.id)
+    if (img) {
+      setCurrentImage(img)
+      setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
+      setViewMode('viewer')
+    }
   }
 
   const handleClose = useCallback(() => {
@@ -58,16 +120,13 @@ function App() {
     setSlideshow(prev => ({ ...prev, enabled: false }))
   }, [])
 
-  // 幻灯片播放控制
   const toggleSlideshow = useCallback(() => {
-    setSlideshow(prev => {
-      const newEnabled = !prev.enabled
-      return { ...prev, enabled: newEnabled }
-    })
+    setSlideshow(prev => ({ ...prev, enabled: !prev.enabled }))
   }, [])
 
   const changeSlideshowInterval = useCallback((interval: number) => {
     setSlideshow(prev => ({ ...prev, interval }))
+    setSelectedInterval(interval)
   }, [])
 
   // 幻灯片定时器
@@ -89,10 +148,60 @@ function App() {
     }
   }, [slideshow.enabled, slideshow.interval, viewMode, handleNext])
 
+  // 添加库
+  const handleAddLibrary = async () => {
+    try {
+      const folderPath = await (window as any).electronAPI.selectFolder()
+      if (!folderPath) return
+
+      const folderName = folderPath.split(/[/\\]/).pop() || '未命名库'
+      await addLibrary(folderName, folderPath, true)
+      setShowLibraryPanel(false)
+    } catch (error) {
+      console.error('添加库失败:', error)
+    }
+  }
+
+  // 删除库
+  const handleRemoveLibrary = async (lib: Library) => {
+    if (!confirm(`确定要删除库 "${lib.name}" 吗？`)) {
+      return
+    }
+    await removeLibrary(lib.id)
+  }
+
+  // 扫描库
+  const handleScanLibrary = async (libId: number) => {
+    try {
+      await scanLibrary(libId)
+    } catch (error) {
+      console.error('扫描库失败:', error)
+    }
+  }
+
+  const getCurrentImageInfo = () => {
+    if (!currentImage) return null
+    return {
+      width: currentImage.width,
+      height: currentImage.height,
+      fileSize: currentImage.file_size,
+      format: currentImage.format,
+    }
+  }
+
+  const getCurrentImagePath = async () => {
+    if (!currentLibraryId || !currentImage) return ''
+    try {
+      return await (window as any).electronAPI.getImagePath(currentLibraryId, currentImage.id)
+    } catch (error) {
+      console.error('获取图片路径失败:', error)
+      return ''
+    }
+  }
+
   // 键盘导航
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 全局快捷键（任何模式都有效）
       if (e.key === 'F5') {
         e.preventDefault()
         setViewMode(prev => prev === 'grid' ? 'viewer' : 'grid')
@@ -100,23 +209,19 @@ function App() {
       }
 
       if (viewMode === 'viewer') {
-        // 导航键
         if (e.key === 'ArrowLeft' || e.key === 'PageUp') handlePrevious()
         if (e.key === 'ArrowRight' || e.key === 'PageDown') handleNext()
         if (e.key === 'Home') handleFirst()
         if (e.key === 'End') handleLast()
         if (e.key === 'Escape') handleClose()
 
-        // 幻灯片控制
         if (e.key === ' ' || e.key === 'Spacebar') {
           e.preventDefault()
           toggleSlideshow()
         }
 
-        // 视图控制
         if (e.key === '0') {
           e.preventDefault()
-          // 适应窗口 - 通过自定义事件通知 ImageViewer
           window.dispatchEvent(new CustomEvent('image-viewer-fit', { detail: 'fit-window' }))
         }
         if (e.key === '1') {
@@ -124,54 +229,49 @@ function App() {
           window.dispatchEvent(new CustomEvent('image-viewer-fit', { detail: 'actual-size' }))
         }
 
-        // 图片操作
         if (e.key === 'r' || e.key === 'R') {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('image-viewer-reset'))
         }
-        if (e.key === 'h' || e.key === 'H') {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-flip-h'))
-        }
-        if (e.key === 'v' || e.key === 'V') {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-flip-v'))
-        }
-        if (e.key === '+' || e.key === '=') {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-zoom', { detail: 'in' }))
-        }
-        if (e.key === '-' || e.key === '_') {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-zoom', { detail: 'out' }))
-        }
-
-        // 信息显示
         if (e.key === 'i' || e.key === 'I') {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('image-viewer-info'))
-        }
-        if (e.key === 'f' || e.key === 'F') {
-          e.preventDefault()
-          // 收藏功能（待实现）
-          console.log('收藏当前图片:', currentIndex)
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, currentIndex, toggleSlideshow])
+  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, toggleSlideshow])
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>📷 图片查看器</h1>
         <div className="header-actions">
-          <span className="image-count">{IMAGES.length} 张图片</span>
+          <div className="library-selector">
+            <select
+              value={currentLibraryId || ''}
+              onChange={(e) => setCurrentLibrary(e.target.value ? Number(e.target.value) : null)}
+              disabled={libraries.length === 0}
+            >
+              <option value="">选择库...</option>
+              {libraries.map(lib => (
+                <option key={lib.id} value={lib.id}>
+                  {lib.name} ({lib.status === 'online' ? '🟢 在线' : '🔴 离线'}) - {lib.image_count} 张
+                </option>
+              ))}
+            </select>
+            <button onClick={() => setShowLibraryPanel(!showLibraryPanel)} className="library-btn">
+              📁 管理
+            </button>
+          </div>
 
-          {/* 缩略图尺寸调节 */}
-          {viewMode === 'grid' && (
+          <span className="image-count">
+            {currentLibraryId ? `${totalImages} 张图片` : '请先选择或添加库'}
+          </span>
+
+          {viewMode === 'grid' && currentLibraryId && (
             <div className="thumbnail-size-control">
               <label htmlFor="thumbnail-size">缩略图:</label>
               <input
@@ -190,52 +290,116 @@ function App() {
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
             className="view-toggle-btn"
+            disabled={!currentLibraryId || images.length === 0}
           >
             {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
           </button>
         </div>
       </header>
 
+      {showLibraryPanel && (
+        <div className="library-panel">
+          <div className="library-panel-header">
+            <h3>📁 库管理</h3>
+            <button onClick={() => setShowLibraryPanel(false)} className="close-btn">×</button>
+          </div>
+          <div className="library-panel-content">
+            <button onClick={handleAddLibrary} className="add-library-btn">
+              + 添加库
+            </button>
+            {libraries.length === 0 ? (
+              <p className="empty-hint">暂无库，点击"添加库"选择图片文件夹</p>
+            ) : (
+              <ul className="library-list">
+                {libraries.map(lib => (
+                  <li key={lib.id} className={`library-item ${lib.id === currentLibraryId ? 'active' : ''}`}>
+                    <div className="library-item-info">
+                      <strong>{lib.name}</strong>
+                      <span className="library-path">{lib.root_path}</span>
+                      <span className="library-status">
+                        状态：{lib.status === 'online' ? '🟢 在线' : '🔴 离线'} | {lib.image_count} 张
+                      </span>
+                    </div>
+                    <div className="library-item-actions">
+                      <button onClick={() => handleScanLibrary(lib.id)} className="scan-btn">
+                        🔄 扫描
+                      </button>
+                      <button onClick={() => handleRemoveLibrary(lib)} className="remove-btn">
+                        🗑 删除
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )}
+
       <main className="app-main">
-        {viewMode === 'grid' ? (
+        {isLoading && !currentImage && (
+          <div className="global-loading">
+            <div className="loading-spinner"></div>
+            <span>加载中...</span>
+          </div>
+        )}
+
+        {error && (
+          <div className="global-error">
+            <span className="error-icon">⚠</span>
+            <span>{error}</span>
+          </div>
+        )}
+
+        {!currentLibraryId ? (
+          <div className="no-library-hint">
+            <h2>📁 请先添加或选择一个图片库</h2>
+            <p>点击左上角的"管理"按钮添加包含图片的文件夹</p>
+            <button onClick={handleAddLibrary} className="add-library-btn-large">
+              + 添加库
+            </button>
+          </div>
+        ) : images.length === 0 && !isLoading ? (
+          <div className="no-images-hint">
+            <h2>📷 这个库还没有图片</h2>
+            <p>点击"扫描"按钮来索引图片文件夹</p>
+            <button onClick={() => currentLibraryId && handleScanLibrary(currentLibraryId)} className="scan-btn-large">
+              🔄 扫描图片
+            </button>
+          </div>
+        ) : viewMode === 'grid' ? (
           <ImageGrid
-            images={IMAGES}
-            selectedId={IMAGES[currentIndex]?.id}
+            images={gridImages}
+            selectedId={currentImage?.id}
             onImageClick={handleImageClick}
             onImageDoubleClick={handleImageDoubleClick}
             thumbnailSize={thumbnailSize}
             scrollPosition={gridScrollRef.current}
             onScrollChange={(pos) => { gridScrollRef.current = pos }}
           />
-        ) : (
+        ) : currentImage ? (
           <ImageViewer
-            src={IMAGES[currentIndex].src}
-            alt={IMAGES[currentIndex].alt}
+            src={`file://${getCurrentImagePath()}`}
+            alt={currentImage.relative_path.split('/').pop() || ''}
             currentIndex={currentIndex}
-            totalImages={IMAGES.length}
+            totalImages={images.length}
             onPrevious={handlePrevious}
             onNext={handleNext}
             onClose={handleClose}
-            imageInfo={{
-              width: IMAGES[currentIndex].width,
-              height: IMAGES[currentIndex].height,
-              fileSize: IMAGES[currentIndex].fileSize,
-              format: IMAGES[currentIndex].format,
-            }}
+            imageInfo={getCurrentImageInfo() || undefined}
             slideshowSettings={slideshow}
             onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
           />
-        )}
+        ) : null}
       </main>
 
-      {/* 幻灯片控制栏 */}
       {viewMode === 'viewer' && slideshow.enabled && (
         <div className="slideshow-bar">
           <span>🎬 幻灯片播放中</span>
           <div className="slideshow-controls">
             <span>间隔:</span>
             <select
-              value={slideshow.interval}
+              value={selectedInterval}
               onChange={(e) => changeSlideshowInterval(Number(e.target.value))}
             >
               {SLIDESHOW_INTERVALS.map(interval => (
@@ -249,7 +413,6 @@ function App() {
         </div>
       )}
 
-      {/* 快捷键提示 */}
       <footer className="app-footer">
         <span>←/→: 上一张/下一张</span>
         <span>Home/End: 第一张/最后一张</span>
@@ -260,6 +423,7 @@ function App() {
         <span>I: 信息</span>
         <span>Space: 幻灯片</span>
         <span>Esc: 关闭</span>
+        <span>F5: 切换视图</span>
       </footer>
     </div>
   )
