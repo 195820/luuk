@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Library, Image, Favorite, ScanResult, ThumbnailSize } from '../types'
+import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode } from '../types'
 
 interface ImageState {
   // 库相关
@@ -13,24 +13,33 @@ interface ImageState {
   currentImage: Image | null
   favorites: Favorite[]
 
+  // 文件夹相关
+  folderTree: FolderTreeNode[]
+  selectedFolder: string | null
+
   // 缩略图缓存
   thumbnailCache: Map<number, string>
 
   // UI 状态
   sidebarOpen: boolean
+  folderSidebarOpen: boolean
   viewMode: 'grid' | 'list' | 'single'
   isLoading: boolean
   error: string | null
 
   // 初始化
   initialize: () => Promise<void>
-  
+
   // 库操作
   loadLibraries: () => Promise<void>
   addLibrary: (name: string, rootPath: string, autoScan?: boolean) => Promise<Library>
   removeLibrary: (id: number) => Promise<void>
   setCurrentLibrary: (id: number | null) => void
   scanLibrary: (id: number) => Promise<ScanResult>
+
+  // 文件夹操作
+  loadFolderTree: () => Promise<void>
+  setSelectedFolder: (folderPath: string | null) => void
 
   // 图片操作
   loadImages: (options?: { limit?: number; offset?: number }) => Promise<void>
@@ -44,6 +53,7 @@ interface ImageState {
 
   // UI 操作
   toggleSidebar: () => void
+  toggleFolderSidebar: () => void
   setViewMode: (mode: 'grid' | 'list' | 'single') => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
@@ -58,8 +68,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
   totalImages: 0,
   currentImage: null,
   favorites: [],
+  folderTree: [],
+  selectedFolder: null,
   thumbnailCache: new Map(),
   sidebarOpen: true,
+  folderSidebarOpen: true,
   viewMode: 'grid',
   isLoading: false,
   error: null,
@@ -67,7 +80,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 初始化服务
   initialize: async () => {
     if (get().isInitialized) return
-    
+
     try {
       // @ts-ignore - window.electronAPI 在运行时存在
       await window.electronAPI.initImageService()
@@ -85,7 +98,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
       // @ts-ignore
       const libraries = await window.electronAPI.getLibraries()
       set({ libraries })
-      
+
       // 如果有库且当前没有选中，选中第一个
       if (libraries.length > 0 && get().currentLibraryId === null) {
         const onlineLibrary = libraries.find(lib => lib.status === 'online')
@@ -127,6 +140,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
         libraries: state.libraries.filter((lib) => lib.id !== id),
         currentLibraryId: state.currentLibraryId === id ? null : state.currentLibraryId,
         images: state.currentLibraryId === id ? [] : state.images,
+        folderTree: state.currentLibraryId === id ? [] : state.folderTree,
       }))
     } catch (error) {
       console.error('[Store] 删除库失败:', error)
@@ -136,14 +150,17 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 设置当前库
   setCurrentLibrary: (id: number | null) => {
-    set({ 
+    set({
       currentLibraryId: id,
       images: [],
       thumbnailCache: new Map(),
+      folderTree: [],
+      selectedFolder: null,
     })
-    
+
     // 加载新库的图片
     if (id !== null) {
+      get().loadFolderTree()
       get().loadImages()
     }
   },
@@ -154,13 +171,14 @@ export const useImageStore = create<ImageState>((set, get) => ({
       set({ isLoading: true })
       // @ts-ignore
       const result = await window.electronAPI.scanLibrary(id)
-      
+
       // 更新库列表以获取最新的图片数量
       await get().loadLibraries()
-      
-      // 重新加载图片
+
+      // 重新加载文件夹树和图片
+      await get().loadFolderTree()
       await get().loadImages()
-      
+
       set({ isLoading: false })
       return result
     } catch (error) {
@@ -170,9 +188,34 @@ export const useImageStore = create<ImageState>((set, get) => ({
     }
   },
 
+  // 加载文件夹树
+  loadFolderTree: async () => {
+    const { currentLibraryId } = get()
+    if (!currentLibraryId) {
+      set({ folderTree: [] })
+      return
+    }
+
+    try {
+      // @ts-ignore
+      const folderTree = await window.electronAPI.getFolderTree(currentLibraryId)
+      set({ folderTree })
+    } catch (error) {
+      console.error('[Store] 加载文件夹树失败:', error)
+      set({ folderTree: [] })
+    }
+  },
+
+  // 设置选中文件夹
+  setSelectedFolder: async (folderPath: string | null) => {
+    set({ selectedFolder: folderPath })
+    // 重新加载图片
+    await get().loadImages()
+  },
+
   // 加载图片列表
   loadImages: async (options?: { limit?: number; offset?: number }) => {
-    const { currentLibraryId } = get()
+    const { currentLibraryId, selectedFolder } = get()
     if (!currentLibraryId) {
       set({ images: [], totalImages: 0 })
       return
@@ -180,20 +223,28 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
     try {
       set({ isLoading: true, error: null })
-      
+
       const limit = options?.limit || 100
       const offset = options?.offset || 0
-      
+
       // @ts-ignore
       const [images, total] = await Promise.all([
-        // @ts-ignore
-        window.electronAPI.getImages(currentLibraryId, { limit, offset }),
-        // @ts-ignore
-        window.electronAPI.getImageCount(currentLibraryId),
+        // 根据是否选择文件夹决定调用哪个 API
+        selectedFolder !== null
+          ? // @ts-ignore
+            window.electronAPI.getImagesByFolder(currentLibraryId, selectedFolder, { limit, offset })
+          : // @ts-ignore
+            window.electronAPI.getImages(currentLibraryId, { limit, offset }),
+        // 获取总数
+        selectedFolder !== null
+          ? // @ts-ignore
+            window.electronAPI.getImageCountByFolder(currentLibraryId, selectedFolder)
+          : // @ts-ignore
+            window.electronAPI.getImageCount(currentLibraryId),
       ])
-      
-      set({ 
-        images, 
+
+      set({
+        images,
         totalImages: total,
         isLoading: false,
       })
@@ -223,14 +274,14 @@ export const useImageStore = create<ImageState>((set, get) => ({
     try {
       // @ts-ignore
       const thumbnail = await window.electronAPI.getThumbnail(currentLibraryId, imageId, size)
-      
+
       // 更新缓存
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
         newCache.set(imageId, thumbnail)
         return { thumbnailCache: newCache }
       })
-      
+
       return thumbnail
     } catch (error) {
       console.error('[Store] 获取缩略图失败:', imageId, error)
@@ -246,7 +297,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
     try {
       // @ts-ignore
       const thumbnails = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
-      
+
       // 更新缓存
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
@@ -265,10 +316,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
     try {
       // @ts-ignore
       const isFavorite = await window.electronAPI.toggleFavorite(libraryId, imagePath)
-      
+
       // 重新加载收藏列表
       await get().loadFavorites()
-      
+
       return isFavorite
     } catch (error) {
       console.error('[Store] 切换收藏失败:', error)
@@ -290,6 +341,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 切换侧边栏
   toggleSidebar: () => {
     set((state) => ({ sidebarOpen: !state.sidebarOpen }))
+  },
+
+  // 切换文件夹侧边栏
+  toggleFolderSidebar: () => {
+    set((state) => ({ folderSidebarOpen: !state.folderSidebarOpen }))
   },
 
   // 设置视图模式

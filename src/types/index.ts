@@ -7,9 +7,13 @@ export interface ElectronAPI {
   addLibrary: (name: string, rootPath: string, autoScan?: boolean) => Promise<Library>
   removeLibrary: (id: number) => Promise<void>
   scanLibrary: (id: number) => Promise<ScanResult>
+  // 文件夹
+  getFolderTree: (libraryId: number) => Promise<FolderTreeNode[]>
   // 图片查询
   getImages: (libraryId: number, options: ImageQueryOptions) => Promise<Image[]>
+  getImagesByFolder: (libraryId: number, folderPath: string | null, options: ImageQueryOptions) => Promise<Image[]>
   getImageCount: (libraryId: number) => Promise<number>
+  getImageCountByFolder: (libraryId: number, folderPath: string | null) => Promise<number>
   getImagePath: (libraryId: number, imageId: number) => Promise<string>
   // 缩略图
   getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => Promise<string>
@@ -20,6 +24,15 @@ export interface ElectronAPI {
   // 缓存
   getCacheStats: () => Promise<{ count: number; sizeMB: number; utilization: number }>
   clearCache: () => Promise<void>
+}
+
+// 文件夹树节点
+export interface FolderTreeNode {
+  path: string
+  name: string
+  imageCount: number
+  children?: FolderTreeNode[]
+  depth: number
 }
 
 // 扫描结果

@@ -65,6 +65,14 @@ export function registerLibraryHandlers(): void {
     return service.scanLibrary(id);
   });
 
+  // 获取文件夹树
+  ipcMain.handle('getFolderTree', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number
+  ): Promise<any[]> => {
+    return service.getFolderTree(libraryId);
+  });
+
   // 获取图片列表
   ipcMain.handle('getImages', async (
     _event: Electron.IpcMainInvokeEvent,
@@ -74,12 +82,31 @@ export function registerLibraryHandlers(): void {
     return service.getImages(libraryId, options);
   });
 
+  // 获取指定文件夹下的图片列表
+  ipcMain.handle('getImagesByFolder', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string | null,
+    options: ImageQueryOptions
+  ): Promise<any[]> => {
+    return service.getImagesByFolder(libraryId, folderPath, options);
+  });
+
   // 获取图片总数
   ipcMain.handle('getImageCount', async (
     _event: Electron.IpcMainInvokeEvent,
     libraryId: number
   ): Promise<number> => {
     return service.getImageCount(libraryId);
+  });
+
+  // 获取指定文件夹下的图片总数
+  ipcMain.handle('getImageCountByFolder', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string | null
+  ): Promise<number> => {
+    return service.getImageCountByFolder(libraryId, folderPath);
   });
 
   // 获取图片路径
@@ -173,8 +200,11 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('selectFolder');
   ipcMain.removeHandler('removeLibrary');
   ipcMain.removeHandler('scanLibrary');
+  ipcMain.removeHandler('getFolderTree');
   ipcMain.removeHandler('getImages');
+  ipcMain.removeHandler('getImagesByFolder');
   ipcMain.removeHandler('getImageCount');
+  ipcMain.removeHandler('getImageCountByFolder');
   ipcMain.removeHandler('getImagePath');
   ipcMain.removeHandler('getThumbnail');
   ipcMain.removeHandler('getThumbnails');

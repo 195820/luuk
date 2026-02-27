@@ -97,9 +97,35 @@ export class ImageService {
       throw new Error(`目录不存在：${options.rootPath}`);
     }
 
+    // 规范化路径（处理大小写、斜杠等）
+    const normalizedPath = path.normalize(options.rootPath);
+
+    // 检查是否与现有库冲突
+    const existingLibraries = this.masterDB.getLibraries();
+    for (const lib of existingLibraries) {
+      const existingPath = path.normalize(lib.rootPath);
+      
+      // 检查是否是现有库的子文件夹
+      const relativePath = path.relative(existingPath, normalizedPath);
+      if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
+        throw new Error(`无法在已存在库 "${lib.name}" 的子文件夹中创建新库`);
+      }
+      
+      // 检查是否是现有库的父文件夹（即现有库是新库的子文件夹）
+      const existingRelativePath = path.relative(normalizedPath, existingPath);
+      if (existingRelativePath && !existingRelativePath.startsWith('..') && !path.isAbsolute(existingRelativePath)) {
+        throw new Error(`无法创建库：该文件夹包含已存在的库 "${lib.name}"`);
+      }
+
+      // 检查路径是否完全相同
+      if (normalizedPath === existingPath) {
+        throw new Error(`库已存在：${options.rootPath}`);
+      }
+    }
+
     // 添加到主数据库
     const library = this.masterDB.addLibrary(options.name, options.rootPath);
-    
+
     // 连接分库
     this.connectLibrary(library.id);
 
@@ -181,6 +207,56 @@ export class ImageService {
   }
 
   /**
+   * 获取文件夹树
+   */
+  getFolderTree(libraryId: number): Array<{ path: string; name: string; imageCount: number; children: any[]; depth: number }> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const db = this.connectLibrary(libraryId);
+    return db.getFolderTree();
+  }
+
+  /**
+   * 获取指定文件夹下的图片列表
+   */
+  getImagesByFolder(
+    libraryId: number,
+    folderPath: string | null,
+    options: ImageQueryOptions
+  ): any[] {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const db = this.connectLibrary(libraryId);
+    const images = db.getImagesByFolder(folderPath, options);
+
+    // 附加库信息
+    return images.map(img => ({
+      ...img,
+      library_id: libraryId,
+      library_name: library.name
+    }));
+  }
+
+  /**
+   * 获取指定文件夹下的图片总数
+   */
+  getImageCountByFolder(libraryId: number, folderPath: string | null): number {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const db = this.connectLibrary(libraryId);
+    return db.getImagesCountByFolder(folderPath);
+  }
+
+  /**
    * 获取图片总数
    */
   getImageCount(libraryId: number): number {
@@ -232,7 +308,8 @@ export class ImageService {
     const db = this.connectLibrary(libraryId);
 
     // ① 检查内存缓存 - 使用 libraryId-imageId 作为 key
-    const cached = this.cache.get(`${libraryId}-${imageId}`, size);
+    const cacheKey = `${libraryId}-${imageId}`;
+    const cached = this.cache.get(cacheKey, size);
     if (cached) {
       return cached;
     }
@@ -241,7 +318,7 @@ export class ImageService {
     const thumbnailData = db.getThumbnail(imageId, size);
     if (thumbnailData) {
       const base64 = `data:image/webp;base64,${thumbnailData.toString('base64')}`;
-      this.cache.set(`${libraryId}-${imageId}`, size, base64);
+      this.cache.set(cacheKey, size, base64);
       return base64;
     }
 
@@ -266,7 +343,7 @@ export class ImageService {
 
     // 写入内存缓存
     const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
-    this.cache.set(`${libraryId}-${imageId}`, size, base64);
+    this.cache.set(cacheKey, size, base64);
 
     return base64;
   }
@@ -290,7 +367,8 @@ export class ImageService {
     // 检查内存缓存 - 使用 libraryId-imageId 作为 key
     const needToLoad: number[] = [];
     for (const id of imageIds) {
-      const cached = this.cache.get(`${libraryId}-${id}`, size);
+      const cacheKey = `${libraryId}-${id}`;
+      const cached = this.cache.get(cacheKey, size);
       if (cached) {
         result.set(id, cached);
       } else {
@@ -305,8 +383,9 @@ export class ImageService {
     // 检查数据库缓存
     const dbCache = db.getThumbnails(needToLoad, size);
     for (const [id, data] of dbCache.entries()) {
+      const cacheKey = `${libraryId}-${id}`;
       const base64 = `data:image/webp;base64,${data.toString('base64')}`;
-      this.cache.set(`${libraryId}-${id}`, size, base64);
+      this.cache.set(cacheKey, size, base64);
       result.set(id, base64);
     }
 

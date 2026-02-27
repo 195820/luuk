@@ -28,16 +28,16 @@ export class LRUCache {
   /**
    * 生成缓存键
    */
-  private makeKey(imageId: number, size: string): string {
+  private makeKey(imageId: string | number, size: string): string {
     return `${imageId}:${size}`;
   }
 
   /**
    * 设置缓存
    */
-  set(imageId: number, size: string, value: string): void {
+  set(imageId: string | number, size: string, value: string): void {
     const key = this.makeKey(imageId, size);
-    
+
     // 估算大小 (base64 字符串约等于原始大小的 1.33 倍)
     const entrySize = Math.ceil(value.length * 0.75);
 
@@ -71,7 +71,7 @@ export class LRUCache {
   /**
    * 获取缓存
    */
-  get(imageId: number, size: string): string | undefined {
+  get(imageId: string | number, size: string): string | undefined {
     const key = this.makeKey(imageId, size);
     const entry = this.cache.get(key);
 
@@ -89,22 +89,22 @@ export class LRUCache {
   /**
    * 检查缓存是否存在
    */
-  has(imageId: number, size: string): boolean {
+  has(imageId: string | number, size: string): boolean {
     return this.cache.has(this.makeKey(imageId, size));
   }
 
   /**
    * 删除缓存
    */
-  delete(imageId: number, size: string): boolean {
+  delete(imageId: string | number, size: string): boolean {
     const key = this.makeKey(imageId, size);
     const entry = this.cache.get(key);
-    
+
     if (entry) {
       this.currentSizeBytes -= entry.entrySize;
       return this.cache.delete(key);
     }
-    
+
     return false;
   }
 
@@ -167,7 +167,7 @@ export class LRUCache {
    */
   setMaxSize(maxSizeMB: number): void {
     this.maxSizeBytes = maxSizeMB * 1024 * 1024;
-    
+
     // 如果当前大小超过新限制，修剪缓存
     if (this.currentSizeBytes > this.maxSizeBytes) {
       this.trim(maxSizeMB * 0.8);

@@ -23,33 +23,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
       throw err
     })
   },
-  
+
+  // 文件夹
+  getFolderTree: (libraryId: number) => ipcRenderer.invoke('getFolderTree', libraryId),
+
   // 图片查询
-  getImages: (libraryId: number, options: ImageQueryOptions) => 
+  getImages: (libraryId: number, options: ImageQueryOptions) =>
     ipcRenderer.invoke('getImages', libraryId, options),
+  getImagesByFolder: (libraryId: number, folderPath: string | null, options: ImageQueryOptions) =>
+    ipcRenderer.invoke('getImagesByFolder', libraryId, folderPath, options),
   getImageCount: (libraryId: number) => ipcRenderer.invoke('getImageCount', libraryId),
-  getImagePath: (libraryId: number, imageId: number) => 
+  getImageCountByFolder: (libraryId: number, folderPath: string | null) =>
+    ipcRenderer.invoke('getImageCountByFolder', libraryId, folderPath),
+  getImagePath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getImagePath', libraryId, imageId),
-  
+
   // 缩略图
-  getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => 
+  getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) =>
     ipcRenderer.invoke('getThumbnail', libraryId, imageId, size),
-  getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => 
+  getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) =>
     ipcRenderer.invoke('getThumbnails', libraryId, imageIds, size),
-  
+
   // 收藏
-  toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) => 
+  toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) =>
     ipcRenderer.invoke('toggleFavorite', libraryId, imagePath, tags),
   getFavorites: () => ipcRenderer.invoke('getFavorites'),
-  
+
   // 缓存
   getCacheStats: () => ipcRenderer.invoke('getCacheStats'),
   clearCache: () => ipcRenderer.invoke('clearCache'),
-  
+
   // 文件操作
   readFile: (filePath: string) => ipcRenderer.invoke('readFile', filePath),
   fileExists: (filePath: string) => ipcRenderer.invoke('fileExists', filePath),
-  
+
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 } as ElectronAPI)

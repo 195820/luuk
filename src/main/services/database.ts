@@ -370,6 +370,235 @@ export class ThumbnailsDB {
     return (stmt.all() as { relative_path: string }[]).map(row => row.relative_path);
   }
 
+  /**
+   * 获取文件夹树（只展示文件夹层级，不展示文件）
+   */
+  getFolders(): Array<{ path: string; name: string; imageCount: number; parentPath: string | null }> {
+    if (!this.db) return [];
+    
+    // 查询所有有图片的文件夹
+    const stmt = this.db.prepare(`
+      SELECT 
+        CASE 
+          WHEN INSTR(relative_path, '/') > 0 THEN SUBSTR(relative_path, 1, INSTR(relative_path, '/') - 1)
+          ELSE NULL
+        END as folder_path,
+        CASE 
+          WHEN INSTR(relative_path, '/') > 0 THEN SUBSTR(relative_path, INSTR(relative_path, '/') + 1)
+          ELSE relative_path
+        END as file_name,
+        COUNT(*) as image_count
+      FROM images 
+      WHERE is_deleted = 0
+      GROUP BY folder_path
+    `);
+    
+    const rows = stmt.all() as Array<{ folder_path: string | null; image_count: number }>;
+    
+    // 过滤掉根目录（folder_path 为 NULL 的记录表示图片在根目录）
+    const folders = rows
+      .filter(row => row.folder_path !== null)
+      .map(row => ({
+        path: row.folder_path as string,
+        name: (row.folder_path as string).split('/').pop() || row.folder_path as string,
+        imageCount: row.image_count,
+        parentPath: null
+      }));
+    
+    // 去重并合并计数
+    const folderMap = new Map<string, { path: string; name: string; imageCount: number; parentPath: string | null }>();
+    for (const folder of folders) {
+      if (folderMap.has(folder.path)) {
+        folderMap.get(folder.path)!.imageCount += folder.imageCount;
+      } else {
+        folderMap.set(folder.path, folder);
+      }
+    }
+    
+    return Array.from(folderMap.values());
+  }
+
+  /**
+   * 获取完整的文件夹树（递归构建）
+   */
+  getFolderTree(): Array<{ path: string; name: string; imageCount: number; children: any[]; depth: number }> {
+    if (!this.db) return [];
+
+    // 获取所有图片的相对路径
+    const allPathsStmt = this.db.prepare('SELECT relative_path FROM images WHERE is_deleted = 0');
+    const allPaths = (allPathsStmt.all() as Array<{ relative_path: string }>).map(row => row.relative_path);
+
+    // 构建文件夹树
+    const folderMap = new Map<string, { path: string; name: string; imageCount: number; children: Set<string>; depth: number; parentPath: string | null }>();
+
+    for (const relativePath of allPaths) {
+      // 同时支持 Windows 和 Unix 路径分隔符
+      const parts = relativePath.split(/[\\/]/);
+
+      // 只取文件夹部分（不包含文件名）
+      const folderParts = parts.slice(0, -1);
+
+      if (folderParts.length === 0) {
+        // 图片在根目录，不计入文件夹树
+        continue;
+      }
+
+      // 构建每一级文件夹（统一使用 / 作为路径分隔符）
+      let currentPath = '';
+      for (let i = 0; i < folderParts.length; i++) {
+        const part = folderParts[i];
+        const prevPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+
+        if (!folderMap.has(currentPath)) {
+          folderMap.set(currentPath, {
+            path: currentPath,
+            name: part,
+            imageCount: 0,
+            children: new Set(),
+            depth: i,
+            parentPath: prevPath || null
+          });
+
+          // 添加到父节点的 children
+          if (prevPath && folderMap.has(prevPath)) {
+            folderMap.get(prevPath)!.children.add(currentPath);
+          }
+        }
+
+        // 每一级文件夹都计数 +1（因为这张图片属于这个文件夹路径）
+        folderMap.get(currentPath)!.imageCount++;
+      }
+    }
+
+    // 构建树形结构
+    const buildTree = (path: string): any => {
+      const node = folderMap.get(path);
+      if (!node) return null;
+
+      const children = Array.from(node.children)
+        .map(childPath => buildTree(childPath))
+        .filter(Boolean);
+
+      return {
+        path: node.path,
+        name: node.name,
+        imageCount: node.imageCount,
+        children,
+        depth: node.depth
+      };
+    };
+
+    // 找到所有根节点（没有父节点的文件夹，即第一级文件夹）
+    const rootPaths = Array.from(folderMap.keys()).filter(path => {
+      const node = folderMap.get(path);
+      return node?.parentPath === null;
+    });
+
+    return rootPaths.map(path => buildTree(path)).filter(Boolean);
+  }
+
+  /**
+   * 获取指定文件夹下的图片数量
+   */
+  getFolderImageCount(folderPath: string | null): number {
+    if (!this.db) return 0;
+    
+    if (folderPath === null) {
+      // 返回所有图片数量
+      const stmt = this.db.prepare('SELECT COUNT(*) as count FROM images WHERE is_deleted = 0');
+      return (stmt.get() as { count: number }).count;
+    }
+    
+    // 返回指定文件夹下的图片数量（包括子文件夹）
+    // 需要同时匹配 / 和 \ 分隔符
+    const normalizedPath = folderPath.replace(/\//g, '\\');
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM images 
+      WHERE is_deleted = 0 
+        AND (relative_path LIKE ? OR relative_path LIKE ? OR relative_path LIKE ? OR relative_path LIKE ?)
+    `);
+    const result = stmt.get(
+      `${normalizedPath}\\%`,
+      `${normalizedPath}%`,
+      `${folderPath}\\%`,
+      `${folderPath}%`
+    ) as { count: number };
+    return result.count;
+  }
+
+  /**
+   * 获取指定文件夹下的图片列表
+   */
+  getImagesByFolder(
+    folderPath: string | null,
+    options: { limit: number; offset: number; orderBy?: string; order?: string }
+  ): Image[] {
+    if (!this.db) return [];
+    
+    const { limit, offset, orderBy = 'relative_path', order = 'ASC' } = options;
+    
+    if (folderPath === null) {
+      // 获取所有图片
+      const stmt = this.db.prepare(`
+        SELECT * FROM images 
+        WHERE is_deleted = 0 
+        ORDER BY ${orderBy} ${order} 
+        LIMIT ? OFFSET ?
+      `);
+      return stmt.all(limit, offset) as Image[];
+    }
+    
+    // 获取指定文件夹下的图片（包括子文件夹）
+    // 需要同时匹配 / 和 \ 分隔符
+    const normalizedPath = folderPath.replace(/\//g, '\\');
+    const stmt = this.db.prepare(`
+      SELECT * FROM images 
+      WHERE is_deleted = 0 
+        AND (relative_path LIKE ? OR relative_path LIKE ? OR relative_path LIKE ? OR relative_path = ? OR relative_path = ?)
+      ORDER BY ${orderBy} ${order} 
+      LIMIT ? OFFSET ?
+    `);
+    return stmt.all(
+      `${normalizedPath}\\%`,
+      `${normalizedPath}%`,
+      `${folderPath}\\%`,
+      normalizedPath,
+      folderPath,
+      limit, 
+      offset
+    ) as Image[];
+  }
+
+  /**
+   * 获取指定文件夹下的图片总数
+   */
+  getImagesCountByFolder(folderPath: string | null): number {
+    if (!this.db) return 0;
+    
+    if (folderPath === null) {
+      const stmt = this.db.prepare('SELECT COUNT(*) as count FROM images WHERE is_deleted = 0');
+      return (stmt.get() as { count: number }).count;
+    }
+    
+    // 需要同时匹配 / 和 \ 分隔符
+    const normalizedPath = folderPath.replace(/\//g, '\\');
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM images 
+      WHERE is_deleted = 0 
+        AND (relative_path LIKE ? OR relative_path LIKE ? OR relative_path LIKE ? OR relative_path = ? OR relative_path = ?)
+    `);
+    return (stmt.get(
+      `${normalizedPath}\\%`,
+      `${normalizedPath}%`,
+      `${folderPath}\\%`,
+      normalizedPath,
+      folderPath
+    ) as { count: number }).count;
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();

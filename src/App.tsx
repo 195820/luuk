@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
+import { FolderTree } from './components/FolderTree'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore } from './stores/imageStore'
 import type { Library } from './types'
@@ -33,7 +34,11 @@ function App() {
     scanLibrary,
     loadImages,
     setCurrentImage,
-    getThumbnail,
+    folderTree,
+    selectedFolder,
+    setSelectedFolder,
+    toggleFolderSidebar,
+    folderSidebarOpen,
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
@@ -65,6 +70,11 @@ function App() {
     fileSize: img.file_size,
     format: img.format.toLowerCase(),
   }))
+
+  // 处理文件夹选择
+  const handleFolderSelect = useCallback((folderPath: string | null) => {
+    setSelectedFolder(folderPath)
+  }, [setSelectedFolder])
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex(prev => Math.max(0, prev - 1))
@@ -158,8 +168,12 @@ function App() {
       await addLibrary(folderName, folderPath, true)
       setShowLibraryPanel(false)
     } catch (error: any) {
-      if (error?.message?.includes('UNIQUE constraint failed')) {
+      if (error?.message?.includes('UNIQUE constraint failed') || error?.message?.includes('库已存在')) {
         alert('该文件夹已经被添加过了，无需重复添加！')
+      } else if (error?.message?.includes('子文件夹')) {
+        alert(error.message)
+      } else if (error?.message?.includes('包含已存在的库')) {
+        alert(error.message)
       } else {
         console.error('添加库失败:', error)
         alert('添加库失败：' + (error?.message || '未知错误'))
@@ -225,6 +239,12 @@ function App() {
         return
       }
 
+      if (e.key === 'F6') {
+        e.preventDefault()
+        toggleFolderSidebar()
+        return
+      }
+
       if (viewMode === 'viewer') {
         if (e.key === 'ArrowLeft' || e.key === 'PageUp') handlePrevious()
         if (e.key === 'ArrowRight' || e.key === 'PageDown') handleNext()
@@ -259,13 +279,16 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, toggleSlideshow])
+  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, toggleSlideshow, toggleFolderSidebar])
 
   return (
     <div className="app-container">
       <header className="app-header">
         <h1>📷 图片查看器</h1>
         <div className="header-actions">
+          <button onClick={toggleFolderSidebar} className="folder-toggle-btn" title="切换文件夹面板 (F6)">
+            📁
+          </button>
           <div className="library-selector">
             <select
               value={currentLibraryId || ''}
@@ -314,6 +337,85 @@ function App() {
         </div>
       </header>
 
+      <div className="app-body">
+        {/* 左侧文件夹边栏 */}
+        {folderSidebarOpen && currentLibraryId && (
+          <aside className="folder-sidebar">
+            <div className="folder-sidebar-header">
+              <span>📂 文件夹</span>
+              <button onClick={toggleFolderSidebar} className="close-sidebar-btn">×</button>
+            </div>
+            <div className="folder-sidebar-content">
+              <FolderTree
+                folders={folderTree}
+                selectedFolder={selectedFolder}
+                onFolderSelect={handleFolderSelect}
+              />
+            </div>
+          </aside>
+        )}
+
+        {/* 主内容区域 */}
+        <main className={`app-main ${folderSidebarOpen ? 'with-sidebar' : ''}`}>
+          {isLoading && !currentImage && (
+            <div className="global-loading">
+              <div className="loading-spinner"></div>
+              <span>加载中...</span>
+            </div>
+          )}
+
+          {error && (
+            <div className="global-error">
+              <span className="error-icon">⚠</span>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {!currentLibraryId ? (
+            <div className="no-library-hint">
+              <h2>📁 请先添加或选择一个图片库</h2>
+              <p>点击左上角的"管理"按钮添加包含图片的文件夹</p>
+              <button onClick={handleAddLibrary} className="add-library-btn-large">
+                + 添加库
+              </button>
+            </div>
+          ) : images.length === 0 && !isLoading ? (
+            <div className="no-images-hint">
+              <h2>📷 这个{selectedFolder ? `"${selectedFolder.split('/').pop()}"` : '库'}还没有图片</h2>
+              <p>点击"扫描"按钮来索引图片文件夹</p>
+              <button onClick={() => currentLibraryId && handleScanLibrary(currentLibraryId)} className="scan-btn-large">
+                🔄 扫描图片
+              </button>
+            </div>
+          ) : viewMode === 'grid' ? (
+            <ImageGrid
+              key={`${currentLibraryId}-${selectedFolder || 'all'}`}
+              images={gridImages}
+              selectedId={currentImage?.id}
+              onImageClick={handleImageClick}
+              onImageDoubleClick={handleImageDoubleClick}
+              thumbnailSize={thumbnailSize}
+              scrollPosition={gridScrollRef.current}
+              onScrollChange={(pos) => { gridScrollRef.current = pos }}
+              libraryId={currentLibraryId!}
+            />
+          ) : currentImage ? (
+            <ImageViewer
+              src={`file://${currentImagePath}`}
+              alt={currentImage.relative_path.split('/').pop() || ''}
+              currentIndex={currentIndex}
+              totalImages={images.length}
+              onPrevious={handlePrevious}
+              onNext={handleNext}
+              onClose={handleClose}
+              imageInfo={getCurrentImageInfo() || undefined}
+              slideshowSettings={slideshow}
+              onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
+            />
+          ) : null}
+        </main>
+      </div>
+
       {showLibraryPanel && (
         <div className="library-panel">
           <div className="library-panel-header">
@@ -353,65 +455,6 @@ function App() {
         </div>
       )}
 
-      <main className="app-main">
-        {isLoading && !currentImage && (
-          <div className="global-loading">
-            <div className="loading-spinner"></div>
-            <span>加载中...</span>
-          </div>
-        )}
-
-        {error && (
-          <div className="global-error">
-            <span className="error-icon">⚠</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        {!currentLibraryId ? (
-          <div className="no-library-hint">
-            <h2>📁 请先添加或选择一个图片库</h2>
-            <p>点击左上角的"管理"按钮添加包含图片的文件夹</p>
-            <button onClick={handleAddLibrary} className="add-library-btn-large">
-              + 添加库
-            </button>
-          </div>
-        ) : images.length === 0 && !isLoading ? (
-          <div className="no-images-hint">
-            <h2>📷 这个库还没有图片</h2>
-            <p>点击"扫描"按钮来索引图片文件夹</p>
-            <button onClick={() => currentLibraryId && handleScanLibrary(currentLibraryId)} className="scan-btn-large">
-              🔄 扫描图片
-            </button>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <ImageGrid
-            key={currentLibraryId}
-            images={gridImages}
-            selectedId={currentImage?.id}
-            onImageClick={handleImageClick}
-            onImageDoubleClick={handleImageDoubleClick}
-            thumbnailSize={thumbnailSize}
-            scrollPosition={gridScrollRef.current}
-            onScrollChange={(pos) => { gridScrollRef.current = pos }}
-            libraryId={currentLibraryId!}
-          />
-        ) : currentImage ? (
-          <ImageViewer
-            src={`file://${currentImagePath}`}
-            alt={currentImage.relative_path.split('/').pop() || ''}
-            currentIndex={currentIndex}
-            totalImages={images.length}
-            onPrevious={handlePrevious}
-            onNext={handleNext}
-            onClose={handleClose}
-            imageInfo={getCurrentImageInfo() || undefined}
-            slideshowSettings={slideshow}
-            onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
-          />
-        ) : null}
-      </main>
-
       {viewMode === 'viewer' && slideshow.enabled && (
         <div className="slideshow-bar">
           <span>🎬 幻灯片播放中</span>
@@ -443,6 +486,7 @@ function App() {
         <span>Space: 幻灯片</span>
         <span>Esc: 关闭</span>
         <span>F5: 切换视图</span>
+        <span>F6: 文件夹面板</span>
       </footer>
     </div>
   )
