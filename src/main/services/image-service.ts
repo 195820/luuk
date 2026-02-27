@@ -220,8 +220,8 @@ export class ImageService {
    * 获取缩略图 (带缓存)
    */
   async getThumbnail(
-    libraryId: number, 
-    imageId: number, 
+    libraryId: number,
+    imageId: number,
     size: ThumbnailSize = 'medium'
   ): Promise<string> {
     const library = this.masterDB.getLibrary(libraryId);
@@ -231,8 +231,8 @@ export class ImageService {
 
     const db = this.connectLibrary(libraryId);
 
-    // ① 检查内存缓存
-    const cached = this.cache.get(imageId, size);
+    // ① 检查内存缓存 - 使用 libraryId-imageId 作为 key
+    const cached = this.cache.get(`${libraryId}-${imageId}`, size);
     if (cached) {
       return cached;
     }
@@ -241,7 +241,7 @@ export class ImageService {
     const thumbnailData = db.getThumbnail(imageId, size);
     if (thumbnailData) {
       const base64 = `data:image/webp;base64,${thumbnailData.toString('base64')}`;
-      this.cache.set(imageId, size, base64);
+      this.cache.set(`${libraryId}-${imageId}`, size, base64);
       return base64;
     }
 
@@ -252,21 +252,21 @@ export class ImageService {
     }
 
     const fullPath = path.join(library.rootPath, image.relative_path);
-    
+
     if (!fs.existsSync(fullPath)) {
       throw new Error(`图片文件不存在：${fullPath}`);
     }
 
     // 生成缩略图
     const thumbnail = await generateThumbnail(fullPath, size);
-    
+
     // 保存到数据库
     const thumbMetadata = await getThumbnailer().getImageMetadata(fullPath);
     db.saveThumbnail(imageId, size, thumbnail, thumbMetadata.width, thumbMetadata.height);
-    
+
     // 写入内存缓存
     const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
-    this.cache.set(imageId, size, base64);
+    this.cache.set(`${libraryId}-${imageId}`, size, base64);
 
     return base64;
   }
@@ -287,10 +287,10 @@ export class ImageService {
     const db = this.connectLibrary(libraryId);
     const result = new Map<number, string>();
 
-    // 检查内存缓存
+    // 检查内存缓存 - 使用 libraryId-imageId 作为 key
     const needToLoad: number[] = [];
     for (const id of imageIds) {
-      const cached = this.cache.get(id, size);
+      const cached = this.cache.get(`${libraryId}-${id}`, size);
       if (cached) {
         result.set(id, cached);
       } else {
@@ -306,13 +306,13 @@ export class ImageService {
     const dbCache = db.getThumbnails(needToLoad, size);
     for (const [id, data] of dbCache.entries()) {
       const base64 = `data:image/webp;base64,${data.toString('base64')}`;
-      this.cache.set(id, size, base64);
+      this.cache.set(`${libraryId}-${id}`, size, base64);
       result.set(id, base64);
     }
 
     // 剩余的实时生成
     const stillNeedToLoad = needToLoad.filter(id => !dbCache.has(id));
-    
+
     // 限制并发数量
     const batchSize = 10;
     for (let i = 0; i < stillNeedToLoad.length; i += batchSize) {

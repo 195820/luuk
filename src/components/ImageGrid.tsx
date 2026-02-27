@@ -1,4 +1,4 @@
-import { useRef, memo, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import './ImageGrid.css'
 
@@ -20,6 +20,7 @@ interface ImageGridProps {
   thumbnailSize?: number
   scrollPosition?: number
   onScrollChange?: (position: number) => void
+  libraryId: number
 }
 
 export function ImageGrid({
@@ -30,6 +31,7 @@ export function ImageGrid({
   thumbnailSize = 200,
   scrollPosition = 0,
   onScrollChange,
+  libraryId,
 }: ImageGridProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
@@ -57,6 +59,13 @@ export function ImageGrid({
     estimateSize: () => thumbnailSize + 60,
     overscan: 5,
   })
+  
+  // 库变化时重置滚动位置
+  useEffect(() => {
+    if (parentRef.current) {
+      parentRef.current.scrollTop = 0
+    }
+  }, [libraryId])
 
   // 恢复滚动位置
   useEffect(() => {
@@ -111,7 +120,7 @@ export function ImageGrid({
 
           return (
             <div
-              key={rowIndex}
+              key={`${libraryId}-${rowIndex}`}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -127,13 +136,14 @@ export function ImageGrid({
             >
               {rowImages.map((image) => (
                 <ImageGridItem
-                  key={image.id}
+                  key={`${libraryId}-${image.id}`}
                   image={image}
                   isSelected={selectedId === image.id}
                   onClick={() => onImageClick?.(image)}
                   onDoubleClick={() => onImageDoubleClick?.(image)}
                   thumbnailSize={thumbnailSize}
                   formatFileSize={formatFileSize}
+                  libraryId={libraryId}
                 />
               ))}
             </div>
@@ -151,18 +161,51 @@ interface ImageGridItemProps {
   onDoubleClick: () => void
   thumbnailSize: number
   formatFileSize: (bytes?: number) => string
+  libraryId: number
 }
 
-const ImageGridItem = memo(function ImageGridItem({
+const ImageGridItem = function ImageGridItem({
   image,
   isSelected,
   onClick,
   onDoubleClick,
   thumbnailSize,
   formatFileSize,
+  libraryId,
 }: ImageGridItemProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(false)
+  const [thumbnailSrc, setThumbnailSrc] = useState<string>('')
+
+  // 加载缩略图
+  useEffect(() => {
+    if (!libraryId) return
+
+    let cancelled = false
+
+    const loadThumbnail = async () => {
+      try {
+        // @ts-ignore
+        const thumbnail = await window.electronAPI.getThumbnail(libraryId, image.id, 'medium')
+
+        if (!cancelled && thumbnail) {
+          setThumbnailSrc(thumbnail)
+          setIsLoading(false)
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(true)
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadThumbnail()
+
+    return () => {
+      cancelled = true
+    }
+  }, [libraryId, image.id])
 
   return (
     <div
@@ -178,22 +221,26 @@ const ImageGridItem = memo(function ImageGridItem({
             <span>加载失败</span>
           </div>
         )}
-        <img
-          src={image.src}
-          alt={image.alt}
-          loading="lazy"
-          onLoad={() => setIsLoading(false)}
-          onError={() => {
-            setError(true)
-            setIsLoading(false)
-          }}
-          style={{
-            display: isLoading || error ? 'none' : 'block',
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-          }}
-        />
+        {thumbnailSrc ? (
+          <img
+            src={thumbnailSrc}
+            alt={image.alt}
+            loading="lazy"
+            onLoad={() => setIsLoading(false)}
+            onError={() => {
+              setError(true)
+              setIsLoading(false)
+            }}
+            style={{
+              display: isLoading || error ? 'none' : 'block',
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <div style={{ width: '100%', height: '100%', background: '#333' }}>加载中</div>
+        )}
       </div>
       <div className="image-grid-info">
         <span className="image-grid-name" title={image.alt}>
@@ -212,4 +259,4 @@ const ImageGridItem = memo(function ImageGridItem({
       </div>
     </div>
   )
-})
+}

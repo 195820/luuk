@@ -85,7 +85,8 @@ export class MasterDB {
     if (!this.db) throw new Error('MasterDB 未初始化');
     const stmt = this.db.prepare('INSERT INTO libraries (name, root_path, status) VALUES (?, ?, ?)');
     const result = stmt.run(name, rootPath, 'offline');
-    return this.mapLibrary(stmt.get(result.lastInsertRowid) as any);
+    const row = this.db.prepare('SELECT * FROM libraries WHERE id = ?').get(result.lastInsertRowid) as any;
+    return this.mapLibrary(row);
   }
 
   getLibrary(id: number): Library | null {

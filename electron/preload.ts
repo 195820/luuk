@@ -6,14 +6,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 基础 API
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
-  
+
   // 库管理
   getLibraries: () => ipcRenderer.invoke('getLibraries'),
-  addLibrary: (name: string, rootPath: string, autoScan?: boolean) => 
+  addLibrary: (name: string, rootPath: string, autoScan?: boolean) =>
     ipcRenderer.invoke('addLibrary', name, rootPath, autoScan),
   removeLibrary: (id: number) => ipcRenderer.invoke('removeLibrary', id),
   scanLibrary: (id: number) => ipcRenderer.invoke('scanLibrary', id),
-  selectFolder: () => ipcRenderer.invoke('selectFolder'),
+  selectFolder: () => {
+    console.log('[preload] selectFolder called')
+    return ipcRenderer.invoke('selectFolder').then(result => {
+      console.log('[preload] selectFolder result:', result)
+      return result
+    }).catch(err => {
+      console.error('[preload] selectFolder error:', err)
+      throw err
+    })
+  },
   
   // 图片查询
   getImages: (libraryId: number, options: ImageQueryOptions) => 

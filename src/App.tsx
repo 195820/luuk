@@ -37,6 +37,7 @@ function App() {
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
+  const [currentImagePath, setCurrentImagePath] = useState<string>('')
 
   // 初始化服务
   useEffect(() => {
@@ -57,27 +58,13 @@ function App() {
   // 将数据库图片转换为 Grid 需要的格式
   const gridImages: ImageGridItem[] = images.map((img: any) => ({
     id: img.id,
-    src: '',
+    src: '', // 缩略图在 ImageGridItem 内部加载
     alt: img.relative_path.split('/').pop() || img.relative_path,
     width: img.width,
     height: img.height,
     fileSize: img.file_size,
     format: img.format.toLowerCase(),
   }))
-
-  // 异步加载缩略图
-  useEffect(() => {
-    if (viewMode === 'grid' && images.length > 0) {
-      images.forEach((img: any) => {
-        getThumbnail(img.id, 'medium').then(thumbnail => {
-          const gridElement = document.querySelector(`[data-image-id="${img.id}"] img`) as HTMLImageElement
-          if (gridElement && thumbnail) {
-            gridElement.src = thumbnail
-          }
-        })
-      })
-    }
-  }, [viewMode, images, currentLibraryId])
 
   const handlePrevious = useCallback(() => {
     setCurrentIndex(prev => Math.max(0, prev - 1))
@@ -97,6 +84,16 @@ function App() {
   const handleLast = useCallback(() => {
     setCurrentIndex(images.length - 1)
   }, [images.length])
+
+  // 当 currentIndex 变化时，更新 currentImage
+  useEffect(() => {
+    if (viewMode === 'viewer' && images.length > 0) {
+      const img = images[currentIndex]
+      if (img) {
+        setCurrentImage(img)
+      }
+    }
+  }, [currentIndex, images, viewMode])
 
   const handleImageClick = (image: ImageGridItem) => {
     const img = images.find((i: any) => i.id === image.id)
@@ -151,14 +148,22 @@ function App() {
   // 添加库
   const handleAddLibrary = async () => {
     try {
+      if (!(window as any).electronAPI?.selectFolder) {
+        throw new Error('electronAPI.selectFolder 不可用')
+      }
       const folderPath = await (window as any).electronAPI.selectFolder()
       if (!folderPath) return
 
       const folderName = folderPath.split(/[/\\]/).pop() || '未命名库'
       await addLibrary(folderName, folderPath, true)
       setShowLibraryPanel(false)
-    } catch (error) {
-      console.error('添加库失败:', error)
+    } catch (error: any) {
+      if (error?.message?.includes('UNIQUE constraint failed')) {
+        alert('该文件夹已经被添加过了，无需重复添加！')
+      } else {
+        console.error('添加库失败:', error)
+        alert('添加库失败：' + (error?.message || '未知错误'))
+      }
     }
   }
 
@@ -188,6 +193,18 @@ function App() {
       format: currentImage.format,
     }
   }
+
+  // 加载当前图片路径
+  useEffect(() => {
+    if (currentImage && currentLibraryId) {
+      getCurrentImagePath().then(setCurrentImagePath).catch(err => {
+        console.error('获取图片路径失败:', err)
+        setCurrentImagePath('')
+      })
+    } else {
+      setCurrentImagePath('')
+    }
+  }, [currentImage, currentLibraryId])
 
   const getCurrentImagePath = async () => {
     if (!currentLibraryId || !currentImage) return ''
@@ -369,6 +386,7 @@ function App() {
           </div>
         ) : viewMode === 'grid' ? (
           <ImageGrid
+            key={currentLibraryId}
             images={gridImages}
             selectedId={currentImage?.id}
             onImageClick={handleImageClick}
@@ -376,10 +394,11 @@ function App() {
             thumbnailSize={thumbnailSize}
             scrollPosition={gridScrollRef.current}
             onScrollChange={(pos) => { gridScrollRef.current = pos }}
+            libraryId={currentLibraryId!}
           />
         ) : currentImage ? (
           <ImageViewer
-            src={`file://${getCurrentImagePath()}`}
+            src={`file://${currentImagePath}`}
             alt={currentImage.relative_path.split('/').pop() || ''}
             currentIndex={currentIndex}
             totalImages={images.length}

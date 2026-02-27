@@ -32,15 +32,21 @@ export function registerLibraryHandlers(): void {
 
   // 选择文件夹对话框
   ipcMain.handle('selectFolder', async (): Promise<string | null> => {
-    const result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow()!, {
-      properties: ['openDirectory']
-    });
-    
-    if (result.canceled || result.filePaths.length === 0) {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length === 0) {
       return null;
     }
-    
-    return result.filePaths[0];
+    try {
+      const result = await dialog.showOpenDialog(windows[0], {
+        properties: ['openDirectory']
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return null;
+      }
+      return result.filePaths[0];
+    } catch (error) {
+      throw error
+    }
   });
 
   // 删除库
