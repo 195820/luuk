@@ -246,10 +246,7 @@ function App() {
       }
 
       if (viewMode === 'viewer') {
-        if (e.key === 'ArrowLeft' || e.key === 'PageUp') handlePrevious()
-        if (e.key === 'ArrowRight' || e.key === 'PageDown') handleNext()
-        if (e.key === 'Home') handleFirst()
-        if (e.key === 'End') handleLast()
+        // 方向键由 ImageViewer 组件内部处理
         if (e.key === 'Escape') handleClose()
 
         if (e.key === ' ' || e.key === 'Spacebar') {
@@ -257,29 +254,25 @@ function App() {
           toggleSlideshow()
         }
 
-        if (e.key === '0') {
+        // Home/End/R 由父组件处理
+        if (e.key === 'Home') {
           e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-fit', { detail: 'fit-window' }))
+          handleFirst()
         }
-        if (e.key === '1') {
+        if (e.key === 'End') {
           e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-fit', { detail: 'actual-size' }))
+          handleLast()
         }
-
         if (e.key === 'r' || e.key === 'R') {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('image-viewer-reset'))
-        }
-        if (e.key === 'i' || e.key === 'I') {
-          e.preventDefault()
-          window.dispatchEvent(new CustomEvent('image-viewer-info'))
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handlePrevious, handleNext, handleFirst, handleLast, handleClose, toggleSlideshow, toggleFolderSidebar])
+  }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast])
 
   return (
     <div className="app-container">
