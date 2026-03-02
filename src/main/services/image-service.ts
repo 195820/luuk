@@ -5,6 +5,7 @@ import {
   ThumbnailsDB, 
   getMasterDB, 
   getThumbnailsDB,
+  closeThumbnailsDB,
   closeAllDatabases 
 } from './database';
 import { getThumbnailer, generateThumbnail } from './thumbnailer';
@@ -79,19 +80,30 @@ export class ImageService {
       throw new Error(`库不存在：${libraryId}`);
     }
 
+    console.log(`[ImageService] connectLibrary: libraryId=${libraryId}, rootPath=${library.rootPath}`)
+
+    // 使用 rootPath 作为 key，确保同一个路径只创建一个数据库实例
     if (!this.thumbnailsDBs.has(library.rootPath)) {
-      const db = getThumbnailsDB(library.rootPath);
-      this.thumbnailsDBs.set(library.rootPath, db);
-      this.scanners.set(library.rootPath, new LibraryScanner(db, library.rootPath));
+      console.log(`[ImageService] connectLibrary: 创建新的 ThumbnailsDB 实例`)
+      const db = getThumbnailsDB(library.rootPath)
+      this.thumbnailsDBs.set(library.rootPath, db)
+      this.scanners.set(library.rootPath, new LibraryScanner(db, library.rootPath))
+    } else {
+      console.log(`[ImageService] connectLibrary: 使用已存在的 ThumbnailsDB 实例`)
     }
 
-    return this.thumbnailsDBs.get(library.rootPath)!;
+    return this.thumbnailsDBs.get(library.rootPath)!
   }
 
   /**
    * 添加图片库
    */
   async addLibrary(options: AddLibraryOptions): Promise<Library> {
+    // ========== 测试 1.1 添加库 - 总耗时记录 ==========
+    console.log(`[TEST-1.1] 添加库开始时间：${new Date().toISOString()}`);
+    console.log(`[TEST-1.1] 库路径：${options.rootPath}`);
+    // ==================================================
+
     // 验证路径
     if (!fs.existsSync(options.rootPath)) {
       throw new Error(`目录不存在：${options.rootPath}`);
@@ -104,13 +116,13 @@ export class ImageService {
     const existingLibraries = this.masterDB.getLibraries();
     for (const lib of existingLibraries) {
       const existingPath = path.normalize(lib.rootPath);
-      
+
       // 检查是否是现有库的子文件夹
       const relativePath = path.relative(existingPath, normalizedPath);
       if (relativePath && !relativePath.startsWith('..') && !path.isAbsolute(relativePath)) {
         throw new Error(`无法在已存在库 "${lib.name}" 的子文件夹中创建新库`);
       }
-      
+
       // 检查是否是现有库的父文件夹（即现有库是新库的子文件夹）
       const existingRelativePath = path.relative(normalizedPath, existingPath);
       if (existingRelativePath && !existingRelativePath.startsWith('..') && !path.isAbsolute(existingRelativePath)) {
@@ -129,10 +141,19 @@ export class ImageService {
     // 连接分库
     this.connectLibrary(library.id);
 
+    console.log(`[TEST-1.1] 库已创建，ID=${library.id}, 名称=${library.name}`);
+
     // 自动扫描
     if (options.autoScan !== false) {
-      // 异步扫描，不阻塞返回
-      this.scanLibrary(library.id).catch(console.error);
+      // 异步扫描，扫描完成后更新状态
+      console.log(`[TEST-1.1] 开始自动扫描...`);
+      this.scanLibrary(library.id)
+        .then((result) => {
+          // 扫描完成后更新库状态为在线
+          this.masterDB.updateLibraryStatus(library.id, 'online', result.total);
+          console.log(`[TEST-1.1] 扫描完成，库状态已更新为在线，图片总数：${result.total}`);
+        })
+        .catch(console.error);
     }
 
     return library;
@@ -147,16 +168,23 @@ export class ImageService {
       throw new Error(`库不存在：${libraryId}`);
     }
 
-    // 关闭分库数据库
-    const db = this.thumbnailsDBs.get(library.rootPath);
-    if (db) {
-      db.close();
-      this.thumbnailsDBs.delete(library.rootPath);
-      this.scanners.delete(library.rootPath);
-    }
+    // ========== 测试 2.1 删除库记录 ==========
+    console.log(`[TEST-2.1] 删除库开始：ID=${libraryId}, 名称=${library.name}, 路径=${library.rootPath}`);
+    const deleteStartTime = Date.now();
+    // =========================================
+
+    // 关闭并从全局单例中移除分库数据库
+    closeThumbnailsDB(library.rootPath);
+    this.thumbnailsDBs.delete(library.rootPath);
+    this.scanners.delete(library.rootPath);
 
     // 从主数据库删除
     this.masterDB.removeLibrary(libraryId);
+
+    // ========== 测试 2.1 删除库记录 ==========
+    const deleteDuration = Date.now() - deleteStartTime;
+    console.log(`[TEST-2.1] 删除库完成：耗时 ${deleteDuration}ms`);
+    // =========================================
   }
 
   /**
@@ -192,11 +220,16 @@ export class ImageService {
   getImages(libraryId: number, options: ImageQueryOptions): any[] {
     const library = this.masterDB.getLibrary(libraryId);
     if (!library) {
+      console.error(`[ImageService] getImages: 库不存在 libraryId=${libraryId}`)
       throw new Error(`库不存在：${libraryId}`);
     }
 
+    console.log(`[ImageService] getImages: libraryId=${libraryId}, rootPath=${library.rootPath}`)
+    
     const db = this.connectLibrary(libraryId);
     const images = db.getImages(options);
+
+    console.log(`[ImageService] getImages: 返回 ${images.length} 张图片`)
 
     // 附加库信息
     return images.map(img => ({
@@ -212,11 +245,18 @@ export class ImageService {
   getFolderTree(libraryId: number): Array<{ path: string; name: string; imageCount: number; children: any[]; depth: number }> {
     const library = this.masterDB.getLibrary(libraryId);
     if (!library) {
+      console.error(`[ImageService] getFolderTree: 库不存在 libraryId=${libraryId}`)
       throw new Error(`库不存在：${libraryId}`);
     }
 
+    console.log(`[ImageService] getFolderTree: libraryId=${libraryId}, rootPath=${library.rootPath}`)
+
     const db = this.connectLibrary(libraryId);
-    return db.getFolderTree();
+    const folderTree = db.getFolderTree();
+    
+    console.log(`[ImageService] getFolderTree: 返回 ${folderTree.length} 个节点`)
+    
+    return folderTree;
   }
 
   /**
@@ -311,17 +351,21 @@ export class ImageService {
     const cacheKey = `${libraryId}-${imageId}`;
     const cached = this.cache.get(cacheKey, size);
     if (cached) {
+      console.log(`[ImageService] getThumbnail: 内存缓存命中 ${cacheKey}:${size}`);
       return cached;
     }
 
     // ② 检查数据库缓存
     const thumbnailData = db.getThumbnail(imageId, size);
     if (thumbnailData) {
+      console.log(`[ImageService] getThumbnail: 数据库缓存命中 ${imageId}:${size}`);
       const base64 = `data:image/webp;base64,${thumbnailData.toString('base64')}`;
       this.cache.set(cacheKey, size, base64);
       return base64;
     }
 
+    console.log(`[ImageService] getThumbnail: 缓存未命中，开始生成 ${imageId}:${size}`);
+    
     // ③ 实时生成
     const image = db.getImage(imageId);
     if (!image) {
@@ -345,6 +389,7 @@ export class ImageService {
     const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
     this.cache.set(cacheKey, size, base64);
 
+    console.log(`[ImageService] getThumbnail: 生成完成 ${imageId}:${size}`);
     return base64;
   }
 
@@ -392,10 +437,14 @@ export class ImageService {
     // 剩余的实时生成
     const stillNeedToLoad = needToLoad.filter(id => !dbCache.has(id));
 
-    // 限制并发数量
-    const batchSize = 10;
+    // ========== 优化：增加并发数到 50 ==========
+    const batchSize = 50;  // 原为 10
+    console.log(`[ImageService] getThumbnails: 需要生成 ${stillNeedToLoad.length} 张缩略图，并发数=${batchSize}`);
+    
     for (let i = 0; i < stillNeedToLoad.length; i += batchSize) {
       const batch = stillNeedToLoad.slice(i, i + batchSize);
+      const batchStartTime = Date.now();
+      
       const promises = batch.map(async (id) => {
         try {
           const thumbnail = await this.getThumbnail(libraryId, id, size);
@@ -405,7 +454,11 @@ export class ImageService {
         }
       });
       await Promise.all(promises);
+      
+      const batchDuration = Date.now() - batchStartTime;
+      console.log(`[ImageService] getThumbnails: 批次 ${i / batchSize + 1} 完成，${batch.length}张，耗时 ${batchDuration}ms`);
     }
+    // =========================================
 
     return result;
   }

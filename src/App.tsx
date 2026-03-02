@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
 import { FolderTree } from './components/FolderTree'
+import { ScanProgress } from './components/ScanProgress'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore } from './stores/imageStore'
 import type { Library } from './types'
@@ -33,6 +34,7 @@ function App() {
     setCurrentLibrary,
     scanLibrary,
     loadImages,
+    loadFolderTree,
     setCurrentImage,
     folderTree,
     selectedFolder,
@@ -165,8 +167,98 @@ function App() {
       if (!folderPath) return
 
       const folderName = folderPath.split(/[/\\]/).pop() || '未命名库'
-      await addLibrary(folderName, folderPath, true)
+      const library = await addLibrary(folderName, folderPath, true)
       setShowLibraryPanel(false)
+      
+      // 添加库完成后，先设置为当前库（此时扫描还在进行中）
+      setCurrentLibrary(library.id)
+      
+      console.log('[App] 库添加完成，开始后台等待扫描完成...')
+      console.log('[App] 当前库 ID:', library.id, '名称:', library.name)
+      
+      // 后台轮询检查扫描完成（不阻塞 UI，最多 600 秒）
+      const checkScanComplete = async () => {
+        for (let i = 0; i < 600; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          // 重新获取最新的库列表
+          await loadLibraries()
+          
+          // 从 store 获取最新状态
+          const currentLibs = useImageStore.getState().libraries
+          const updatedLib = currentLibs.find(l => l.id === library.id)
+          
+          // 每 10 秒打印一次日志
+          if ((i + 1) % 10 === 0 && updatedLib) {
+            console.log(`[App] 后台轮询 ${i + 1}s: 图片数量 = ${updatedLib.image_count}`)
+          }
+          
+          if (updatedLib && updatedLib.image_count > 0) {
+            // 扫描完成，加载文件夹树和图片
+            console.log(`[App] 扫描完成，共 ${updatedLib.image_count} 张图片，开始自动加载...`)
+            
+            // 确保当前库 ID 正确
+            const state = useImageStore.getState()
+            console.log('[App] 当前 state.currentLibraryId:', state.currentLibraryId, '目标:', library.id)
+            
+            if (state.currentLibraryId !== library.id) {
+              console.log('[App] 修正当前库 ID')
+              setCurrentLibrary(library.id)
+              // 等待状态更新
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+            
+            try {
+              // 再次确认当前库 ID
+              const currentState = useImageStore.getState()
+              console.log('[App] 确认后 currentLibraryId:', currentState.currentLibraryId)
+              
+              if (!currentState.currentLibraryId) {
+                console.error('[App] 错误：currentLibraryId 为空，无法加载数据')
+                setCurrentLibrary(library.id)
+                await new Promise(resolve => setTimeout(resolve, 500))
+              }
+              
+              // 加载文件夹树
+              console.log('[App] 开始加载文件夹树...')
+              await loadFolderTree()
+              const treeState = useImageStore.getState().folderTree
+              console.log('[App] 文件夹树已加载，节点数:', treeState.length)
+              
+              // 加载图片
+              console.log('[App] 开始加载图片...')
+              await loadImages()
+              const imagesState = useImageStore.getState().images
+              console.log('[App] 图片已加载，数量:', imagesState.length)
+              
+              // 如果加载的数据为空，尝试手动触发一次
+              if (imagesState.length === 0 && treeState.length === 0) {
+                console.log('[App] 数据为空，尝试重新设置当前库来触发加载...')
+                setCurrentLibrary(null)
+                await new Promise(resolve => setTimeout(resolve, 100))
+                setCurrentLibrary(library.id)
+                await new Promise(resolve => setTimeout(resolve, 500))
+                await loadFolderTree()
+                await loadImages()
+                console.log('[App] 重新加载后 - 文件夹树节点数:', useImageStore.getState().folderTree.length, '图片数量:', useImageStore.getState().images.length)
+              }
+              
+              // 强制刷新库列表
+              await loadLibraries()
+              console.log('[App] 库列表已刷新')
+              
+            } catch (err) {
+              console.error('[App] 加载数据失败:', err)
+            }
+            
+            break
+          }
+        }
+      }
+      
+      // 启动后台轮询
+      checkScanComplete()
+      
     } catch (error: any) {
       if (error?.message?.includes('UNIQUE constraint failed') || error?.message?.includes('库已存在')) {
         alert('该文件夹已经被添加过了，无需重复添加！')
@@ -481,6 +573,9 @@ function App() {
         <span>F5: 切换视图</span>
         <span>F6: 文件夹面板</span>
       </footer>
+
+      {/* 扫描进度条 */}
+      <ScanProgress />
     </div>
   )
 }

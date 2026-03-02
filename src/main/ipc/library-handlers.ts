@@ -1,5 +1,4 @@
-import { ipcMain, dialog } from 'electron';
-import { BrowserWindow } from 'electron';
+import { ipcMain, dialog, BrowserWindow } from 'electron';
 import { getImageService } from '../services/image-service';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 
@@ -20,14 +19,26 @@ export function registerLibraryHandlers(): void {
     return service.getLibraries();
   });
 
-  // 添加库
+  // 添加库（返回 Promise，等待扫描完成）
   ipcMain.handle('addLibrary', async (
     _event: Electron.IpcMainInvokeEvent,
     name: string,
     rootPath: string,
     autoScan?: boolean
   ): Promise<Library> => {
-    return service.addLibrary({ name, rootPath, autoScan });
+    const library = await service.addLibrary({ name, rootPath, autoScan });
+    
+    // 如果需要等待扫描完成，在这里等待
+    if (autoScan !== false) {
+      // 返回库信息，前端可以轮询或通过事件监听扫描完成
+      // 这里我们通过发送事件通知前端扫描开始
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length > 0) {
+        windows[0].webContents.send('library-scan-started', { libraryId: library.id });
+      }
+    }
+    
+    return library;
   });
 
   // 选择文件夹对话框
@@ -188,6 +199,31 @@ export function registerLibraryHandlers(): void {
     const fs = await import('fs');
     return fs.promises.access(filePath).then(() => true).catch(() => false);
   });
+
+  // 更新扫描进度
+  ipcMain.handle('updateScanProgress', async (
+    _event: Electron.IpcMainInvokeEvent,
+    progress: { processedCount: number; totalCount: number; currentFile: string }
+  ): Promise<void> => {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].webContents.send('scan-progress', progress);
+    }
+  });
+
+  // 清除扫描进度
+  ipcMain.handle('clearScanProgress', async (): Promise<void> => {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].webContents.send('scan-progress', {
+        isScanning: false,
+        processedCount: 0,
+        totalCount: 0,
+        currentFile: '',
+        status: 'complete'
+      });
+    }
+  });
 }
 
 /**
@@ -214,4 +250,6 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('clearCache');
   ipcMain.removeHandler('readFile');
   ipcMain.removeHandler('fileExists');
+  ipcMain.removeHandler('updateScanProgress');
+  ipcMain.removeHandler('clearScanProgress');
 }

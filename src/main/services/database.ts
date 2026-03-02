@@ -631,6 +631,18 @@ export function getThumbnailsDB(libraryPath: string): ThumbnailsDB {
   return thumbnailsDBInstances.get(libraryPath)!;
 }
 
+/**
+ * 关闭并移除指定路径的数据库实例
+ */
+export function closeThumbnailsDB(libraryPath: string): void {
+  const db = thumbnailsDBInstances.get(libraryPath);
+  if (db) {
+    db.close();
+    thumbnailsDBInstances.delete(libraryPath);
+    console.log(`[ThumbnailsDB] 已关闭并移除实例：${libraryPath}`);
+  }
+}
+
 export function closeAllDatabases(): void {
   masterDBInstance?.close();
   masterDBInstance = null;

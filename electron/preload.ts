@@ -59,4 +59,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
+
+  // 扫描进度监听
+  onScanProgress: (callback: (progress: any) => void) => {
+    const subscription = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on('scan-progress', subscription)
+    return () => ipcRenderer.removeListener('scan-progress', subscription)
+  },
+
+  // 库扫描开始事件
+  onLibraryScanStarted: (callback: (data: any) => void) => {
+    const subscription = (_event: any, data: any) => callback(data)
+    ipcRenderer.on('library-scan-started', subscription)
+    return () => ipcRenderer.removeListener('library-scan-started', subscription)
+  },
 } as ElectronAPI)

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
+import { BrowserWindow } from 'electron';
 import { ThumbnailsDB } from './database';
 import { getImageMetadata } from './thumbnailer';
 
@@ -39,9 +40,41 @@ export class LibraryScanner {
   constructor(db: ThumbnailsDB, libraryPath: string, options?: ScanOptions) {
     this.db = db;
     this.libraryPath = libraryPath;
-    this.extensions = (options?.extensions || DEFAULT_EXTENSIONS).map(ext => 
+    this.extensions = (options?.extensions || DEFAULT_EXTENSIONS).map(ext =>
       ext.toLowerCase()
     );
+  }
+
+  /**
+   * 发送进度更新到渲染进程
+   */
+  private sendProgress(processedCount: number, totalCount: number, currentFile: string): void {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].webContents.send('scan-progress', {
+        isScanning: true,
+        processedCount,
+        totalCount,
+        currentFile,
+        status: 'scanning'
+      });
+    }
+  }
+
+  /**
+   * 发送完成状态
+   */
+  private sendComplete(): void {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].webContents.send('scan-progress', {
+        isScanning: false,
+        processedCount: 0,
+        totalCount: 0,
+        currentFile: '',
+        status: 'complete'
+      });
+    }
   }
 
   /**
@@ -59,6 +92,10 @@ export class LibraryScanner {
     console.log(`[Scanner] 开始扫描：${this.libraryPath}`);
     const startTime = Date.now();
 
+    // ========== 测试 1.1 添加库 - 扫描速度记录 ==========
+    console.log(`[TEST-1.1] 扫描开始时间：${new Date().toISOString()}`);
+    // ==================================================
+
     // 获取数据库中已有的路径
     const existingPaths = new Set(this.db.getAllPaths());
     const scannedPaths = new Set<string>();
@@ -68,10 +105,32 @@ export class LibraryScanner {
 
     result.total = imageFiles.length;
 
+    // 发送开始进度
+    this.sendProgress(0, result.total, '');
+
+    // ========== 测试 1.1 添加库 - 目录扫描完成 ==========
+    console.log(`[TEST-1.1] 目录扫描完成，发现 ${result.total} 张图片`);
+    // ==================================================
+
+    // ========== 测试 2.4 增量扫描记录 ==========
+    const isIncremental = existingPaths.size > 0;
+    if (isIncremental) {
+      console.log(`[TEST-2.4] 增量扫描：数据库中已有 ${existingPaths.size} 张图片`);
+    } else {
+      console.log(`[TEST-2.4] 首次扫描：数据库为空`);
+    }
+    // ===========================================
+
     // 处理每个文件
     for (const filePath of imageFiles) {
       const relativePath = path.relative(this.libraryPath, filePath);
       scannedPaths.add(relativePath);
+
+      // 发送进度更新（每 50 张发送一次）
+      const processedCount = imageFiles.indexOf(filePath) + 1;
+      if (processedCount % 50 === 0 || processedCount === result.total) {
+        this.sendProgress(processedCount, result.total, relativePath);
+      }
 
       try {
         const stat = fs.statSync(filePath);
@@ -81,7 +140,7 @@ export class LibraryScanner {
         if (existingPaths.has(relativePath)) {
           // 文件已存在，检查是否需要更新
           const existingImage = this.db.getImageByPath(relativePath);
-          
+
           if (existingImage && existingImage.modified_time === modifiedTime) {
             // 文件未变化，跳过
             result.skipped++;
@@ -141,6 +200,9 @@ export class LibraryScanner {
       `新增=${result.added}, 更新=${result.updated}, ` +
       `删除=${result.deleted}, 跳过=${result.skipped}`
     );
+
+    // 发送完成状态
+    this.sendComplete();
 
     return result;
   }

@@ -56,6 +56,10 @@ export class LRUCache {
         const oldEntry = this.cache.get(oldestKey)!;
         this.currentSizeBytes -= oldEntry.entrySize;
         this.cache.delete(oldestKey);
+        
+        // ========== 测试 1.3 LRU 缓存淘汰记录 ==========
+        console.log(`[TEST-1.3] LRU 淘汰：${oldestKey}, 释放 ${Math.round(oldEntry.entrySize / 1024)}KB`);
+        // ==================================================
       }
     }
 
@@ -66,6 +70,10 @@ export class LRUCache {
       lastAccess: Date.now()
     });
     this.currentSizeBytes += entrySize;
+    
+    // ========== 测试 1.2 缓存命中记录 ==========
+    console.log(`[TEST-1.2] 缓存写入：${key}, 当前缓存大小：${(this.currentSizeBytes / 1024 / 1024).toFixed(2)}MB`);
+    // ============================================
   }
 
   /**
@@ -80,8 +88,17 @@ export class LRUCache {
       entry.lastAccess = Date.now();
       this.cache.delete(key);
       this.cache.set(key, entry);
+      
+      // ========== 测试 1.2 缓存命中记录 ==========
+      console.log(`[TEST-1.2] 缓存命中：${key}`);
+      // ============================================
+      
       return entry.value;
     }
+
+    // ========== 测试 1.2 缓存未命中记录 ==========
+    console.log(`[TEST-1.2] 缓存未命中：${key}`);
+    // ============================================
 
     return undefined;
   }
@@ -102,6 +119,11 @@ export class LRUCache {
 
     if (entry) {
       this.currentSizeBytes -= entry.entrySize;
+      
+      // ========== 测试 2.1 删除库缓存清理记录 ==========
+      console.log(`[TEST-2.1] 缓存清理：${key}`);
+      // ================================================
+      
       return this.cache.delete(key);
     }
 
@@ -112,8 +134,14 @@ export class LRUCache {
    * 清空缓存
    */
   clear(): void {
+    const clearedCount = this.cache.size;
+    const clearedSize = this.currentSizeBytes;
     this.cache.clear();
     this.currentSizeBytes = 0;
+    
+    // ========== 测试 2.1 删除库缓存清理记录 ==========
+    console.log(`[TEST-2.1] 缓存清空：清理 ${clearedCount} 条记录，释放 ${Math.round(clearedSize / 1024 / 1024)}MB`);
+    // ================================================
   }
 
   /**

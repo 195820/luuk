@@ -43,7 +43,7 @@ interface ViewerContentProps {
   fitMode: FitMode
   onImageLoaded: (width: number, height: number) => void
   setTransformFn: React.MutableRefObject<((scale: number) => void) | null>
-  imageRef: React.RefObject<HTMLImageElement>
+  imageRef: React.RefObject<HTMLImageElement | null>
   onApplyFitMode: (scale: number) => void
 }
 
