@@ -1,6 +1,5 @@
 import sharp from 'sharp';
 import fs from 'fs';
-import path from 'path';
 import type { ThumbnailSize } from '../../types';
 
 /**
@@ -62,10 +61,6 @@ export class ThumbnailerService {
   ): Promise<ThumbnailResult> {
     const targetSize = this.config[size];
 
-    // ========== 测试 1.1 缩略图生成速度记录 ==========
-    const thumbStartTime = Date.now();
-    // ==================================================
-
     try {
       // 检查文件是否存在
       if (!fs.existsSync(imagePath)) {
@@ -91,11 +86,6 @@ export class ThumbnailerService {
 
       // 获取生成后的尺寸
       const thumbMetadata = await sharp(thumbnailBuffer).metadata();
-
-      // ========== 测试 1.1 缩略图生成速度记录 ==========
-      const thumbDuration = Date.now() - thumbStartTime;
-      console.log(`[TEST-1.1-THUMB] 缩略图生成：${path.basename(imagePath)} - ${thumbDuration}ms`);
-      // ==================================================
 
       return {
         data: thumbnailBuffer,

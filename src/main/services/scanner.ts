@@ -89,12 +89,10 @@ export class LibraryScanner {
       total: 0
     };
 
-    console.log(`[Scanner] 开始扫描：${this.libraryPath}`);
-    const startTime = Date.now();
-
-    // ========== 测试 1.1 添加库 - 扫描速度记录 ==========
-    console.log(`[TEST-1.1] 扫描开始时间：${new Date().toISOString()}`);
-    // ==================================================
+    // 检查库路径是否存在
+    if (!fs.existsSync(this.libraryPath)) {
+      throw new Error(`库路径不存在：${this.libraryPath}`);
+    }
 
     // 获取数据库中已有的路径
     const existingPaths = new Set(this.db.getAllPaths());
@@ -102,24 +100,10 @@ export class LibraryScanner {
 
     // 递归扫描所有图片文件
     const imageFiles = await this.scanDirectory(this.libraryPath);
-
     result.total = imageFiles.length;
 
     // 发送开始进度
     this.sendProgress(0, result.total, '');
-
-    // ========== 测试 1.1 添加库 - 目录扫描完成 ==========
-    console.log(`[TEST-1.1] 目录扫描完成，发现 ${result.total} 张图片`);
-    // ==================================================
-
-    // ========== 测试 2.4 增量扫描记录 ==========
-    const isIncremental = existingPaths.size > 0;
-    if (isIncremental) {
-      console.log(`[TEST-2.4] 增量扫描：数据库中已有 ${existingPaths.size} 张图片`);
-    } else {
-      console.log(`[TEST-2.4] 首次扫描：数据库为空`);
-    }
-    // ===========================================
 
     // 处理每个文件
     for (const filePath of imageFiles) {
@@ -193,13 +177,6 @@ export class LibraryScanner {
     // 清理已删除的记录
     const cleaned = this.db.cleanupDeleted();
     result.deleted = cleaned;
-
-    const duration = Date.now() - startTime;
-    console.log(
-      `[Scanner] 扫描完成：${duration}ms, ` +
-      `新增=${result.added}, 更新=${result.updated}, ` +
-      `删除=${result.deleted}, 跳过=${result.skipped}`
-    );
 
     // 发送完成状态
     this.sendComplete();

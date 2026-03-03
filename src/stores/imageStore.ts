@@ -104,7 +104,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
       // @ts-ignore - window.electronAPI 在运行时存在
       await window.electronAPI.initImageService()
       set({ isInitialized: true })
-      console.log('[Store] 服务初始化完成')
     } catch (error) {
       console.error('[Store] 初始化失败:', error)
       set({ error: '初始化失败' })
@@ -169,12 +168,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 设置当前库
   setCurrentLibrary: (id: number | null) => {
-    const previousLibraryId = get().currentLibraryId;
-    
-    // ========== 测试 2.2 库切换记录 ==========
-    console.log(`[TEST-2.2] 库切换：从 ${previousLibraryId ?? '无'} 切换到 ${id ?? '无'}`);
-    // =========================================
-    
     set({
       currentLibraryId: id,
       images: [],
@@ -185,10 +178,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
     // 加载新库的图片
     if (id !== null) {
-      // ========== 测试 2.2 库切换记录 ==========
-      console.log(`[TEST-2.2] 开始加载库 ${id} 的数据...`);
-      // =========================================
-      
       get().loadFolderTree()
       get().loadImages()
     }
@@ -220,10 +209,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载文件夹树
   loadFolderTree: async () => {
     const { currentLibraryId } = get()
-    console.log('[Store] loadFolderTree 调用，currentLibraryId:', currentLibraryId)
-    
+
     if (!currentLibraryId) {
-      console.warn('[Store] loadFolderTree: currentLibraryId 为空')
       set({ folderTree: [] })
       return
     }
@@ -231,7 +218,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
     try {
       // @ts-ignore
       const folderTree = await window.electronAPI.getFolderTree(currentLibraryId)
-      console.log('[Store] loadFolderTree 返回，节点数:', folderTree.length)
       set({ folderTree })
     } catch (error) {
       console.error('[Store] 加载文件夹树失败:', error)
@@ -249,10 +235,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载图片列表
   loadImages: async (options?: { limit?: number; offset?: number }) => {
     const { currentLibraryId, selectedFolder } = get()
-    console.log('[Store] loadImages 调用，currentLibraryId:', currentLibraryId, 'selectedFolder:', selectedFolder)
-    
+
     if (!currentLibraryId) {
-      console.warn('[Store] loadImages: currentLibraryId 为空')
       set({ images: [], totalImages: 0 })
       return
     }
@@ -278,8 +262,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
           : // @ts-ignore
             window.electronAPI.getImageCount(currentLibraryId),
       ])
-
-      console.log('[Store] loadImages 返回，图片数:', images.length, '总数:', total)
 
       set({
         images,

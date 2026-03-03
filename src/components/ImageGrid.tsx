@@ -59,7 +59,7 @@ export function ImageGrid({
     estimateSize: () => thumbnailSize + 60,
     overscan: 5,
   })
-  
+
   // 库变化时重置滚动位置
   useEffect(() => {
     if (parentRef.current) {
@@ -91,13 +91,13 @@ export function ImageGrid({
   }, [handleScroll])
 
   // 格式化文件大小
-  const formatFileSize = (bytes?: number): string => {
+  const formatFileSize = useCallback((bytes?: number): string => {
     if (!bytes || bytes === 0) return ''
     const k = 1024
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }
+  }, [])
 
   return (
     <div
@@ -120,7 +120,7 @@ export function ImageGrid({
 
           return (
             <div
-              key={`${libraryId}-${rowIndex}`}
+              key={`row-${rowIndex}`}
               style={{
                 position: 'absolute',
                 top: 0,
@@ -136,11 +136,11 @@ export function ImageGrid({
             >
               {rowImages.map((image) => (
                 <ImageGridItem
-                  key={`${libraryId}-${image.id}`}
+                  key={image.id}
                   image={image}
                   isSelected={selectedId === image.id}
-                  onClick={() => onImageClick?.(image)}
-                  onDoubleClick={() => onImageDoubleClick?.(image)}
+                  onClick={onImageClick}
+                  onDoubleClick={onImageDoubleClick}
                   thumbnailSize={thumbnailSize}
                   formatFileSize={formatFileSize}
                   libraryId={libraryId}
@@ -157,8 +157,8 @@ export function ImageGrid({
 interface ImageGridItemProps {
   image: ImageGridItem
   isSelected: boolean
-  onClick: () => void
-  onDoubleClick: () => void
+  onClick?: (image: ImageGridItem) => void
+  onDoubleClick?: (image: ImageGridItem) => void
   thumbnailSize: number
   formatFileSize: (bytes?: number) => string
   libraryId: number
@@ -179,8 +179,6 @@ const ImageGridItem = function ImageGridItem({
 
   // 加载缩略图
   useEffect(() => {
-    if (!libraryId) return
-
     let cancelled = false
 
     const loadThumbnail = async () => {
@@ -207,12 +205,23 @@ const ImageGridItem = function ImageGridItem({
     }
   }, [libraryId, image.id])
 
+  const handleClick = useCallback(() => {
+    onClick?.(image)
+  }, [onClick, image])
+
+  const handleDoubleClick = useCallback(() => {
+    onDoubleClick?.(image)
+  }, [onDoubleClick, image])
+
   return (
     <div
       className={`image-grid-item ${isSelected ? 'selected' : ''}`}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      style={{ width: thumbnailSize, flexShrink: 0 }}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      style={{ 
+        width: thumbnailSize, 
+        flexShrink: 0,
+      }}
     >
       <div className="image-grid-thumbnail">
         {isLoading && <div className="image-grid-loading">加载中...</div>}

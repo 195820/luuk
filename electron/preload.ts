@@ -14,12 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeLibrary: (id: number) => ipcRenderer.invoke('removeLibrary', id),
   scanLibrary: (id: number) => ipcRenderer.invoke('scanLibrary', id),
   selectFolder: () => {
-    console.log('[preload] selectFolder called')
     return ipcRenderer.invoke('selectFolder').then(result => {
-      console.log('[preload] selectFolder result:', result)
       return result
     }).catch(err => {
-      console.error('[preload] selectFolder error:', err)
       throw err
     })
   },

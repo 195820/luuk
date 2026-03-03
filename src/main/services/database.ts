@@ -39,7 +39,6 @@ export class MasterDB {
     this.db = new Database(this.dbPath);
     this.db.pragma('foreign_keys = ON');
     this.createTables();
-    console.log('[MasterDB] 初始化完成:', this.dbPath);
   }
 
   private createTables(): void {
@@ -181,6 +180,11 @@ export class ThumbnailsDB {
   private dbPath: string = '';
 
   initialize(libraryPath: string): void {
+    // 检查库路径是否存在
+    if (!fs.existsSync(libraryPath)) {
+      throw new Error(`库路径不存在：${libraryPath}`);
+    }
+
     const libDir = path.join(libraryPath, '.ivlib');
     if (!fs.existsSync(libDir)) {
       fs.mkdirSync(libDir, { recursive: true });
@@ -188,7 +192,6 @@ export class ThumbnailsDB {
     this.dbPath = path.join(libDir, 'thumbs.db');
     this.db = new Database(this.dbPath);
     this.createTables();
-    console.log('[ThumbnailsDB] 初始化完成:', this.dbPath);
   }
 
   private createTables(): void {
@@ -639,7 +642,6 @@ export function closeThumbnailsDB(libraryPath: string): void {
   if (db) {
     db.close();
     thumbnailsDBInstances.delete(libraryPath);
-    console.log(`[ThumbnailsDB] 已关闭并移除实例：${libraryPath}`);
   }
 }
 
