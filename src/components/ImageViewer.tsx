@@ -25,6 +25,10 @@ interface ImageViewerProps {
   }
   slideshowSettings?: SlideshowSettings
   onSlideshowChange?: (enabled: boolean) => void
+  // 收藏相关
+  libraryId?: number
+  isFavorite?: boolean
+  onFavoriteChange?: (isFavorite: boolean) => void
 }
 
 interface LoadingState {

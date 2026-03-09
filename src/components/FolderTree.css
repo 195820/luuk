@@ -112,3 +112,33 @@
   display: flex;
   flex-direction: column;
 }
+
+.folder-favorite-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.folder-favorite-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.folder-favorite-btn.favorited {
+  color: #fbbf24;
+}
+
+.folder-favorite-btn.favorited:hover {
+  background-color: rgba(251, 191, 36, 0.2);
+}

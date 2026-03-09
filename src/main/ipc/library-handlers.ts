@@ -129,6 +129,93 @@ export function registerLibraryHandlers(): void {
     return service.getImagePath(libraryId, imageId);
   });
 
+  // 根据相对路径获取图片路径
+  ipcMain.handle('getImagePathByRelativePath', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    relativePath: string
+  ): Promise<string> => {
+    return service.getImagePathByRelativePath(libraryId, relativePath);
+  });
+
+  // 根据相对路径获取图片信息
+  ipcMain.handle('getImageByRelativePath', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    relativePath: string
+  ): Promise<any> => {
+    return service.getImageByRelativePath(libraryId, relativePath);
+  });
+
+  // 获取收藏库中的图片列表
+  ipcMain.handle('getFavoriteImages', async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: ImageQueryOptions
+  ): Promise<any[]> => {
+    return service.getFavoriteImages(options);
+  });
+
+  // 获取收藏库中的图片数量
+  ipcMain.handle('getFavoriteImagesCount', async (): Promise<number> => {
+    return service.getFavoriteImagesCount();
+  });
+
+  // ==================== 收藏文件夹相关 IPC ====================
+
+  // 添加收藏文件夹
+  ipcMain.handle('addFavoriteFolder', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string
+  ): Promise<void> => {
+    return service.addFavoriteFolder(libraryId, folderPath);
+  });
+
+  // 移除收藏文件夹
+  ipcMain.handle('removeFavoriteFolder', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string
+  ): Promise<void> => {
+    return service.removeFavoriteFolder(libraryId, folderPath);
+  });
+
+  // 获取所有收藏的文件夹
+  ipcMain.handle('getFavoriteFolders', async (): Promise<any[]> => {
+    return service.getFavoriteFolders();
+  });
+
+  // 获取收藏的文件夹树
+  ipcMain.handle('getFavoriteFolderTree', async (): Promise<any[]> => {
+    return service.getFavoriteFolderTree();
+  });
+
+  // 检查文件夹是否已收藏
+  ipcMain.handle('isFavoriteFolder', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string
+  ): Promise<boolean> => {
+    return service.isFavoriteFolder(libraryId, folderPath);
+  });
+
+  // 获取收藏文件夹下的图片列表
+  ipcMain.handle('getFavoriteFolderImages', async (
+    _event: Electron.IpcMainInvokeEvent,
+    folderPath: string,
+    options: { limit: number; offset: number }
+  ): Promise<any[]> => {
+    return service.getFavoriteFolderImages(folderPath, options);
+  });
+
+  // 获取收藏文件夹下的图片总数
+  ipcMain.handle('getFavoriteFolderImageCount', async (
+    _event: Electron.IpcMainInvokeEvent,
+    folderPath: string
+  ): Promise<number> => {
+    return service.getFavoriteFolderImageCount(folderPath);
+  });
+
   // 获取缩略图
   ipcMain.handle('getThumbnail', async (
     _event: Electron.IpcMainInvokeEvent,
@@ -252,4 +339,8 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('fileExists');
   ipcMain.removeHandler('updateScanProgress');
   ipcMain.removeHandler('clearScanProgress');
+  ipcMain.removeHandler('getFavoriteImages');
+  ipcMain.removeHandler('getFavoriteImagesCount');
+  ipcMain.removeHandler('getImagePathByRelativePath');
+  ipcMain.removeHandler('getImageByRelativePath');
 }

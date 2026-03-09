@@ -33,6 +33,7 @@
   overflow: hidden;
   margin-bottom: 8px;
   aspect-ratio: 1;
+  position: relative;
 }
 
 .image-grid-thumbnail img {
@@ -40,6 +41,48 @@
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.image-grid-favorite-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.2s, transform 0.15s;
+}
+
+.image-grid-favorite-btn:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
+}
+
+.image-grid-favorite-btn svg {
+  width: 16px;
+  height: 16px;
+  color: #ff4757;
+  transition: color 0.2s;
+}
+
+.image-grid-favorite-btn:hover svg {
+  color: #ff6b7a;
+}
+
+.image-grid-favorite-btn svg[fill="currentColor"] {
+  color: #ff4757;
+}
+
+.image-grid-thumbnail:hover .image-grid-favorite-btn svg[fill="none"] {
+  color: #ff6b7a;
 }
 
 .image-grid-info {

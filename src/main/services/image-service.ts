@@ -337,13 +337,17 @@ export class ImageService {
     // ③ 实时生成
     const image = db.getImage(imageId);
     if (!image) {
-      throw new Error(`图片不存在：${imageId}`);
+      // 图片元数据不存在，返回空字符串而不是抛出错误
+      console.warn(`[ImageService] 图片元数据不存在：${imageId}`);
+      return '';
     }
 
     const fullPath = path.join(library.rootPath, image.relative_path);
 
     if (!fs.existsSync(fullPath)) {
-      throw new Error(`图片文件不存在：${fullPath}`);
+      // 图片文件不存在，返回空字符串而不是抛出错误
+      console.warn(`[ImageService] 图片文件不存在：${fullPath}`);
+      return '';
     }
 
     // 生成缩略图
@@ -466,6 +470,185 @@ export class ImageService {
    */
   getFavorites(): Array<{ library_id: number; image_path: string; tags: string[]; rating: number }> {
     return this.masterDB.getFavorites();
+  }
+
+  /**
+   * 获取收藏库中的图片列表（虚拟库）
+   */
+  async getFavoriteImages(options: ImageQueryOptions): Promise<any[]> {
+    const favoriteImages = this.masterDB.getFavoriteImages();
+
+    // 分页
+    const { limit, offset = 0 } = options;
+    const paginated = favoriteImages.slice(offset, offset + limit);
+
+    // 获取每张图片的详细信息
+    const result = await Promise.all(paginated.map(async fav => {
+      try {
+        // 从原库获取图片详细信息
+        const imageInfo = await this.getImageByRelativePath(fav.library_id, fav.image_path);
+        return {
+          id: imageInfo?.id || 0,
+          library_id: fav.library_id,
+          library_name: fav.library_name,
+          relative_path: fav.image_path,
+          width: imageInfo?.width || 0,
+          height: imageInfo?.height || 0,
+          file_size: imageInfo?.file_size || 0,
+          format: imageInfo?.format || '',
+          is_favorite: true,
+          favorited_at: fav.created_at,
+        };
+      } catch (err) {
+        console.error(`获取收藏图片详情失败：${fav.library_id}/${fav.image_path}`, err);
+        return {
+          id: 0,
+          library_id: fav.library_id,
+          library_name: fav.library_name,
+          relative_path: fav.image_path,
+          width: 0,
+          height: 0,
+          file_size: 0,
+          format: '',
+          is_favorite: true,
+          favorited_at: fav.created_at,
+        };
+      }
+    }));
+
+    return result;
+  }
+
+  /**
+   * 根据相对路径获取图片信息
+   */
+  async getImageByRelativePath(libraryId: number, relativePath: string): Promise<any> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const db = this.connectLibrary(libraryId);
+    const image = db.getImageByRelativePath(relativePath);
+    
+    if (image) {
+      return {
+        ...image,
+        library_id: libraryId,
+        library_name: library.name,
+      };
+    }
+    
+    return null;
+  }
+
+  /**
+   * 获取收藏库中的图片数量
+   */
+  getFavoriteImagesCount(): number {
+    return this.masterDB.getFavoriteCount();
+  }
+
+  // ==================== 收藏文件夹相关方法 ====================
+
+  /**
+   * 添加收藏文件夹
+   */
+  async addFavoriteFolder(libraryId: number, folderPath: string): Promise<void> {
+    this.masterDB.addFavoriteFolder(libraryId, folderPath);
+  }
+
+  /**
+   * 移除收藏文件夹
+   */
+  async removeFavoriteFolder(libraryId: number, folderPath: string): Promise<void> {
+    this.masterDB.removeFavoriteFolder(libraryId, folderPath);
+  }
+
+  /**
+   * 获取所有收藏的文件夹
+   */
+  getFavoriteFolders(): any[] {
+    return this.masterDB.getFavoriteFolders();
+  }
+
+  /**
+   * 获取收藏的文件夹树
+   */
+  getFavoriteFolderTree(): any[] {
+    return this.masterDB.getFavoriteFolderTree();
+  }
+
+  /**
+   * 检查文件夹是否已收藏
+   */
+  isFavoriteFolder(libraryId: number, folderPath: string): boolean {
+    return this.masterDB.isFavoriteFolder(libraryId, folderPath);
+  }
+
+  /**
+   * 获取收藏文件夹下的图片列表
+   */
+  async getFavoriteFolderImages(folderPath: string, options: { limit: number; offset: number }): Promise<any[]> {
+    const favoriteFolders = this.masterDB.getFavoriteFolders();
+    const allImages: any[] = [];
+    
+    for (const fav of favoriteFolders) {
+      if (fav.folder_path === folderPath || fav.folder_path.startsWith(folderPath + '/')) {
+        try {
+          const library = this.masterDB.getLibrary(fav.library_id);
+          if (library && library.status === 'online') {
+            const db = this.connectLibrary(fav.library_id);
+            const images = db.getImagesByFolder(fav.folder_path, { limit: options.limit, offset: 0 });
+            allImages.push(...images.map(img => ({
+              ...img,
+              library_id: fav.library_id,
+              library_name: fav.library_name,
+            })));
+          }
+        } catch (err) {
+          console.error(`获取收藏文件夹图片失败：${fav.library_id}/${fav.folder_path}`, err);
+        }
+      }
+    }
+    
+    // 分页
+    return allImages.slice(options.offset, options.offset + options.limit);
+  }
+
+  /**
+   * 获取收藏文件夹下的图片总数
+   */
+  getFavoriteFolderImageCount(folderPath: string): number {
+    const favoriteFolders = this.masterDB.getFavoriteFolders();
+    let count = 0;
+    
+    for (const fav of favoriteFolders) {
+      if (fav.folder_path === folderPath || fav.folder_path.startsWith(folderPath + '/')) {
+        try {
+          const library = this.masterDB.getLibrary(fav.library_id);
+          if (library && library.status === 'online') {
+            const db = this.connectLibrary(fav.library_id);
+            count += db.getImagesCountByFolder(fav.folder_path);
+          }
+        } catch (err) {
+          console.error(`获取收藏文件夹图片数量失败：${fav.library_id}/${fav.folder_path}`, err);
+        }
+      }
+    }
+    
+    return count;
+  }
+
+  /**
+   * 根据相对路径获取图片路径
+   */
+  async getImagePathByRelativePath(libraryId: number, relativePath: string): Promise<string> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+    return path.join(library.rootPath, relativePath);
   }
 
   /**

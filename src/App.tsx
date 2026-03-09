@@ -4,7 +4,7 @@ import { ImageGrid } from './components/ImageGrid'
 import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
 import type { ImageGridItem } from './components/ImageGrid'
-import { useImageStore } from './stores/imageStore'
+import { useImageStore, FAVORITE_LIBRARY_ID } from './stores/imageStore'
 import type { Library } from './types'
 import './App.css'
 
@@ -29,6 +29,7 @@ function App() {
     error,
     initialize,
     loadLibraries,
+    loadFavorites,
     addLibrary,
     removeLibrary,
     setCurrentLibrary,
@@ -41,23 +42,44 @@ function App() {
     setSelectedFolder,
     toggleFolderSidebar,
     folderSidebarOpen,
+    toggleFavorite,
+    favoriteCount,
+    favoriteImages,
+    loadFavoriteImages,
+    loadFavoriteFolderImages,
+    isFavorite,
+    favoriteFolderTree,
+    loadFavoriteFolderTree,
+    toggleFavoriteFolder,
+    setSelectedFavoriteFolder,
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
   const [currentImagePath, setCurrentImagePath] = useState<string>('')
+  const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
 
   // 初始化服务
   useEffect(() => {
     const init = async () => {
       await initialize()
       await loadLibraries()
+      await loadFavorites() // 加载收藏列表
+      // 启动时默认进入收藏库
+      setCurrentLibrary(FAVORITE_LIBRARY_ID)
+      await loadFavoriteImages()
+      await loadFavoriteFolderTree() // 加载收藏文件夹树
+      // 收藏库不需要加载文件夹树
+      useImageStore.setState({ folderTree: [], selectedFolder: null })
     }
     init()
   }, [])
 
   // 加载当前库的图片
   useEffect(() => {
-    if (currentLibraryId) {
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 加载收藏库图片
+      loadFavoriteImages()
+    } else if (currentLibraryId) {
       loadImages()
     }
   }, [currentLibraryId])
@@ -71,6 +93,21 @@ function App() {
     height: img.height,
     fileSize: img.file_size,
     format: img.format.toLowerCase(),
+    isFavorite: isFavorite(currentLibraryId || 0, img.relative_path),
+  }))
+
+  // 收藏库图片（包括所有收藏图片和收藏文件夹中的图片）
+  const favoriteGridImages: ImageGridItem[] = (favoriteImages || []).map((fav: any, index: number) => ({
+    id: `${fav.library_id}-${fav.relative_path || ''}-${index}`, // 使用 library_id + relative_path + index 作为唯一 ID
+    src: '',
+    alt: (fav.relative_path || '').split('/').pop() || (fav.relative_path || ''),
+    width: fav.width || 0,
+    height: fav.height || 0,
+    fileSize: fav.file_size || 0,
+    format: (fav.format || '').toLowerCase(),
+    isFavorite: true,
+    libraryId: fav.library_id,
+    imagePath: fav.relative_path, // 使用 relative_path 字段
   }))
 
   // 处理文件夹选择
@@ -79,52 +116,142 @@ function App() {
     if (viewMode === 'viewer') {
       setViewMode('grid')
     }
-    setSelectedFolder(folderPath)
-  }, [setSelectedFolder, viewMode])
+    
+    // 在收藏库中选中文件夹时，加载该文件夹下的收藏图片
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      if (folderPath) {
+        loadFavoriteFolderImages(folderPath)
+      } else {
+        // 选中"全部图片"时，加载所有收藏图片
+        loadFavoriteImages()
+      }
+      setSelectedFavoriteFolder(folderPath)
+    } else {
+      setSelectedFolder(folderPath)
+    }
+  }, [viewMode, currentLibraryId, loadFavoriteFolderImages, loadFavoriteImages, setSelectedFavoriteFolder, setSelectedFolder])
 
   const handlePrevious = useCallback(() => {
-    setCurrentIndex(prev => Math.max(0, prev - 1))
-  }, [])
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      setFavoriteImageIndex(prev => Math.max(0, prev - 1))
+    } else {
+      setCurrentIndex(prev => Math.max(0, prev - 1))
+    }
+  }, [currentLibraryId])
 
   const handleNext = useCallback(() => {
-    setCurrentIndex(prev => {
-      if (prev >= images.length - 1) return 0
-      return prev + 1
-    })
-  }, [images.length])
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      setFavoriteImageIndex(prev => {
+        if (prev >= favoriteImages.length - 1) return 0
+        return prev + 1
+      })
+    } else {
+      setCurrentIndex(prev => {
+        if (prev >= images.length - 1) return 0
+        return prev + 1
+      })
+    }
+  }, [currentLibraryId, images.length, favoriteImages.length])
 
   const handleFirst = useCallback(() => {
-    setCurrentIndex(0)
-  }, [])
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      setFavoriteImageIndex(0)
+    } else {
+      setCurrentIndex(0)
+    }
+  }, [currentLibraryId])
 
   const handleLast = useCallback(() => {
-    setCurrentIndex(images.length - 1)
-  }, [images.length])
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      setFavoriteImageIndex(favoriteImages.length - 1)
+    } else {
+      setCurrentIndex(images.length - 1)
+    }
+  }, [currentLibraryId, images.length, favoriteImages.length])
 
   // 当 currentIndex 变化时，更新 currentImage
   useEffect(() => {
-    if (viewMode === 'viewer' && images.length > 0) {
-      const img = images[currentIndex]
-      if (img) {
-        setCurrentImage(img)
+    if (viewMode === 'viewer') {
+      if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+        const fav = favoriteImages[favoriteImageIndex]
+        if (fav) {
+          setCurrentImage(fav as any)
+        }
+      } else if (images.length > 0) {
+        const img = images[currentIndex]
+        if (img) {
+          setCurrentImage(img)
+        }
       }
     }
-  }, [currentIndex, images, viewMode])
+  }, [currentIndex, favoriteImageIndex, images, favoriteImages, viewMode, currentLibraryId])
 
   const handleImageClick = (image: ImageGridItem) => {
-    const img = images.find((i: any) => i.id === image.id)
-    if (img) {
-      setCurrentImage(img)
-      setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
+    console.log('[App] handleImageClick 被调用', {
+      image,
+      currentLibraryId,
+      FAVORITE_LIBRARY_ID,
+      isFavorite: currentLibraryId === FAVORITE_LIBRARY_ID,
+      imagePath: image.imagePath,
+      libraryId: image.libraryId,
+      favoriteImagesCount: favoriteImages.length,
+    })
+    // 单击只选中图片，不进入查看器
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 使用 image.imagePath 和 image.libraryId 来查找索引，避免依赖重新创建的数组
+      const index = favoriteImages.findIndex((fav: any) => {
+        const match = fav.relative_path === image.imagePath && fav.library_id === image.libraryId
+        console.log('[App] 查找匹配', { favPath: fav.relative_path, favLibId: fav.library_id, imagePath: image.imagePath, imageLibId: image.libraryId, match })
+        return match
+      })
+      console.log('[App] 找到的索引:', index)
+      if (index >= 0) {
+        setFavoriteImageIndex(index)
+        console.log('[App] 设置收藏索引为:', index)
+      }
+    } else {
+      const img = images.find((i: any) => i.id === image.id)
+      if (img) {
+        setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
+      }
     }
   }
 
   const handleImageDoubleClick = (image: ImageGridItem) => {
-    const img = images.find((i: any) => i.id === image.id)
-    if (img) {
-      setCurrentImage(img)
-      setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
-      setViewMode('viewer')
+    console.log('[App] handleImageDoubleClick 被调用', {
+      image,
+      currentLibraryId,
+      FAVORITE_LIBRARY_ID,
+      isFavorite: currentLibraryId === FAVORITE_LIBRARY_ID,
+      imagePath: image.imagePath,
+      libraryId: image.libraryId,
+      favoriteImagesCount: favoriteImages.length,
+    })
+    // 双击进入查看器
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 使用 image.imagePath 和 image.libraryId 来查找索引，避免依赖重新创建的数组
+      const index = favoriteImages.findIndex((fav: any) => {
+        const match = fav.relative_path === image.imagePath && fav.library_id === image.libraryId
+        console.log('[App] 查找匹配', { favPath: fav.relative_path, favLibId: fav.library_id, imagePath: image.imagePath, imageLibId: image.libraryId, match })
+        return match
+      })
+      console.log('[App] 找到的索引:', index)
+      if (index >= 0) {
+        console.log('[App] 准备进入查看器', { index, favImage: favoriteImages[index] })
+        setFavoriteImageIndex(index)
+        setCurrentImage(favoriteImages[index] as any)
+        setViewMode('viewer')
+        console.log('[App] 已设置 viewMode = viewer')
+      } else {
+        console.warn('[App] 未找到匹配的图片!')
+      }
+    } else {
+      const img = images.find((i: any) => i.id === image.id)
+      if (img) {
+        setCurrentImage(img)
+        setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
+        setViewMode('viewer')
+      }
     }
   }
 
@@ -146,7 +273,11 @@ function App() {
   useEffect(() => {
     if (slideshow.enabled && viewMode === 'viewer') {
       slideshowTimerRef.current = setInterval(() => {
-        handleNext()
+        if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+          handleNext()
+        } else {
+          handleNext()
+        }
       }, slideshow.interval * 1000)
     } else {
       if (slideshowTimerRef.current) {
@@ -159,7 +290,76 @@ function App() {
         clearInterval(slideshowTimerRef.current)
       }
     }
-  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext])
+  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext, currentLibraryId])
+
+  // 切换收藏状态
+  const handleToggleFavorite = useCallback(async () => {
+    if (!currentLibraryId) return
+
+    // 在收藏库中，使用当前图片的 libraryId 和 imagePath
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      const currentFavImage = favoriteImages[favoriteImageIndex]
+      if (!currentFavImage) return
+
+      const libraryId = currentFavImage.library_id
+      const imagePath = currentFavImage.relative_path
+
+      try {
+        const result = await toggleFavorite(libraryId, imagePath)
+        // 如果取消了收藏，刷新收藏库
+        if (!result) {
+          await loadFavoriteImages()
+          // 如果索引超出范围，重置为 0
+          if (favoriteImageIndex >= favoriteImages.length - 1) {
+            setFavoriteImageIndex(Math.max(0, favoriteImages.length - 2))
+          }
+        }
+      } catch (error) {
+        console.error('[App] 切换收藏失败:', error)
+      }
+      return
+    }
+
+    // 普通库模式
+    if (images.length === 0) return
+
+    const currentImage = images[currentIndex]
+    if (!currentImage) return
+
+    const imagePath = currentImage.relative_path
+    try {
+      const result = await toggleFavorite(currentLibraryId, imagePath)
+      // 如果取消了收藏，且当前在收藏库视图中，需要刷新
+      if (!result) {
+        await loadFavoriteImages()
+      }
+    } catch (error) {
+      console.error('[App] 切换收藏失败:', error)
+    }
+  }, [currentLibraryId, images, currentIndex, favoriteImages, favoriteImageIndex, toggleFavorite, loadFavoriteImages])
+
+  // 处理网格中图片的收藏切换
+  const handleGridToggleFavorite = useCallback(async (image: ImageGridItem) => {
+    // 收藏库中使用图片原始的 libraryId 和 imagePath
+    const libraryId = image.libraryId || currentLibraryId
+    const imagePath = image.imagePath || image.alt
+    
+    if (!libraryId) return
+
+    try {
+      const result = await toggleFavorite(libraryId, imagePath)
+      // 如果取消了收藏，需要刷新收藏库
+      if (!result) {
+        await loadFavoriteImages()
+      }
+      // 如果在普通库中，刷新普通库图片列表
+      if (currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
+        await loadImages()
+      }
+    } catch (error) {
+      console.error('[App] 切换收藏失败:', error)
+    }
+  }, [currentLibraryId, toggleFavorite, loadFavoriteImages, loadImages])
 
   // 添加库
   const handleAddLibrary = async () => {
@@ -277,18 +477,33 @@ function App() {
 
   // 加载当前图片路径
   useEffect(() => {
-    if (currentImage && currentLibraryId) {
+    if (currentImage && currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
       getCurrentImagePath().then(setCurrentImagePath).catch(err => {
         console.error('获取图片路径失败:', err)
         setCurrentImagePath('')
       })
+    } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 收藏库中的图片需要从原库获取路径
+      const fav = currentImage as any
+      // 使用 relative_path 字段（数据库返回的字段名）
+      const imagePath = fav.relative_path || fav.image_path || fav.imagePath
+      const libraryId = fav.library_id || fav.libraryId
+      if (libraryId && imagePath) {
+        getFavoriteImagePath(libraryId, imagePath).then(setCurrentImagePath).catch(err => {
+          console.error('获取收藏图片路径失败:', err)
+          setCurrentImagePath('')
+        })
+      } else {
+        console.warn('[App] 收藏库图片缺少 libraryId 或 imagePath', fav)
+        setCurrentImagePath('')
+      }
     } else {
       setCurrentImagePath('')
     }
-  }, [currentImage, currentLibraryId])
+  }, [currentImage, currentLibraryId, favoriteImageIndex])
 
   const getCurrentImagePath = async () => {
-    if (!currentLibraryId || !currentImage) return ''
+    if (!currentLibraryId || !currentImage || currentLibraryId === FAVORITE_LIBRARY_ID) return ''
     try {
       return await (window as any).electronAPI.getImagePath(currentLibraryId, currentImage.id)
     } catch (error) {
@@ -297,9 +512,23 @@ function App() {
     }
   }
 
+  const getFavoriteImagePath = async (libraryId: number, relativePath: string) => {
+    try {
+      return await (window as any).electronAPI.getImagePathByRelativePath(libraryId, relativePath)
+    } catch (error) {
+      console.error('获取收藏图片路径失败:', error)
+      return ''
+    }
+  }
+
   // 键盘导航
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 避免在输入框中触发
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
       if (e.key === 'F5') {
         e.preventDefault()
         setViewMode(prev => prev === 'grid' ? 'viewer' : 'grid')
@@ -309,6 +538,13 @@ function App() {
       if (e.key === 'F6') {
         e.preventDefault()
         toggleFolderSidebar()
+        return
+      }
+
+      // F 键 - 收藏当前图片
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        handleToggleFavorite()
         return
       }
 
@@ -339,7 +575,9 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast])
+  }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite])
+
+  const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
 
   return (
     <div className="app-container">
@@ -351,11 +589,19 @@ function App() {
           </button>
           <div className="library-selector">
             <select
-              value={currentLibraryId || ''}
-              onChange={(e) => setCurrentLibrary(e.target.value ? Number(e.target.value) : null)}
-              disabled={libraries.length === 0}
+              value={currentLibraryId ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                if (value === 'favorites') {
+                  setCurrentLibrary(FAVORITE_LIBRARY_ID)
+                  loadFavoriteImages()
+                } else {
+                  setCurrentLibrary(value ? Number(value) : null)
+                }
+              }}
             >
-              <option value="">选择库...</option>
+              <option value="favorites">❤️ 收藏夹 ({favoriteCount})</option>
+              <option value="" disabled>──────────</option>
               {libraries.map(lib => (
                 <option key={lib.id} value={lib.id}>
                   {lib.name} ({lib.status === 'online' ? '🟢 在线' : '🔴 离线'}) - {lib.image_count} 张
@@ -368,10 +614,15 @@ function App() {
           </div>
 
           <span className="image-count">
-            {currentLibraryId ? `${totalImages} 张图片` : '请先选择或添加库'}
+            {isFavoriteLibrary 
+              ? `${favoriteCount} 张收藏图片` 
+              : currentLibraryId 
+                ? `${totalImages} 张图片` 
+                : '请先选择或添加库'
+            }
           </span>
 
-          {viewMode === 'grid' && currentLibraryId && (
+          {!isFavoriteLibrary && viewMode === 'grid' && currentLibraryId && (
             <div className="thumbnail-size-control">
               <label htmlFor="thumbnail-size">缩略图:</label>
               <input
@@ -390,7 +641,7 @@ function App() {
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
             className="view-toggle-btn"
-            disabled={!currentLibraryId || images.length === 0}
+            disabled={isFavoriteLibrary ? favoriteCount === 0 : !currentLibraryId || images.length === 0}
           >
             {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
           </button>
@@ -402,15 +653,42 @@ function App() {
         {folderSidebarOpen && currentLibraryId && (
           <aside className="folder-sidebar">
             <div className="folder-sidebar-header">
-              <span>📂 文件夹</span>
+              <span>📂 {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}</span>
               <button onClick={toggleFolderSidebar} className="close-sidebar-btn">×</button>
             </div>
             <div className="folder-sidebar-content">
-              <FolderTree
-                folders={folderTree}
-                selectedFolder={selectedFolder}
-                onFolderSelect={handleFolderSelect}
-              />
+              {isFavoriteLibrary ? (
+                <FolderTree
+                  folders={favoriteFolderTree}
+                  selectedFolder={selectedFolder}
+                  onFolderSelect={handleFolderSelect}
+                  libraryId={FAVORITE_LIBRARY_ID}
+                  isFavoriteLibrary={true}
+                  onToggleFavoriteFolder={(folderPath) => {
+                    // 在收藏库中，取消收藏文件夹
+                    if (currentLibraryId) {
+                      // 需要找到原始的 library_id
+                      const folder = favoriteFolderTree.find(f => f.path === folderPath)
+                      if (folder && folder.library_id) {
+                        toggleFavoriteFolder(folder.library_id, folderPath)
+                      }
+                    }
+                  }}
+                />
+              ) : (
+                <FolderTree
+                  folders={folderTree}
+                  selectedFolder={selectedFolder}
+                  onFolderSelect={handleFolderSelect}
+                  libraryId={currentLibraryId}
+                  isFavoriteLibrary={false}
+                  onToggleFavoriteFolder={(folderPath) => {
+                    if (currentLibraryId) {
+                      toggleFavoriteFolder(currentLibraryId, folderPath)
+                    }
+                  }}
+                />
+              )}
             </div>
           </aside>
         )}
@@ -431,7 +709,12 @@ function App() {
             </div>
           )}
 
-          {!currentLibraryId ? (
+          {isFavoriteLibrary && favoriteCount === 0 ? (
+            <div className="no-images-hint">
+              <h2>❤️ 还没有收藏</h2>
+              <p>浏览图片时按 <kbd>F</kbd> 键或点击心形图标收藏喜欢的图片</p>
+            </div>
+          ) : !currentLibraryId ? (
             <div className="no-library-hint">
               <h2>📁 请先添加或选择一个图片库</h2>
               <p>点击左上角的"管理"按钮添加包含图片的文件夹</p>
@@ -439,7 +722,7 @@ function App() {
                 + 添加库
               </button>
             </div>
-          ) : images.length === 0 && !isLoading ? (
+          ) : images.length === 0 && !isLoading && !isFavoriteLibrary ? (
             <div className="no-images-hint">
               <h2>📷 这个{selectedFolder ? `"${selectedFolder.split('/').pop()}"` : '库'}还没有图片</h2>
               <p>点击"扫描"按钮来索引图片文件夹</p>
@@ -448,23 +731,40 @@ function App() {
               </button>
             </div>
           ) : viewMode === 'grid' ? (
-            <ImageGrid
-              key={`${currentLibraryId}-${selectedFolder || 'all'}`}
-              images={gridImages}
-              selectedId={currentImage?.id}
-              onImageClick={handleImageClick}
-              onImageDoubleClick={handleImageDoubleClick}
-              thumbnailSize={thumbnailSize}
-              scrollPosition={gridScrollRef.current}
-              onScrollChange={(pos) => { gridScrollRef.current = pos }}
-              libraryId={currentLibraryId!}
-            />
+            isFavoriteLibrary ? (
+              <ImageGrid
+                key="favorites"
+                images={favoriteGridImages}
+                selectedId={currentImage?.id}
+                onImageClick={handleImageClick}
+                onImageDoubleClick={handleImageDoubleClick}
+                onToggleFavorite={handleGridToggleFavorite}
+                thumbnailSize={thumbnailSize}
+                scrollPosition={gridScrollRef.current}
+                onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                libraryId={FAVORITE_LIBRARY_ID}
+                isFavoriteLibrary={true}
+              />
+            ) : (
+              <ImageGrid
+                key={`${currentLibraryId}-${selectedFolder || 'all'}`}
+                images={gridImages}
+                selectedId={currentImage?.id}
+                onImageClick={handleImageClick}
+                onImageDoubleClick={handleImageDoubleClick}
+                onToggleFavorite={handleGridToggleFavorite}
+                thumbnailSize={thumbnailSize}
+                scrollPosition={gridScrollRef.current}
+                onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                libraryId={currentLibraryId!}
+              />
+            )
           ) : currentImage ? (
             <ImageViewer
               src={`file://${currentImagePath}`}
-              alt={currentImage.relative_path.split('/').pop() || ''}
-              currentIndex={currentIndex}
-              totalImages={images.length}
+              alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
+              currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
+              totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
               onPrevious={handlePrevious}
               onNext={handleNext}
               onClose={handleClose}
@@ -543,6 +843,7 @@ function App() {
         <span>R: 重置</span>
         <span>H/V: 翻转</span>
         <span>I: 信息</span>
+        <span>F: 收藏</span>
         <span>Space: 幻灯片</span>
         <span>Esc: 关闭</span>
         <span>F5: 切换视图</span>

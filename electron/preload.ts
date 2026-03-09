@@ -34,6 +34,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('getImageCountByFolder', libraryId, folderPath),
   getImagePath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getImagePath', libraryId, imageId),
+  getImagePathByRelativePath: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('getImagePathByRelativePath', libraryId, relativePath),
+  getImageByRelativePath: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('getImageByRelativePath', libraryId, relativePath),
+
+  // 收藏库
+  getFavoriteImages: (options: ImageQueryOptions) =>
+    ipcRenderer.invoke('getFavoriteImages', options),
+  getFavoriteImagesCount: () =>
+    ipcRenderer.invoke('getFavoriteImagesCount'),
+
+  // 收藏文件夹
+  addFavoriteFolder: (libraryId: number, folderPath: string) =>
+    ipcRenderer.invoke('addFavoriteFolder', libraryId, folderPath),
+  removeFavoriteFolder: (libraryId: number, folderPath: string) =>
+    ipcRenderer.invoke('removeFavoriteFolder', libraryId, folderPath),
+  getFavoriteFolders: () => ipcRenderer.invoke('getFavoriteFolders'),
+  getFavoriteFolderTree: () => ipcRenderer.invoke('getFavoriteFolderTree'),
+  isFavoriteFolder: (libraryId: number, folderPath: string) =>
+    ipcRenderer.invoke('isFavoriteFolder', libraryId, folderPath),
+  getFavoriteFolderImages: (folderPath: string, options: { limit: number; offset: number }) =>
+    ipcRenderer.invoke('getFavoriteFolderImages', folderPath, options),
+  getFavoriteFolderImageCount: (folderPath: string) =>
+    ipcRenderer.invoke('getFavoriteFolderImageCount', folderPath),
 
   // 缩略图
   getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) =>

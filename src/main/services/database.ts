@@ -67,6 +67,15 @@ export class MasterDB {
         FOREIGN KEY (library_id) REFERENCES libraries(id)
       );
 
+      CREATE TABLE IF NOT EXISTS favorite_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL,
+        folder_path TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(library_id, folder_path),
+        FOREIGN KEY (library_id) REFERENCES libraries(id)
+      );
+
       CREATE TABLE IF NOT EXISTS history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         library_id INTEGER,
@@ -152,6 +161,198 @@ export class MasterDB {
     if (!this.db) return [];
     const stmt = this.db.prepare('SELECT * FROM favorites');
     return (stmt.all() as any[]).map(row => ({ ...row, tags: JSON.parse(row.tags || '[]') }));
+  }
+
+  /**
+   * 获取所有收藏的图片（带库信息）
+   */
+  getFavoriteImages(): Array<{ 
+    library_id: number; 
+    library_name: string;
+    library_root_path: string;
+    image_path: string;
+    tags: string[]; 
+    rating: number;
+    created_at: string;
+  }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(`
+      SELECT f.library_id, l.name as library_name, l.root_path as library_root_path,
+             f.image_path, f.tags, f.rating, f.created_at
+      FROM favorites f
+      JOIN libraries l ON f.library_id = l.id
+      WHERE l.status = 'online'
+      ORDER BY f.created_at DESC
+    `);
+    return (stmt.all() as any[]).map(row => ({ 
+      ...row, 
+      tags: JSON.parse(row.tags || '[]') 
+    }));
+  }
+
+  /**
+   * 获取收藏数量
+   */
+  getFavoriteCount(): number {
+    if (!this.db) return 0;
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM favorites');
+    return (stmt.get() as { count: number }).count;
+  }
+
+  // ==================== 收藏文件夹相关方法 ====================
+
+  /**
+   * 添加收藏文件夹
+   */
+  addFavoriteFolder(libraryId: number, folderPath: string): void {
+    if (!this.db) return;
+    const stmt = this.db.prepare('INSERT OR REPLACE INTO favorite_folders (library_id, folder_path) VALUES (?, ?)');
+    stmt.run(libraryId, folderPath);
+  }
+
+  /**
+   * 移除收藏文件夹
+   */
+  removeFavoriteFolder(libraryId: number, folderPath: string): void {
+    if (!this.db) return;
+    const stmt = this.db.prepare('DELETE FROM favorite_folders WHERE library_id = ? AND folder_path = ?');
+    stmt.run(libraryId, folderPath);
+  }
+
+  /**
+   * 获取所有收藏的文件夹（带库信息）
+   */
+  getFavoriteFolders(): Array<{ 
+    id: number;
+    library_id: number; 
+    library_name: string;
+    library_root_path: string;
+    folder_path: string;
+    created_at: string;
+  }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(`
+      SELECT ff.id, ff.library_id, l.name as library_name, l.root_path as library_root_path,
+             ff.folder_path, ff.created_at
+      FROM favorite_folders ff
+      JOIN libraries l ON ff.library_id = l.id
+      WHERE l.status = 'online'
+      ORDER BY ff.created_at DESC
+    `);
+    return stmt.all() as any[];
+  }
+
+  /**
+   * 获取收藏的文件夹树（按文件夹层级显示）
+   */
+  getFavoriteFolderTree(): Array<{
+    path: string;
+    name: string;
+    imageCount: number;
+    children?: any[];
+    depth: number;
+    library_id: number;
+    library_name: string;
+  }> {
+    if (!this.db) return [];
+    
+    // 获取所有收藏的文件夹
+    const stmt = this.db.prepare(`
+      SELECT ff.library_id, l.name as library_name, l.root_path as library_root_path,
+             ff.folder_path
+      FROM favorite_folders ff
+      JOIN libraries l ON ff.library_id = l.id
+      WHERE l.status = 'online'
+    `);
+    const favoriteFolders = stmt.all() as any[];
+    
+    // 构建文件夹树
+    const folderMap = new Map<string, { 
+      path: string; 
+      name: string; 
+      imageCount: number; 
+      library_id: number;
+      library_name: string;
+      children: Set<string>;
+      depth: number;
+      parentPath: string | null;
+    }>();
+
+    for (const fav of favoriteFolders) {
+      const folderPath = fav.folder_path;
+      if (!folderPath) continue; // 跳过根目录
+
+      const parts = folderPath.split(/[\\/]/).filter((p: string) => p);
+      
+      // 构建每一级文件夹
+      let currentPath = '';
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const prevPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        if (!folderMap.has(currentPath)) {
+          folderMap.set(currentPath, {
+            path: currentPath,
+            name: part,
+            imageCount: 0,
+            library_id: fav.library_id,
+            library_name: fav.library_name,
+            children: new Set(),
+            depth: i,
+            parentPath: prevPath || null,
+          });
+          
+          // 添加到父节点的 children
+          if (prevPath && folderMap.has(prevPath)) {
+            folderMap.get(prevPath)!.children.add(currentPath);
+          }
+        }
+        
+        // 如果是收藏的文件夹（不是中间路径），计数 +1
+        if (i === parts.length - 1) {
+          folderMap.get(currentPath)!.imageCount++;
+        }
+      }
+    }
+    
+    // 构建树形结构
+    const buildTree = (path: string): any => {
+      const node = folderMap.get(path);
+      if (!node) return null;
+      
+      const children = Array.from(node.children)
+        .map(childPath => buildTree(childPath))
+        .filter(Boolean);
+      
+      return {
+        path: node.path,
+        name: node.name,
+        imageCount: node.imageCount,
+        children,
+        depth: node.depth,
+        library_id: node.library_id,
+        library_name: node.library_name,
+      };
+    };
+    
+    // 找到所有根节点
+    const rootPaths = Array.from(folderMap.keys()).filter(path => {
+      const node = folderMap.get(path);
+      return node?.parentPath === null;
+    });
+    
+    return rootPaths.map(path => buildTree(path)).filter(Boolean);
+  }
+
+  /**
+   * 检查文件夹是否已收藏
+   */
+  isFavoriteFolder(libraryId: number, folderPath: string): boolean {
+    if (!this.db) return false;
+    const stmt = this.db.prepare('SELECT COUNT(*) as count FROM favorite_folders WHERE library_id = ? AND folder_path = ?');
+    const result = stmt.get(libraryId, folderPath) as { count: number };
+    return result.count > 0;
   }
 
   addHistory(libraryId: number, imagePath: string): void {
@@ -315,6 +516,12 @@ export class ThumbnailsDB {
     if (!this.db) return null;
     const stmt = this.db.prepare('SELECT * FROM images WHERE id = ? AND is_deleted = 0');
     return stmt.get(id) as Image | null;
+  }
+
+  getImageByRelativePath(relativePath: string): Image | null {
+    if (!this.db) return null;
+    const stmt = this.db.prepare('SELECT * FROM images WHERE relative_path = ? AND is_deleted = 0');
+    return stmt.get(relativePath) as Image | null;
   }
 
   getImages(options: { limit: number; offset: number; orderBy?: string; order?: string }): Image[] {

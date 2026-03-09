@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode } from '../types'
+import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode, FavoriteImage, FavoriteFolder } from '../types'
 
 // 扫描进度信息
 export interface ScanProgress {
@@ -9,6 +9,9 @@ export interface ScanProgress {
   totalCount: number
   status: string // 'scanning' | 'generating-thumbnails' | 'complete'
 }
+
+// 虚拟收藏库 ID
+export const FAVORITE_LIBRARY_ID = -1
 
 interface ImageState {
   // 库相关
@@ -21,6 +24,12 @@ interface ImageState {
   totalImages: number
   currentImage: Image | null
   favorites: Favorite[]
+  favoriteImages: FavoriteImage[]
+  favoriteCount: number
+
+  // 收藏文件夹相关
+  favoriteFolders: FavoriteFolder[]
+  favoriteFolderTree: FolderTreeNode[]
 
   // 文件夹相关
   folderTree: FolderTreeNode[]
@@ -59,9 +68,20 @@ interface ImageState {
   getThumbnail: (imageId: number, size?: ThumbnailSize) => Promise<string>
   prefetchThumbnails: (imageIds: number[], size?: ThumbnailSize) => Promise<void>
 
-  // 收藏
+  // 收藏（图片）
   toggleFavorite: (libraryId: number, imagePath: string) => Promise<boolean>
   loadFavorites: () => Promise<void>
+  loadFavoriteImages: () => Promise<void>
+  loadFavoriteFolderImages: (folderPath: string) => Promise<void>
+  getFavoriteImagesCount: () => Promise<number>
+  getFavoriteFolderImageCount: (folderPath: string) => Promise<number>
+  isFavorite: (libraryId: number, imagePath: string) => boolean
+
+  // 收藏文件夹
+  toggleFavoriteFolder: (libraryId: number, folderPath: string) => Promise<boolean>
+  loadFavoriteFolders: () => Promise<void>
+  loadFavoriteFolderTree: () => Promise<void>
+  isFavoriteFolder: (libraryId: number, folderPath: string) => boolean
 
   // UI 操作
   toggleSidebar: () => void
@@ -69,6 +89,10 @@ interface ImageState {
   setViewMode: (mode: 'grid' | 'list' | 'single') => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+
+  // 收藏文件夹选中状态
+  selectedFavoriteFolder: string | null
+  setSelectedFavoriteFolder: (folderPath: string | null) => void
 }
 
 export const useImageStore = create<ImageState>((set, get) => ({
@@ -80,8 +104,13 @@ export const useImageStore = create<ImageState>((set, get) => ({
   totalImages: 0,
   currentImage: null,
   favorites: [],
+  favoriteImages: [],
+  favoriteCount: 0,
+  favoriteFolders: [],
+  favoriteFolderTree: [],
   folderTree: [],
   selectedFolder: null,
+  selectedFavoriteFolder: null,
   thumbnailCache: new Map(),
   sidebarOpen: true,
   folderSidebarOpen: true,
@@ -210,7 +239,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadFolderTree: async () => {
     const { currentLibraryId } = get()
 
-    if (!currentLibraryId) {
+    // 收藏库没有文件夹树
+    if (!currentLibraryId || currentLibraryId === FAVORITE_LIBRARY_ID) {
       set({ folderTree: [] })
       return
     }
@@ -236,7 +266,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadImages: async (options?: { limit?: number; offset?: number }) => {
     const { currentLibraryId, selectedFolder } = get()
 
-    if (!currentLibraryId) {
+    // 收藏库不加载普通图片
+    if (!currentLibraryId || currentLibraryId === FAVORITE_LIBRARY_ID) {
       set({ images: [], totalImages: 0 })
       return
     }
@@ -358,6 +389,97 @@ export const useImageStore = create<ImageState>((set, get) => ({
     }
   },
 
+  // 加载收藏库图片
+  loadFavoriteImages: async () => {
+    try {
+      // @ts-ignore
+      const [favoriteImages, favoriteCount] = await Promise.all([
+        // @ts-ignore
+        window.electronAPI.getFavoriteImages({ limit: 100, offset: 0 }),
+        // @ts-ignore
+        window.electronAPI.getFavoriteImagesCount(),
+      ])
+      set({ favoriteImages, favoriteCount })
+    } catch (error) {
+      console.error('[Store] 加载收藏库图片失败:', error)
+    }
+  },
+
+  // 获取收藏库图片数量
+  getFavoriteImagesCount: async () => {
+    try {
+      // @ts-ignore
+      const count = await window.electronAPI.getFavoriteImagesCount()
+      set({ favoriteCount: count })
+      return count
+    } catch (error) {
+      console.error('[Store] 获取收藏库图片数量失败:', error)
+      return 0
+    }
+  },
+
+  // 检查是否已收藏
+  isFavorite: (libraryId: number, imagePath: string) => {
+    const { favorites } = get()
+    return favorites.some(f => f.libraryId === libraryId && f.imagePath === imagePath)
+  },
+
+  // ==================== 收藏文件夹相关方法 ====================
+
+  // 切换收藏文件夹
+  toggleFavoriteFolder: async (libraryId: number, folderPath: string) => {
+    try {
+      const isFavorited = get().isFavoriteFolder(libraryId, folderPath)
+      
+      if (isFavorited) {
+        // @ts-ignore
+        await window.electronAPI.removeFavoriteFolder(libraryId, folderPath)
+      } else {
+        // @ts-ignore
+        await window.electronAPI.addFavoriteFolder(libraryId, folderPath)
+      }
+      
+      // 重新加载收藏文件夹列表
+      await get().loadFavoriteFolders()
+      await get().loadFavoriteFolderTree()
+      
+      return !isFavorited
+    } catch (error) {
+      console.error('[Store] 切换收藏文件夹失败:', error)
+      return false
+    }
+  },
+
+  // 加载收藏文件夹列表
+  loadFavoriteFolders: async () => {
+    try {
+      // @ts-ignore
+      const favoriteFolders = await window.electronAPI.getFavoriteFolders()
+      set({ favoriteFolders })
+    } catch (error) {
+      console.error('[Store] 加载收藏文件夹失败:', error)
+      set({ favoriteFolders: [] })
+    }
+  },
+
+  // 加载收藏文件夹树
+  loadFavoriteFolderTree: async () => {
+    try {
+      // @ts-ignore
+      const favoriteFolderTree = await window.electronAPI.getFavoriteFolderTree()
+      set({ favoriteFolderTree })
+    } catch (error) {
+      console.error('[Store] 加载收藏文件夹树失败:', error)
+      set({ favoriteFolderTree: [] })
+    }
+  },
+
+  // 检查文件夹是否已收藏
+  isFavoriteFolder: (libraryId: number, folderPath: string) => {
+    const { favoriteFolders } = get()
+    return favoriteFolders.some(f => f.library_id === libraryId && f.folder_path === folderPath)
+  },
+
   // 切换侧边栏
   toggleSidebar: () => {
     set((state) => ({ sidebarOpen: !state.sidebarOpen }))
@@ -381,5 +503,40 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 设置错误
   setError: (error: string | null) => {
     set({ error })
+  },
+
+  // 设置收藏文件夹选中状态
+  setSelectedFavoriteFolder: (folderPath: string | null) => {
+    set({ selectedFavoriteFolder: folderPath })
+  },
+
+  // 加载收藏文件夹中的图片
+  loadFavoriteFolderImages: async (folderPath: string) => {
+    try {
+      set({ isLoading: true, error: null })
+      // @ts-ignore
+      const [favoriteImages, favoriteCount] = await Promise.all([
+        // @ts-ignore
+        window.electronAPI.getFavoriteFolderImages(folderPath, { limit: 100, offset: 0 }),
+        // @ts-ignore
+        window.electronAPI.getFavoriteFolderImageCount(folderPath),
+      ])
+      set({ favoriteImages: favoriteImages as any, favoriteCount, isLoading: false })
+    } catch (error) {
+      console.error('[Store] 加载收藏文件夹图片失败:', error)
+      set({ error: '加载收藏文件夹图片失败', isLoading: false, favoriteImages: [], favoriteCount: 0 })
+    }
+  },
+
+  // 获取收藏文件夹图片数量
+  getFavoriteFolderImageCount: async (folderPath: string) => {
+    try {
+      // @ts-ignore
+      const count = await window.electronAPI.getFavoriteFolderImageCount(folderPath)
+      return count
+    } catch (error) {
+      console.error('[Store] 获取收藏文件夹图片数量失败:', error)
+      return 0
+    }
   },
 }))

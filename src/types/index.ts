@@ -7,6 +7,7 @@ export interface ElectronAPI {
   addLibrary: (name: string, rootPath: string, autoScan?: boolean) => Promise<Library>
   removeLibrary: (id: number) => Promise<void>
   scanLibrary: (id: number) => Promise<ScanResult>
+  selectFolder: () => Promise<string | null>
   // 文件夹
   getFolderTree: (libraryId: number) => Promise<FolderTreeNode[]>
   // 图片查询
@@ -15,6 +16,19 @@ export interface ElectronAPI {
   getImageCount: (libraryId: number) => Promise<number>
   getImageCountByFolder: (libraryId: number, folderPath: string | null) => Promise<number>
   getImagePath: (libraryId: number, imageId: number) => Promise<string>
+  getImagePathByRelativePath: (libraryId: number, relativePath: string) => Promise<string>
+  getImageByRelativePath: (libraryId: number, relativePath: string) => Promise<any>
+  // 收藏库
+  getFavoriteImages: (options: ImageQueryOptions) => Promise<FavoriteImage[]>
+  getFavoriteImagesCount: () => Promise<number>
+  // 收藏文件夹
+  addFavoriteFolder: (libraryId: number, folderPath: string) => Promise<void>
+  removeFavoriteFolder: (libraryId: number, folderPath: string) => Promise<void>
+  getFavoriteFolders: () => Promise<FavoriteFolder[]>
+  getFavoriteFolderTree: () => Promise<FolderTreeNode[]>
+  isFavoriteFolder: (libraryId: number, folderPath: string) => Promise<boolean>
+  getFavoriteFolderImages: (folderPath: string, options: { limit: number; offset: number }) => Promise<Image[]>
+  getFavoriteFolderImageCount: (folderPath: string) => Promise<number>
   // 缩略图
   getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => Promise<string>
   getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => Promise<Map<number, string>>
@@ -24,6 +38,38 @@ export interface ElectronAPI {
   // 缓存
   getCacheStats: () => Promise<{ count: number; sizeMB: number; utilization: number }>
   clearCache: () => Promise<void>
+  // 文件操作
+  readFile: (filePath: string) => Promise<Buffer>
+  fileExists: (filePath: string) => Promise<boolean>
+  // 初始化服务
+  initImageService: () => Promise<void>
+  // 事件监听
+  onScanProgress: (callback: (progress: any) => void) => () => void
+  onLibraryScanStarted: (callback: (data: any) => void) => () => void
+}
+
+// 收藏文件夹
+export interface FavoriteFolder {
+  id: number
+  library_id: number
+  library_name: string
+  library_root_path: string
+  folder_path: string
+  created_at: string
+}
+
+// 收藏库图片
+export interface FavoriteImage {
+  id: number
+  library_id: number
+  library_name: string
+  relative_path: string
+  width: number
+  height: number
+  file_size: number
+  format: string
+  is_favorite: boolean
+  favorited_at: string
 }
 
 // 文件夹树节点
@@ -33,6 +79,8 @@ export interface FolderTreeNode {
   imageCount: number
   children?: FolderTreeNode[]
   depth: number
+  library_id?: number
+  library_name?: string
 }
 
 // 扫描结果
