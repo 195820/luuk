@@ -63,8 +63,6 @@ function ViewerContent({
   imageRef,
   onApplyFitMode,
 }: ViewerContentProps) {
-  const hasInitializedRef = useRef(false)
-
   const transformStyle = {
     transform: `rotate(${rotation}deg) scaleX(${flipHorizontal ? -1 : 1}) scaleY(${flipVertical ? -1 : 1})`,
     transformOrigin: 'center center',
@@ -109,7 +107,7 @@ function ViewerContent({
     }
 
     applyScale(scale)
-  }, [fitMode, rotation, applyScale])
+  }, [fitMode, rotation, applyScale, src])
 
   return (
     <TransformComponent>
@@ -128,16 +126,13 @@ function ViewerContent({
             const width = img.naturalWidth
             const height = img.naturalHeight
             onImageLoaded(width, height)
-            // 图片加载完成后，如果是首次加载，应用适应窗口
-            if (!hasInitializedRef.current) {
-              hasInitializedRef.current = true
-              const container = document.querySelector('.image-viewer') as HTMLElement
-              if (container) {
-                const containerWidth = container.clientWidth
-                const containerHeight = container.clientHeight
-                const scale = Math.min(containerWidth / width, containerHeight / height, 1)
-                onApplyFitMode(scale)
-              }
+            // 图片加载完成后，应用适应窗口
+            const container = document.querySelector('.image-viewer') as HTMLElement
+            if (container && fitMode === 'fit-window') {
+              const containerWidth = container.clientWidth
+              const containerHeight = container.clientHeight
+              const scale = Math.min(containerWidth / width, containerHeight / height, 1)
+              onApplyFitMode(scale)
             }
           }}
         />
