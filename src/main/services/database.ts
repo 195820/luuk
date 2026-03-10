@@ -199,6 +199,48 @@ export class MasterDB {
     return (stmt.get() as { count: number }).count;
   }
 
+  /**
+   * 获取单图收藏（所有单独收藏的图片）
+   */
+  getSingleFavoriteImages(): Array<{
+    library_id: number;
+    library_name: string;
+    library_root_path: string;
+    image_path: string;
+    tags: string[];
+    rating: number;
+    created_at: string;
+  }> {
+    if (!this.db) return [];
+    // 查询所有单独收藏的图片（包括属于收藏文件夹的图片）
+    const stmt = this.db.prepare(`
+      SELECT f.library_id, l.name as library_name, l.root_path as library_root_path,
+             f.image_path, f.tags, f.rating, f.created_at
+      FROM favorites f
+      JOIN libraries l ON f.library_id = l.id
+      WHERE l.status = 'online'
+      ORDER BY f.created_at DESC
+    `);
+    return (stmt.all() as any[]).map(row => ({
+      ...row,
+      tags: JSON.parse(row.tags || '[]')
+    }));
+  }
+
+  /**
+   * 获取单图收藏数量
+   */
+  getSingleFavoriteCount(): number {
+    if (!this.db) return 0;
+    const stmt = this.db.prepare(`
+      SELECT COUNT(*) as count
+      FROM favorites f
+      JOIN libraries l ON f.library_id = l.id
+      WHERE l.status = 'online'
+    `);
+    return (stmt.get() as { count: number }).count;
+  }
+
   // ==================== 收藏文件夹相关方法 ====================
 
   /**

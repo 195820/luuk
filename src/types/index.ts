@@ -21,6 +21,9 @@ export interface ElectronAPI {
   // 收藏库
   getFavoriteImages: (options: ImageQueryOptions) => Promise<FavoriteImage[]>
   getFavoriteImagesCount: () => Promise<number>
+  // 单图收藏（不属于任何收藏文件夹）
+  getSingleFavoriteImages: (options: ImageQueryOptions) => Promise<FavoriteImage[]>
+  getSingleFavoriteCount: () => Promise<number>
   // 收藏文件夹
   addFavoriteFolder: (libraryId: number, folderPath: string) => Promise<void>
   removeFavoriteFolder: (libraryId: number, folderPath: string) => Promise<void>

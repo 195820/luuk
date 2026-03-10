@@ -216,6 +216,19 @@ export function registerLibraryHandlers(): void {
     return service.getFavoriteFolderImageCount(folderPath);
   });
 
+  // 获取单图收藏（不属于任何收藏文件夹的图片）
+  ipcMain.handle('getSingleFavoriteImages', async (
+    _event: Electron.IpcMainInvokeEvent,
+    options: { limit: number; offset: number }
+  ): Promise<any[]> => {
+    return service.getSingleFavoriteImages(options);
+  });
+
+  // 获取单图收藏数量
+  ipcMain.handle('getSingleFavoriteCount', async (): Promise<number> => {
+    return service.getSingleFavoriteCount();
+  });
+
   // 获取缩略图
   ipcMain.handle('getThumbnail', async (
     _event: Electron.IpcMainInvokeEvent,

@@ -44,7 +44,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('getFavoriteImages', options),
   getFavoriteImagesCount: () =>
     ipcRenderer.invoke('getFavoriteImagesCount'),
-
+  // 单图收藏（不属于任何收藏文件夹）
+  getSingleFavoriteImages: (options: ImageQueryOptions) =>
+    ipcRenderer.invoke('getSingleFavoriteImages', options),
+  getSingleFavoriteCount: () =>
+    ipcRenderer.invoke('getSingleFavoriteCount'),
   // 收藏文件夹
   addFavoriteFolder: (libraryId: number, folderPath: string) =>
     ipcRenderer.invoke('addFavoriteFolder', libraryId, folderPath),

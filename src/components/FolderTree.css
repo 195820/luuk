@@ -13,6 +13,53 @@
   font-size: 13px;
 }
 
+/* 收藏视图标签页 */
+.favorite-view-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #888;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ccc;
+}
+
+.tab-btn.active {
+  background-color: rgba(99, 102, 241, 0.3);
+  color: #fff;
+}
+
+/* 单图收藏提示 */
+.single-favorite-hint {
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  font-size: 12px;
+}
+
+.single-favorite-hint p {
+  margin: 0;
+}
+
 .folder-tree-node {
   display: flex;
   flex-direction: column;

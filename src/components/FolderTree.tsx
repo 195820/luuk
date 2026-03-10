@@ -30,43 +30,85 @@ export function FolderTree({
   onToggleFavoriteFolder,
 }: FolderTreeProps) {
   const checkIsFavoriteFolder = useImageStore(state => state.isFavoriteFolder)
+  const favoriteViewMode = useImageStore(state => state.favoriteViewMode)
+  const setFavoriteViewMode = useImageStore(state => state.setFavoriteViewMode)
 
-  const handleSelectRoot = useCallback(() => {
-    onFolderSelect?.(null)
-  }, [onFolderSelect])
-
-  if (folders.length === 0) {
+  if (folders.length === 0 && isFavoriteLibrary && favoriteViewMode === 'folder') {
     return (
       <div className="folder-tree-empty">
-        <p>暂无文件夹</p>
+        <p>暂无收藏的文件夹</p>
       </div>
     )
   }
 
   return (
     <div className="folder-tree">
-      <div
-        className={`folder-tree-item root ${selectedFolder === null ? 'selected' : ''}`}
-        onClick={handleSelectRoot}
-      >
-        <span className="folder-icon">📁</span>
-        <span className="folder-name">全部图片</span>
-        <span className="folder-count">
-          {folders.reduce((sum, f) => sum + f.imageCount, 0)}
-        </span>
-      </div>
-      {folders.map(folder => (
-        <FolderTreeNode
-          key={folder.path}
-          node={folder}
-          selectedFolder={selectedFolder}
-          onFolderSelect={onFolderSelect}
-          libraryId={libraryId}
-          isFavoriteLibrary={isFavoriteLibrary}
-          onToggleFavoriteFolder={onToggleFavoriteFolder}
-          folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, folder.path) : false}
-        />
-      ))}
+      {/* 收藏库中的标签页切换 */}
+      {isFavoriteLibrary && (
+        <div className="favorite-view-tabs">
+          <button
+            className={`tab-btn ${favoriteViewMode === 'folder' ? 'active' : ''}`}
+            onClick={() => setFavoriteViewMode('folder')}
+            title="文件夹收藏"
+          >
+            📁 文件夹收藏
+          </button>
+          <button
+            className={`tab-btn ${favoriteViewMode === 'single' ? 'active' : ''}`}
+            onClick={() => setFavoriteViewMode('single')}
+            title="单图收藏"
+          >
+            💖 单图收藏
+          </button>
+        </div>
+      )}
+
+      {/* 收藏库 - 文件夹收藏模式 - 不显示"全部图片"栏 */}
+      {isFavoriteLibrary && favoriteViewMode === 'folder' ? (
+        folders.map(folder => (
+          <FolderTreeNode
+            key={folder.path}
+            node={folder}
+            selectedFolder={selectedFolder}
+            onFolderSelect={onFolderSelect}
+            libraryId={libraryId}
+            isFavoriteLibrary={isFavoriteLibrary}
+            onToggleFavoriteFolder={onToggleFavoriteFolder}
+            folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, folder.path) : false}
+          />
+        ))
+      ) : /* 收藏库 - 单图收藏模式 */
+      isFavoriteLibrary && favoriteViewMode === 'single' ? (
+        <div className="single-favorite-hint">
+          <p>单图收藏将在右侧网格视图中显示</p>
+        </div>
+      ) : (
+        /* 普通库模式 - 显示文件夹树 */
+        <>
+          <div
+            className={`folder-tree-item root ${selectedFolder === null ? 'selected' : ''}`}
+            onClick={() => onFolderSelect?.(null)}
+          >
+            <span className="folder-icon">📁</span>
+            <span className="folder-name">全部图片</span>
+            <span className="folder-count">
+              {folders.reduce((sum, f) => sum + f.imageCount, 0)}
+            </span>
+          </div>
+          {folders.map(folder => (
+            <FolderTreeNode
+              key={folder.path}
+              node={folder}
+              selectedFolder={selectedFolder}
+              onFolderSelect={onFolderSelect}
+              libraryId={libraryId}
+              isFavoriteLibrary={isFavoriteLibrary}
+              onToggleFavoriteFolder={onToggleFavoriteFolder}
+              folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, folder.path) : false}
+            />
+          ))}
+        </>
+      )}
     </div>
   )
 }

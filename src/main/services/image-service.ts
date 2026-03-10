@@ -549,6 +549,50 @@ export class ImageService {
     return this.masterDB.getFavoriteCount();
   }
 
+  /**
+   * 获取单图收藏（不属于任何收藏文件夹的图片）
+   */
+  async getSingleFavoriteImages(options: { limit: number; offset: number }): Promise<any[]> {
+    const singleFavorites = this.masterDB.getSingleFavoriteImages();
+    const { limit, offset } = options;
+
+    // 分页
+    const paginated = singleFavorites.slice(offset, offset + limit);
+
+    // 获取每张图片的详细信息
+    const images: any[] = [];
+    for (const fav of paginated) {
+      try {
+        const library = this.masterDB.getLibrary(fav.library_id);
+        if (library && library.status === 'online') {
+          const db = this.connectLibrary(fav.library_id);
+          const img = db.getImageByRelativePath(fav.image_path);
+          if (img) {
+            images.push({
+              ...img,
+              library_id: fav.library_id,
+              library_name: fav.library_name,
+              relative_path: fav.image_path,
+              is_favorite: true,
+              favorited_at: fav.created_at,
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`获取单图收藏详情失败：${fav.library_id}/${fav.image_path}`, err);
+      }
+    }
+
+    return images;
+  }
+
+  /**
+   * 获取单图收藏数量
+   */
+  getSingleFavoriteCount(): number {
+    return this.masterDB.getSingleFavoriteCount();
+  }
+
   // ==================== 收藏文件夹相关方法 ====================
 
   /**

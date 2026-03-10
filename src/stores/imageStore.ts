@@ -31,9 +31,16 @@ interface ImageState {
   favoriteFolders: FavoriteFolder[]
   favoriteFolderTree: FolderTreeNode[]
 
+  // 单图收藏（不属于任何文件夹的收藏）
+  singleFavoriteImages: FavoriteImage[]
+  singleFavoriteCount: number
+
   // 文件夹相关
   folderTree: FolderTreeNode[]
   selectedFolder: string | null
+
+  // 收藏视图模式：'all' | 'folder' | 'single'
+  favoriteViewMode: 'all' | 'folder' | 'single'
 
   // 缩略图缓存
   thumbnailCache: Map<number, string>
@@ -73,8 +80,10 @@ interface ImageState {
   loadFavorites: () => Promise<void>
   loadFavoriteImages: () => Promise<void>
   loadFavoriteFolderImages: (folderPath: string) => Promise<void>
+  loadSingleFavoriteImages: () => Promise<void>
   getFavoriteImagesCount: () => Promise<number>
   getFavoriteFolderImageCount: (folderPath: string) => Promise<number>
+  getSingleFavoriteCount: () => Promise<number>
   isFavorite: (libraryId: number, imagePath: string) => boolean
 
   // 收藏文件夹
@@ -89,6 +98,7 @@ interface ImageState {
   setViewMode: (mode: 'grid' | 'list' | 'single') => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => void
 
   // 收藏文件夹选中状态
   selectedFavoriteFolder: string | null
@@ -111,6 +121,9 @@ export const useImageStore = create<ImageState>((set, get) => ({
   folderTree: [],
   selectedFolder: null,
   selectedFavoriteFolder: null,
+  singleFavoriteImages: [],
+  singleFavoriteCount: 0,
+  favoriteViewMode: 'folder', // 默认显示文件夹收藏
   thumbnailCache: new Map(),
   sidebarOpen: true,
   folderSidebarOpen: true,
@@ -538,5 +551,39 @@ export const useImageStore = create<ImageState>((set, get) => ({
       console.error('[Store] 获取收藏文件夹图片数量失败:', error)
       return 0
     }
+  },
+
+  // 加载单图收藏（不属于任何收藏文件夹的图片）
+  loadSingleFavoriteImages: async () => {
+    try {
+      // @ts-ignore
+      const [singleFavoriteImages, singleFavoriteCount] = await Promise.all([
+        // @ts-ignore
+        window.electronAPI.getSingleFavoriteImages({ limit: 100, offset: 0 }),
+        // @ts-ignore
+        window.electronAPI.getSingleFavoriteCount(),
+      ])
+      set({ singleFavoriteImages, singleFavoriteCount })
+    } catch (error) {
+      console.error('[Store] 加载单图收藏失败:', error)
+    }
+  },
+
+  // 获取单图收藏数量
+  getSingleFavoriteCount: async () => {
+    try {
+      // @ts-ignore
+      const count = await window.electronAPI.getSingleFavoriteCount()
+      set({ singleFavoriteCount: count })
+      return count
+    } catch (error) {
+      console.error('[Store] 获取单图收藏数量失败:', error)
+      return 0
+    }
+  },
+
+  // 设置收藏视图模式
+  setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => {
+    set({ favoriteViewMode: mode })
   },
 }))

@@ -52,6 +52,9 @@ function App() {
     loadFavoriteFolderTree,
     toggleFavoriteFolder,
     setSelectedFavoriteFolder,
+    singleFavoriteImages,
+    loadSingleFavoriteImages,
+    favoriteViewMode,
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
@@ -77,12 +80,17 @@ function App() {
   // 加载当前库的图片
   useEffect(() => {
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-      // 加载收藏库图片
-      loadFavoriteImages()
+      // 根据视图模式加载不同的图片
+      if (favoriteViewMode === 'single') {
+        loadSingleFavoriteImages()
+      } else {
+        // 'folder' 或 'all' 模式加载所有收藏图片
+        loadFavoriteImages()
+      }
     } else if (currentLibraryId) {
       loadImages()
     }
-  }, [currentLibraryId])
+  }, [currentLibraryId, favoriteViewMode])
 
   // 将数据库图片转换为 Grid 需要的格式
   const gridImages: ImageGridItem[] = images.map((img: any) => ({
@@ -96,8 +104,10 @@ function App() {
     isFavorite: isFavorite(currentLibraryId || 0, img.relative_path),
   }))
 
-  // 收藏库图片（包括所有收藏图片和收藏文件夹中的图片）
-  const favoriteGridImages: ImageGridItem[] = (favoriteImages || []).map((fav: any, index: number) => ({
+  // 收藏库图片
+  // - 单图收藏模式：显示单图收藏列表，isFavorite = true
+  // - 文件夹收藏模式：显示文件夹收藏中的图片，isFavorite = 该图片是否也在单图收藏中
+  const favoriteGridImages: ImageGridItem[] = (favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages || []).map((fav: any, index: number) => ({
     id: `${fav.library_id}-${fav.relative_path || ''}-${index}`, // 使用 library_id + relative_path + index 作为唯一 ID
     src: '',
     alt: (fav.relative_path || '').split('/').pop() || (fav.relative_path || ''),
@@ -105,7 +115,8 @@ function App() {
     height: fav.height || 0,
     fileSize: fav.file_size || 0,
     format: (fav.format || '').toLowerCase(),
-    isFavorite: true,
+    // 单图收藏模式下都是已收藏，文件夹收藏模式下检查是否也在单图收藏中
+    isFavorite: favoriteViewMode === 'single' ? true : isFavorite(fav.library_id, fav.relative_path),
     libraryId: fav.library_id,
     imagePath: fav.relative_path, // 使用 relative_path 字段
   }))
@@ -343,23 +354,19 @@ function App() {
     // 收藏库中使用图片原始的 libraryId 和 imagePath
     const libraryId = image.libraryId || currentLibraryId
     const imagePath = image.imagePath || image.alt
-    
+
     if (!libraryId) return
 
     try {
-      const result = await toggleFavorite(libraryId, imagePath)
-      // 如果取消了收藏，需要刷新收藏库
-      if (!result) {
-        await loadFavoriteImages()
-      }
-      // 如果在普通库中，刷新普通库图片列表
-      if (currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
-        await loadImages()
+      await toggleFavorite(libraryId, imagePath)
+      // 只在单图收藏模式下刷新，确保取消收藏后图标更新
+      if (currentLibraryId === FAVORITE_LIBRARY_ID && favoriteViewMode === 'single') {
+        await loadSingleFavoriteImages()
       }
     } catch (error) {
       console.error('[App] 切换收藏失败:', error)
     }
-  }, [currentLibraryId, toggleFavorite, loadFavoriteImages, loadImages])
+  }, [currentLibraryId, favoriteViewMode, toggleFavorite, loadSingleFavoriteImages])
 
   // 添加库
   const handleAddLibrary = async () => {
