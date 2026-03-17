@@ -184,7 +184,7 @@ export function ImageGridItemComponent({
             }}
           />
         ) : (
-          <div style={{ width: '100%', height: '100%', background: '#333' }}>加载中</div>
+          <div style={{ width: '100%', height: '100%', background: 'var(--bg-tertiary)' }}>加载中</div>
         )}
       </div>
       <div className="image-grid-info">

@@ -1,6 +1,6 @@
 .masonry-grid {
   width: 100%;
-  padding: 16px;
+  padding: var(--space-4);
   background-color: var(--bg-primary);
 }
 
@@ -14,7 +14,7 @@
   top: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px; /* 列内图片间距 */
+  gap: var(--space-2); /* 列内图片间距 */
   box-sizing: border-box;
 }
 
@@ -22,7 +22,7 @@
   position: absolute;
   left: 0;
   width: 100%;
-  transition: transform 0.2s;
+  transition: transform var(--transition-normal);
 }
 
 /* 复用 ImageGrid 的 item 样式 */
@@ -31,15 +31,20 @@
   flex-direction: column;
   background-color: var(--bg-secondary);
   border: 2px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
+  transition: border-color var(--transition-fast), transform var(--transition-fast);
   width: 100% !important; /* 覆盖 inline style 的 width */
 }
 
 .masonry-item .image-grid-item:hover {
   border-color: var(--border);
   transform: translateY(-2px);
+}
+
+.masonry-item .image-grid-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .masonry-item .image-grid-item.selected {
@@ -52,7 +57,7 @@
   align-items: center;
   justify-content: center;
   background-color: var(--bg-tertiary);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   margin-bottom: 0; /* 移除底部间距，使用 gap 控制 */
   position: relative;
@@ -72,10 +77,10 @@
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.6);
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  border-radius: var(--radius-full);
+  background-color: var(--overlay-darker);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -83,7 +88,7 @@
   border: none;
   cursor: pointer;
   padding: 0;
-  transition: background-color 0.2s, transform 0.15s, opacity 0.2s;
+  transition: background-color var(--transition-normal), transform var(--transition-fast), opacity var(--transition-normal);
   opacity: 0;
 }
 
@@ -92,46 +97,52 @@
 }
 
 .masonry-item .image-grid-favorite-btn:hover {
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: var(--overlay-darker);
   transform: scale(1.1);
 }
 
+.masonry-item .image-grid-favorite-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
 .masonry-item .image-grid-favorite-btn svg {
-  width: 16px;
-  height: 16px;
-  color: #ff4757;
-  transition: color 0.2s;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--favorite);
+  transition: color var(--transition-normal);
 }
 
 .masonry-item .image-grid-favorite-btn:hover svg {
-  color: #ff6b7a;
+  color: var(--favorite-hover);
 }
 
 .masonry-item .image-grid-favorite-btn svg[fill="currentColor"] {
-  color: #ff4757;
+  color: var(--favorite);
   opacity: 1;
 }
 
 .masonry-item .image-grid-thumbnail:hover .image-grid-favorite-btn svg[fill="none"] {
-  color: #ff6b7a;
+  color: var(--favorite-hover);
 }
 
 /* 信息区域：默认隐藏，悬停时从底部向上显示 */
 .masonry-item .image-grid-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px 6px 4px;
+  gap: var(--space-1);
+  padding: 6px 6px var(--space-1);
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.6) 70%, transparent 100%);
+  background: linear-gradient(to top, var(--overlay-darkest) 0%, var(--overlay-darker) 70%, transparent 100%);
   color: white;
   opacity: 0;
   transform: translateY(100%);
-  transition: opacity 0.2s ease, transform 0.2s ease;
-  border-radius: 0 0 6px 6px;
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   pointer-events: none;
 }
 
@@ -141,7 +152,7 @@
 }
 
 .masonry-item .image-grid-name {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -153,7 +164,7 @@
 }
 
 .masonry-item .image-grid-meta {
-  font-size: 0.625rem;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
   display: flex;
   gap: 6px;
@@ -176,5 +187,5 @@
   transform: translate(-50%, -50%);
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
 }

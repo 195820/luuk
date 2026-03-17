@@ -1,54 +1,65 @@
 .sort-control {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #ccc;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
 .sort-label {
-  color: #999;
+  color: var(--text-dim);
 }
 
 .sort-select {
-  padding: 4px 8px;
-  border: 1px solid #444;
-  border-radius: 4px;
-  background: #2a2a2a;
-  color: #fff;
-  font-size: 13px;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-dialog);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
   cursor: pointer;
   outline: none;
+  transition: all var(--transition-fast);
 }
 
 .sort-select:hover {
-  border-color: #666;
+  border-color: var(--text-muted);
 }
 
 .sort-select:focus {
-  border-color: #0078d4;
+  border-color: var(--accent);
+}
+
+.sort-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .sort-order-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
+  width: var(--btn-sm);
   height: 26px;
-  border: 1px solid #444;
-  border-radius: 4px;
-  background: #2a2a2a;
-  color: #fff;
-  font-size: 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-dialog);
+  color: var(--text-primary);
+  font-size: var(--text-md);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--transition-normal);
 }
 
 .sort-order-btn:hover {
-  border-color: #666;
-  background: #333;
+  border-color: var(--text-muted);
+  background: var(--bg-tertiary);
 }
 
 .sort-order-btn:active {
-  background: #444;
+  background: var(--border-default);
+}
+
+.sort-order-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

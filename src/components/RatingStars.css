@@ -1,7 +1,7 @@
 .rating-stars {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .rating-star {
@@ -11,19 +11,25 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #666;
-  transition: all 0.15s ease;
+  color: var(--star-empty);
+  transition: all var(--transition-fast);
   padding: 0;
   border-radius: 0;
 }
 
 .rating-star:hover {
   transform: scale(1.1);
-  color: #ffd700;
+  color: var(--star-filled);
+}
+
+.rating-star:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--star-filled);
 }
 
 .rating-star.is-filled {
-  color: #ffd700;
+  color: var(--star-filled);
 }
 
 .rating-star svg {
@@ -32,18 +38,18 @@
 
 /* 尺寸变体 */
 .rating-stars.rating-small .rating-star svg {
-  width: 14px;
-  height: 14px;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
 }
 
 .rating-stars.rating-medium .rating-star svg {
-  width: 18px;
-  height: 18px;
+  width: var(--icon-md);
+  height: var(--icon-md);
 }
 
 .rating-stars.rating-large .rating-star svg {
-  width: 24px;
-  height: 24px;
+  width: var(--icon-xl);
+  height: var(--icon-xl);
 }
 
 /* 加载状态 */
