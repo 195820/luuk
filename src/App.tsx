@@ -667,17 +667,17 @@ function App() {
           {viewMode === 'grid' && currentLibraryId && (
             <button
               onClick={() => setGridLayoutMode(gridLayoutMode === 'grid' ? 'masonry' : 'grid')}
-              className="layout-toggle-btn"
+              className="header-action-btn"
               title={gridLayoutMode === 'grid' ? '切换到瀑布流视图' : '切换到网格视图'}
             >
-              {gridLayoutMode === 'grid' ? '▦ 网格视图' : '≣ 瀑布流'}
+              {gridLayoutMode === 'grid' ? '▦ 网格' : '≣ 瀑布流'}
             </button>
           )}
 
           {viewMode === 'viewer' && (
             <button
               onClick={() => setViewerStyle(viewerStyle === 'classic' ? 'minimal' : 'classic')}
-              className="view-toggle-btn"
+              className="header-action-btn header-style-btn"
               title={viewerStyle === 'classic' ? '切换到极简风格' : '切换到经典风格'}
             >
               {viewerStyle === 'classic' ? '◇ 极简' : '◈ 经典'}
@@ -686,8 +686,9 @@ function App() {
 
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
-            className="view-toggle-btn"
+            className="header-action-btn header-view-btn"
             disabled={isFavoriteLibrary ? favoriteCount === 0 : !currentLibraryId || images.length === 0}
+            title={viewMode === 'grid' ? '进入查看器 (F5)' : '返回网格视图 (F5)'}
           >
             {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
           </button>

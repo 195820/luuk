@@ -1,54 +1,66 @@
 :root {
-  /* ==============================
+  /* ═══════════════════════════════════════════════════════════
+     精致极简设计系统 · Refined Minimalism
+     设计哲学：少即是多 · 隐形 UI · 精准排印 · 克制用色
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ────────────────────────────────────────────────────────────
      颜色系统
-     ============================== */
-  /* 背景色 */
-  --bg-primary: #1a1a1a;
-  --bg-secondary: #242424;
-  --bg-tertiary: #2d2d2d;
-  --bg-dialog: #2a2a2a;
+     ──────────────────────────────────────────────────────────── */
+  /* 背景色 - 纯黑画布 */
+  --bg-primary: #050505;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #0f0f0f;
+  --bg-dialog: #0a0a0a;
+  --bg-elevated: #141414;
 
-  /* 文字颜色 */
-  --text-primary: #ffffff;
-  --text-secondary: #b0b0b0;
-  --text-muted: #888888;
-  --text-dim: #999999;
-  --text-light: #e0e0e0;
+  /* 文字颜色 - 克制分层 */
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.3);
+  --text-light: rgba(255, 255, 255, 0.7);
 
-  /* 主题色 */
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
+  /* 主题色 - 克制的强调 */
+  --accent: rgba(255, 255, 255, 0.9);
+  --accent-hover: rgba(255, 255, 255, 1);
 
-  /* 功能色 */
-  --border: #404040;
-  --border-default: #444444;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
+  /* 功能色 - 低饱和度 */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --success: rgba(76, 175, 80, 0.8);
+  --warning: rgba(255, 152, 0, 0.8);
+  --error: rgba(244, 67, 54, 0.8);
 
-  /* 特殊颜色 */
-  --star-empty: #666666;
+  /* 特殊颜色 - 精致克制 */
+  --star-empty: rgba(255, 255, 255, 0.2);
   --star-filled: #ffd700;
-  --favorite: #ff4757;
-  --favorite-hover: #ff6b7a;
-  --folder-favorite: #fbbf24;
-  --progress-start: #4CAF50;
-  --progress-end: #8BC34A;
+  --favorite: rgba(255, 71, 87, 0.9);
+  --favorite-hover: rgba(255, 71, 87, 1);
+  --folder-favorite: rgba(251, 191, 36, 0.8);
+  --progress-start: rgba(76, 175, 80, 0.7);
+  --progress-end: rgba(139, 195, 74, 0.7);
 
-  /* 叠加层颜色 */
-  --overlay-dark: rgba(0, 0, 0, 0.5);
-  --overlay-darker: rgba(0, 0, 0, 0.7);
-  --overlay-darkest: rgba(0, 0, 0, 0.85);
-  --overlay-light: rgba(255, 255, 255, 0.05);
-  --overlay-lighter: rgba(255, 255, 255, 0.1);
-  --overlay-selected: rgba(99, 102, 241, 0.3);
-  --overlay-accent: rgba(59, 130, 246, 0.1);
-  --overlay-folder-favorite: rgba(251, 191, 36, 0.2);
+  /* 叠加层颜色 - 微妙的深度 */
+  --overlay-dark: rgba(0, 0, 0, 0.6);
+  --overlay-darker: rgba(0, 0, 0, 0.75);
+  --overlay-darkest: rgba(0, 0, 0, 0.9);
+  --overlay-light: rgba(255, 255, 255, 0.03);
+  --overlay-lighter: rgba(255, 255, 255, 0.05);
+  --overlay-selected: rgba(255, 255, 255, 0.08);
+  --overlay-accent: rgba(255, 255, 255, 0.04);
+  --overlay-folder-favorite: rgba(251, 191, 36, 0.1);
 
-  /* 阴影 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.4);
+  /* 阴影 - 微妙的深度暗示 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.5);
+
+  /* 毛玻璃效果 */
+  --glass-bg: rgba(20, 20, 20, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
 
   /* ==============================
      间距尺度（基于 4px 网格）
@@ -99,12 +111,17 @@
   --radius-2xl: 12px;
   --radius-full: 9999px;
 
-  /* ==============================
-     过渡与动画
-     ============================== */
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
+  /* ────────────────────────────────────────────────────────────
+     过渡与动画 - 精致的缓动曲线
+     ──────────────────────────────────────────────────────────── */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 弹性动画 */
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
 
   /* ==============================
      组件尺寸
@@ -149,6 +166,10 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* 微妙的噪点背景，增加质感 */
+  background-image:
+    radial-gradient(ellipse at top, rgba(255,255,255,0.02) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(255,255,255,0.01) 0%, transparent 50%);
 }
 
 #root {
