@@ -276,6 +276,7 @@ function App() {
 
   const handleClose = useCallback(() => {
     setViewMode('grid')
+    setCurrentImage(null)
     setSlideshow(prev => ({ ...prev, enabled: false }))
   }, [])
 
@@ -825,10 +826,10 @@ function App() {
                 />
               )
             )
-          ) : currentImage ? (
+          ) : viewMode === 'viewer' && currentImage ? (
             <ImageViewer
               src={`file://${currentImagePath}`}
-                alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
+              alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
                 currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
                 totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
                 onPrevious={handlePrevious}
