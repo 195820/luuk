@@ -1,6 +1,127 @@
 import { create } from 'zustand'
 import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode, FavoriteImage, FavoriteFolder } from '../types'
 
+// 从文件名中提取文本和数字部分用于排序（只提取文件名，不包含路径）
+// 返回 { text: 文本部分，number: 数字部分（忽略前导零）}
+function extractTextAndNumber(str: string): { text: string; number: number } {
+  // 先提取文件名（去掉路径）
+  const fileName = str.replace(/^.*[\\/]/, '')
+  
+  // 移除扩展名
+  const withoutExt = fileName.replace(/\.[^.]+$/, '')
+
+  // 提取括号中的数字，如 "屏幕截图 (10).jpg" → 10
+  const bracketMatch = withoutExt.match(/\((\d+)\)/)
+  if (bracketMatch) {
+    const text = withoutExt.replace(/\s*\(\d+\)/g, '').replace(/\d+/g, '')
+    const num = parseInt(bracketMatch[1], 10)
+    return { text, number: num }
+  }
+
+  // 提取最后一个数字序列及其前面的文本
+  const lastNumberMatch = withoutExt.match(/^(.*?)(\d+)([^\d]*)$/)
+  if (lastNumberMatch) {
+    const [, prefix, numStr] = lastNumberMatch
+    // 移除前缀中的数字，得到纯文本
+    const text = prefix.replace(/\d+/g, '')
+    const num = parseInt(numStr, 10)
+    return { text, number: num }
+  }
+
+  // 没有数字，全部作为文本
+  const text = withoutExt.replace(/\d+/g, '')
+  return { text, number: 0 }
+}
+
+// 从文件名中提取纯文本部分（用于排序的第一关键字）
+function extractText(str: string): string {
+  return extractTextAndNumber(str).text
+}
+
+// 从文件名中提取纯数字部分（用于排序的第二关键字，忽略前导零）
+function extractNumber(str: string): number {
+  return extractTextAndNumber(str).number
+}
+
+// 通用排序辅助函数：比较两个字符串（文本 + 数字自然排序）
+function comparePathStrings(aPath: string, bPath: string, order: 'ASC' | 'DESC'): number {
+  const aVal = aPath || ''
+  const bVal = bPath || ''
+
+  if (order === 'ASC') {
+    // 升序：先按文本部分排序，再按数字排序
+    const aText = extractText(aVal)
+    const bText = extractText(bVal)
+    const textCompare = aText.localeCompare(bText, 'zh-CN', { sensitivity: 'base' })
+    if (textCompare !== 0) return textCompare
+
+    // 文本相同，按数字排序
+    const aNum = extractNumber(aVal)
+    const bNum = extractNumber(bVal)
+    return aNum - bNum
+  } else {
+    // 降序：先按文本部分排序，再按数字排序
+    const aText = extractText(aVal)
+    const bText = extractText(bVal)
+    const textCompare = aText.localeCompare(bText, 'zh-CN', { sensitivity: 'base' })
+    if (textCompare !== 0) return bText.localeCompare(aText, 'zh-CN', { sensitivity: 'base' })
+
+    // 文本相同，按数字降序排序
+    const aNum = extractNumber(aVal)
+    const bNum = extractNumber(bVal)
+    return bNum - aNum
+  }
+}
+
+// 排序辅助函数：对图片进行排序（支持 Image 和 FavoriteImage）
+function sortImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number }>(
+  images: T[],
+  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
+  order: 'ASC' | 'DESC'
+): T[] {
+  return [...images].sort((a, b) => {
+    let aVal: any
+    let bVal: any
+
+    switch (sortBy) {
+      case 'relative_path':
+        aVal = a.relative_path || ''
+        bVal = b.relative_path || ''
+        break
+      case 'file_size':
+        aVal = a.file_size || 0
+        bVal = b.file_size || 0
+        break
+      case 'width':
+        aVal = a.width || 0
+        bVal = b.width || 0
+        break
+      case 'height':
+        aVal = a.height || 0
+        bVal = b.height || 0
+        break
+      default:
+        aVal = 0
+        bVal = 0
+    }
+
+    if (typeof aVal === 'string') {
+      return comparePathStrings(aVal, bVal, order)
+    } else {
+      return order === 'ASC' ? aVal - bVal : bVal - aVal
+    }
+  })
+}
+
+// 排序辅助函数：对收藏图片进行排序（保持向后兼容）
+function sortFavoriteImages(
+  images: FavoriteImage[],
+  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
+  order: 'ASC' | 'DESC'
+): FavoriteImage[] {
+  return sortImages(images, sortBy, order)
+}
+
 // 扫描进度信息
 export interface ScanProgress {
   isScanning: boolean
@@ -41,6 +162,13 @@ interface ImageState {
 
   // 收藏视图模式：'all' | 'folder' | 'single'
   favoriteViewMode: 'all' | 'folder' | 'single'
+
+  // 网格布局模式：'grid' | 'masonry'
+  gridLayoutMode: 'grid' | 'masonry'
+
+  // 排序设置
+  imageSortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height'
+  imageSortOrder: 'ASC' | 'DESC'
 
   // 缩略图缓存
   thumbnailCache: Map<number, string>
@@ -99,6 +227,12 @@ interface ImageState {
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
   setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => void
+  setGridLayoutMode: (mode: 'grid' | 'masonry') => void
+
+  // 排序操作
+  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => void
+  setSortOrder: (order: 'ASC' | 'DESC') => void
+  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => void
 
   // 收藏文件夹选中状态
   selectedFavoriteFolder: string | null
@@ -124,6 +258,9 @@ export const useImageStore = create<ImageState>((set, get) => ({
   singleFavoriteImages: [],
   singleFavoriteCount: 0,
   favoriteViewMode: 'folder', // 默认显示文件夹收藏
+  gridLayoutMode: (localStorage.getItem('gridLayoutMode') as 'grid' | 'masonry') || 'grid', // 从 localStorage 加载布局模式
+  imageSortBy: 'relative_path', // 默认按文件名排序
+  imageSortOrder: 'ASC', // 默认升序
   thumbnailCache: new Map(),
   sidebarOpen: true,
   folderSidebarOpen: true,
@@ -277,7 +414,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 加载图片列表
   loadImages: async (options?: { limit?: number; offset?: number }) => {
-    const { currentLibraryId, selectedFolder } = get()
+    const { currentLibraryId, selectedFolder, imageSortBy, imageSortOrder } = get()
 
     // 收藏库不加载普通图片
     if (!currentLibraryId || currentLibraryId === FAVORITE_LIBRARY_ID) {
@@ -296,9 +433,9 @@ export const useImageStore = create<ImageState>((set, get) => ({
         // 根据是否选择文件夹决定调用哪个 API
         selectedFolder !== null
           ? // @ts-ignore
-            window.electronAPI.getImagesByFolder(currentLibraryId, selectedFolder, { limit, offset })
+            window.electronAPI.getImagesByFolder(currentLibraryId, selectedFolder, { limit, offset, orderBy: imageSortBy, order: imageSortOrder })
           : // @ts-ignore
-            window.electronAPI.getImages(currentLibraryId, { limit, offset }),
+            window.electronAPI.getImages(currentLibraryId, { limit, offset, orderBy: imageSortBy, order: imageSortOrder }),
         // 获取总数
         selectedFolder !== null
           ? // @ts-ignore
@@ -307,8 +444,13 @@ export const useImageStore = create<ImageState>((set, get) => ({
             window.electronAPI.getImageCount(currentLibraryId),
       ])
 
+      // 按文件名排序时，在前端进行二次排序（确保文本 + 数字自然排序）
+      const finalImages = imageSortBy === 'relative_path'
+        ? sortImages(images, imageSortBy, imageSortOrder)
+        : images
+
       set({
-        images,
+        images: finalImages,
         totalImages: total,
         isLoading: false,
       })
@@ -405,6 +547,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载收藏库图片
   loadFavoriteImages: async () => {
     try {
+      const { imageSortBy, imageSortOrder } = get()
       // @ts-ignore
       const [favoriteImages, favoriteCount] = await Promise.all([
         // @ts-ignore
@@ -412,7 +555,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
         // @ts-ignore
         window.electronAPI.getFavoriteImagesCount(),
       ])
-      set({ favoriteImages, favoriteCount })
+      
+      // 在本地对收藏图片进行排序
+      const sortedImages = sortFavoriteImages(favoriteImages, imageSortBy, imageSortOrder)
+      
+      set({ favoriteImages: sortedImages, favoriteCount })
     } catch (error) {
       console.error('[Store] 加载收藏库图片失败:', error)
     }
@@ -526,6 +673,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载收藏文件夹中的图片
   loadFavoriteFolderImages: async (folderPath: string) => {
     try {
+      const { imageSortBy, imageSortOrder } = get()
       set({ isLoading: true, error: null })
       // @ts-ignore
       const [favoriteImages, favoriteCount] = await Promise.all([
@@ -534,7 +682,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
         // @ts-ignore
         window.electronAPI.getFavoriteFolderImageCount(folderPath),
       ])
-      set({ favoriteImages: favoriteImages as any, favoriteCount, isLoading: false })
+      
+      // 对收藏文件夹图片进行排序
+      const sortedImages = sortFavoriteImages(favoriteImages as any, imageSortBy, imageSortOrder)
+      
+      set({ favoriteImages: sortedImages as any, favoriteCount, isLoading: false })
     } catch (error) {
       console.error('[Store] 加载收藏文件夹图片失败:', error)
       set({ error: '加载收藏文件夹图片失败', isLoading: false, favoriteImages: [], favoriteCount: 0 })
@@ -556,6 +708,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载单图收藏（不属于任何收藏文件夹的图片）
   loadSingleFavoriteImages: async () => {
     try {
+      const { imageSortBy, imageSortOrder } = get()
       // @ts-ignore
       const [singleFavoriteImages, singleFavoriteCount] = await Promise.all([
         // @ts-ignore
@@ -563,7 +716,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
         // @ts-ignore
         window.electronAPI.getSingleFavoriteCount(),
       ])
-      set({ singleFavoriteImages, singleFavoriteCount })
+      
+      // 在本地对单图收藏进行排序
+      const sortedImages = sortFavoriteImages(singleFavoriteImages, imageSortBy, imageSortOrder)
+      
+      set({ singleFavoriteImages: sortedImages, singleFavoriteCount })
     } catch (error) {
       console.error('[Store] 加载单图收藏失败:', error)
     }
@@ -585,5 +742,86 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 设置收藏视图模式
   setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => {
     set({ favoriteViewMode: mode })
+  },
+
+  // 设置网格布局模式
+  setGridLayoutMode: (mode: 'grid' | 'masonry') => {
+    set({ gridLayoutMode: mode })
+    localStorage.setItem('gridLayoutMode', mode)
+  },
+
+  // 设置排序字段
+  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => {
+    const { currentLibraryId, favoriteViewMode } = get()
+    set({ imageSortBy: sortBy })
+    // 排序字段改变时，重新加载图片
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 收藏库根据视图模式加载不同的图片
+      if (favoriteViewMode === 'single') {
+        get().loadSingleFavoriteImages()
+      } else if (favoriteViewMode === 'folder') {
+        // 文件夹收藏模式，如果选中了文件夹，重新加载
+        const { selectedFavoriteFolder } = get()
+        if (selectedFavoriteFolder) {
+          get().loadFavoriteFolderImages(selectedFavoriteFolder)
+        } else {
+          get().loadFavoriteImages()
+        }
+      } else {
+        get().loadFavoriteImages()
+      }
+    } else {
+      get().loadImages()
+    }
+  },
+
+  // 设置排序顺序
+  setSortOrder: (order: 'ASC' | 'DESC') => {
+    const { currentLibraryId, favoriteViewMode } = get()
+    set({ imageSortOrder: order })
+    // 排序顺序改变时，重新加载图片
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 收藏库根据视图模式加载不同的图片
+      if (favoriteViewMode === 'single') {
+        get().loadSingleFavoriteImages()
+      } else if (favoriteViewMode === 'folder') {
+        // 文件夹收藏模式，如果选中了文件夹，重新加载
+        const { selectedFavoriteFolder } = get()
+        if (selectedFavoriteFolder) {
+          get().loadFavoriteFolderImages(selectedFavoriteFolder)
+        } else {
+          get().loadFavoriteImages()
+        }
+      } else {
+        get().loadFavoriteImages()
+      }
+    } else {
+      get().loadImages()
+    }
+  },
+
+  // 设置排序
+  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => {
+    const { currentLibraryId, favoriteViewMode } = get()
+    set({ imageSortBy: sortBy, imageSortOrder: order })
+    // 排序改变时，重新加载图片
+    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 收藏库根据视图模式加载不同的图片
+      if (favoriteViewMode === 'single') {
+        get().loadSingleFavoriteImages()
+      } else if (favoriteViewMode === 'folder') {
+        // 文件夹收藏模式，如果选中了文件夹，重新加载
+        const { selectedFavoriteFolder } = get()
+        if (selectedFavoriteFolder) {
+          get().loadFavoriteFolderImages(selectedFavoriteFolder)
+        } else {
+          get().loadFavoriteImages()
+        }
+      } else {
+        get().loadFavoriteImages()
+      }
+    } else {
+      get().loadImages()
+    }
   },
 }))

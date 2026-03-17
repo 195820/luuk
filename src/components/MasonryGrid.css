@@ -1,10 +1,32 @@
-.image-grid {
+.masonry-grid {
   width: 100%;
   padding: 16px;
   background-color: var(--bg-primary);
 }
 
-.image-grid-item {
+.masonry-grid-inner {
+  width: 100%;
+  position: relative;
+}
+
+.masonry-column {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px; /* 列内图片间距 */
+  box-sizing: border-box;
+}
+
+.masonry-item {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transition: transform 0.2s;
+}
+
+/* 复用 ImageGrid 的 item 样式 */
+.masonry-item .image-grid-item {
   display: flex;
   flex-direction: column;
   background-color: var(--bg-secondary);
@@ -12,39 +34,41 @@
   border-radius: 8px;
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
+  width: 100% !important; /* 覆盖 inline style 的 width */
 }
 
-.image-grid-item:hover {
+.masonry-item .image-grid-item:hover {
   border-color: var(--border);
   transform: translateY(-2px);
 }
 
-.image-grid-item.selected {
+.masonry-item .image-grid-item.selected {
   border-color: var(--accent);
   background-color: var(--bg-tertiary);
 }
 
-.image-grid-thumbnail {
+.masonry-item .image-grid-thumbnail {
   display: flex;
   align-items: center;
   justify-content: center;
   background-color: var(--bg-tertiary);
   border-radius: 6px;
   overflow: hidden;
-  margin-bottom: 8px;
-  aspect-ratio: 1;
+  margin-bottom: 0; /* 移除底部间距，使用 gap 控制 */
   position: relative;
+  /* 瀑布流模式：高度由父容器决定，不使用固定宽高比 */
+  height: 100%;
 }
 
-.image-grid-thumbnail img {
+.masonry-item .image-grid-thumbnail img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-/* 收藏按钮 */
-.image-grid-favorite-btn {
+/* 收藏按钮：默认隐藏，悬停时显示 */
+.masonry-item .image-grid-favorite-btn {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -63,41 +87,41 @@
   opacity: 0;
 }
 
-.image-grid-item:hover .image-grid-favorite-btn {
+.masonry-item .image-grid-item:hover .image-grid-favorite-btn {
   opacity: 1;
 }
 
-.image-grid-favorite-btn:hover {
+.masonry-item .image-grid-favorite-btn:hover {
   background-color: rgba(0, 0, 0, 0.8);
   transform: scale(1.1);
 }
 
-.image-grid-favorite-btn svg {
+.masonry-item .image-grid-favorite-btn svg {
   width: 16px;
   height: 16px;
   color: #ff4757;
   transition: color 0.2s;
 }
 
-.image-grid-favorite-btn:hover svg {
+.masonry-item .image-grid-favorite-btn:hover svg {
   color: #ff6b7a;
 }
 
-.image-grid-favorite-btn svg[fill="currentColor"] {
+.masonry-item .image-grid-favorite-btn svg[fill="currentColor"] {
   color: #ff4757;
   opacity: 1;
 }
 
-.image-grid-thumbnail:hover .image-grid-favorite-btn svg[fill="none"] {
+.masonry-item .image-grid-thumbnail:hover .image-grid-favorite-btn svg[fill="none"] {
   color: #ff6b7a;
 }
 
-/* 信息区域：默认隐藏，悬停时显示 */
-.image-grid-info {
+/* 信息区域：默认隐藏，悬停时从底部向上显示 */
+.masonry-item .image-grid-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 0 4px 8px;
+  padding: 6px 6px 4px;
   position: absolute;
   bottom: 0;
   left: 0;
@@ -111,12 +135,12 @@
   pointer-events: none;
 }
 
-.image-grid-item:hover .image-grid-info {
+.masonry-item .image-grid-item:hover .image-grid-info {
   opacity: 1;
   transform: translateY(0);
 }
 
-.image-grid-name {
+.masonry-item .image-grid-name {
   font-size: 0.75rem;
   color: var(--text-primary);
   overflow: hidden;
@@ -124,11 +148,11 @@
   white-space: nowrap;
 }
 
-.image-grid-item:hover .image-grid-name {
+.masonry-item .image-grid-item:hover .image-grid-name {
   color: white;
 }
 
-.image-grid-meta {
+.masonry-item .image-grid-meta {
   font-size: 0.625rem;
   color: var(--text-secondary);
   display: flex;
@@ -136,10 +160,21 @@
   align-items: center;
 }
 
-.image-grid-item:hover .image-grid-meta {
+.masonry-item .image-grid-item:hover .image-grid-meta {
   color: rgba(255, 255, 255, 0.8);
 }
 
-.image-grid-meta .file-size {
+.masonry-item .image-grid-meta .file-size {
   opacity: 0.8;
+}
+
+.masonry-item .image-grid-loading,
+.masonry-item .image-grid-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
 }

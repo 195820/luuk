@@ -1,0 +1,57 @@
+.rating-stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rating-star {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.15s ease;
+  padding: 0;
+  border-radius: 0;
+}
+
+.rating-star:hover {
+  transform: scale(1.1);
+  color: #ffd700;
+}
+
+.rating-star.is-filled {
+  color: #ffd700;
+}
+
+.rating-star svg {
+  display: block;
+}
+
+/* 尺寸变体 */
+.rating-stars.rating-small .rating-star svg {
+  width: 14px;
+  height: 14px;
+}
+
+.rating-stars.rating-medium .rating-star svg {
+  width: 18px;
+  height: 18px;
+}
+
+.rating-stars.rating-large .rating-star svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 加载状态 */
+.rating-stars.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.rating-stars.loading .rating-star {
+  cursor: wait;
+}

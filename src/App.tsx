@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
+import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
+import { SortControl } from './components/SortControl'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID } from './stores/imageStore'
 import type { Library } from './types'
@@ -55,6 +57,12 @@ function App() {
     singleFavoriteImages,
     loadSingleFavoriteImages,
     favoriteViewMode,
+    imageSortBy,
+    imageSortOrder,
+    setSortBy,
+    setSortOrder,
+    gridLayoutMode,
+    setGridLayoutMode,
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
@@ -645,6 +653,25 @@ function App() {
             </div>
           )}
 
+          {viewMode === 'grid' && currentLibraryId && (
+            <SortControl
+              sortBy={imageSortBy}
+              sortOrder={imageSortOrder}
+              onSortByChange={setSortBy}
+              onSortOrderChange={setSortOrder}
+            />
+          )}
+
+          {viewMode === 'grid' && currentLibraryId && (
+            <button
+              onClick={() => setGridLayoutMode(gridLayoutMode === 'grid' ? 'masonry' : 'grid')}
+              className="layout-toggle-btn"
+              title={gridLayoutMode === 'grid' ? '切换到瀑布流视图' : '切换到网格视图'}
+            >
+              {gridLayoutMode === 'grid' ? '▦ 网格视图' : '≣ 瀑布流'}
+            </button>
+          )}
+
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
             className="view-toggle-btn"
@@ -739,32 +766,63 @@ function App() {
             </div>
           ) : viewMode === 'grid' ? (
             isFavoriteLibrary ? (
-              <ImageGrid
-                key="favorites"
-                images={favoriteGridImages}
-                selectedId={currentImage?.id}
-                onImageClick={handleImageClick}
-                onImageDoubleClick={handleImageDoubleClick}
-                onToggleFavorite={handleGridToggleFavorite}
-                thumbnailSize={thumbnailSize}
-                scrollPosition={gridScrollRef.current}
-                onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                libraryId={FAVORITE_LIBRARY_ID}
-                isFavoriteLibrary={true}
-              />
+              gridLayoutMode === 'grid' ? (
+                <ImageGrid
+                  key="favorites"
+                  images={favoriteGridImages}
+                  selectedId={currentImage?.id}
+                  onImageClick={handleImageClick}
+                  onImageDoubleClick={handleImageDoubleClick}
+                  onToggleFavorite={handleGridToggleFavorite}
+                  thumbnailSize={thumbnailSize}
+                  scrollPosition={gridScrollRef.current}
+                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                  libraryId={FAVORITE_LIBRARY_ID}
+                  isFavoriteLibrary={true}
+                />
+              ) : (
+                <MasonryGrid
+                  key="favorites-masonry"
+                  images={favoriteGridImages}
+                  selectedId={currentImage?.id}
+                  onImageClick={handleImageClick}
+                  onImageDoubleClick={handleImageDoubleClick}
+                  onToggleFavorite={handleGridToggleFavorite}
+                  thumbnailSize={thumbnailSize}
+                  scrollPosition={gridScrollRef.current}
+                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                  libraryId={FAVORITE_LIBRARY_ID}
+                  isFavoriteLibrary={true}
+                />
+              )
             ) : (
-              <ImageGrid
-                key={`${currentLibraryId}-${selectedFolder || 'all'}`}
-                images={gridImages}
-                selectedId={currentImage?.id}
-                onImageClick={handleImageClick}
-                onImageDoubleClick={handleImageDoubleClick}
-                onToggleFavorite={handleGridToggleFavorite}
-                thumbnailSize={thumbnailSize}
-                scrollPosition={gridScrollRef.current}
-                onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                libraryId={currentLibraryId!}
-              />
+              gridLayoutMode === 'grid' ? (
+                <ImageGrid
+                  key={`${currentLibraryId}-${selectedFolder || 'all'}`}
+                  images={gridImages}
+                  selectedId={currentImage?.id}
+                  onImageClick={handleImageClick}
+                  onImageDoubleClick={handleImageDoubleClick}
+                  onToggleFavorite={handleGridToggleFavorite}
+                  thumbnailSize={thumbnailSize}
+                  scrollPosition={gridScrollRef.current}
+                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                  libraryId={currentLibraryId!}
+                />
+              ) : (
+                <MasonryGrid
+                  key={`${currentLibraryId}-${selectedFolder || 'all'}-masonry`}
+                  images={gridImages}
+                  selectedId={currentImage?.id}
+                  onImageClick={handleImageClick}
+                  onImageDoubleClick={handleImageDoubleClick}
+                  onToggleFavorite={handleGridToggleFavorite}
+                  thumbnailSize={thumbnailSize}
+                  scrollPosition={gridScrollRef.current}
+                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                  libraryId={currentLibraryId!}
+                />
+              )
             )
           ) : currentImage ? (
             <ImageViewer
