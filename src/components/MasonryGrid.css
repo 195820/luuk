@@ -1,3 +1,8 @@
+/* ═══════════════════════════════════════════════════════════════
+   MasonryGrid.css - Refined Minimalism Aesthetic
+   设计哲学：瀑布流布局 · 极简卡片 · 微妙阴影
+   ═══════════════════════════════════════════════════════════════ */
+
 .masonry-grid {
   width: 100%;
   padding: var(--space-4);
@@ -14,7 +19,7 @@
   top: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2); /* 列内图片间距 */
+  gap: var(--space-2);
   box-sizing: border-box;
 }
 
@@ -25,21 +30,26 @@
   transition: transform var(--transition-normal);
 }
 
-/* 复用 ImageGrid 的 item 样式 */
+/* ───────────────────────────────────────────────────────────────
+   复用 ImageGrid 卡片样式 - 保持一致性
+   ─────────────────────────────────────────────────────────────── */
 .masonry-item .image-grid-item {
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-secondary);
-  border: 2px solid transparent;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: border-color var(--transition-fast), transform var(--transition-fast);
-  width: 100% !important; /* 覆盖 inline style 的 width */
+  transition: all var(--transition-fast);
+  width: 100% !important;
+  overflow: hidden;
 }
 
 .masonry-item .image-grid-item:hover {
-  border-color: var(--border);
+  border-color: var(--border-hover);
+  background: var(--bg-elevated);
   transform: translateY(-2px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
 .masonry-item .image-grid-item:focus-visible {
@@ -48,21 +58,29 @@
 }
 
 .masonry-item .image-grid-item.selected {
-  border-color: var(--accent);
-  background-color: var(--bg-tertiary);
+  border-color: var(--border-hover);
+  background: var(--bg-tertiary);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   缩略图区域
+   ─────────────────────────────────────────────────────────────── */
 .masonry-item .image-grid-thumbnail {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  background: var(--bg-tertiary);
+  border-radius: 0;
   overflow: hidden;
-  margin-bottom: 0; /* 移除底部间距，使用 gap 控制 */
+  margin-bottom: 0;
   position: relative;
-  /* 瀑布流模式：高度由父容器决定，不使用固定宽高比 */
+  transition: all var(--transition-fast);
   height: 100%;
+}
+
+.masonry-item .image-grid-item:hover .image-grid-thumbnail {
+  background: var(--bg-elevated);
 }
 
 .masonry-item .image-grid-thumbnail img {
@@ -70,35 +88,46 @@
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: transform var(--transition-slow);
 }
 
-/* 收藏按钮：默认隐藏，悬停时显示 */
+.masonry-item .image-grid-item:hover .image-grid-thumbnail img {
+  transform: scale(1.02);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   收藏按钮 - 角落点缀
+   ─────────────────────────────────────────────────────────────── */
 .masonry-item .image-grid-favorite-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: var(--space-2);
+  right: var(--space-2);
   width: var(--btn-sm);
   height: var(--btn-sm);
   border-radius: var(--radius-full);
-  background-color: var(--overlay-darker);
+  background: var(--overlay-darker);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 10;
-  border: none;
+  border: 1px solid var(--border);
   cursor: pointer;
   padding: 0;
-  transition: background-color var(--transition-normal), transform var(--transition-fast), opacity var(--transition-normal);
+  transition: all var(--transition-normal);
   opacity: 0;
+  transform: scale(0.9);
 }
 
 .masonry-item .image-grid-item:hover .image-grid-favorite-btn {
   opacity: 1;
+  transform: scale(1);
 }
 
 .masonry-item .image-grid-favorite-btn:hover {
-  background-color: var(--overlay-darker);
-  transform: scale(1.1);
+  background: var(--overlay-darkest);
+  border-color: var(--border-hover);
+  transform: scale(1.05);
 }
 
 .masonry-item .image-grid-favorite-btn:focus-visible {
@@ -110,39 +139,45 @@
 .masonry-item .image-grid-favorite-btn svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
-  color: var(--favorite);
-  transition: color var(--transition-normal);
+  color: var(--star-empty);
+  transition: all var(--transition-fast);
 }
 
 .masonry-item .image-grid-favorite-btn:hover svg {
-  color: var(--favorite-hover);
+  color: var(--favorite);
 }
 
 .masonry-item .image-grid-favorite-btn svg[fill="currentColor"] {
   color: var(--favorite);
-  opacity: 1;
+  filter: drop-shadow(0 2px 4px rgba(255, 71, 87, 0.3));
 }
 
 .masonry-item .image-grid-thumbnail:hover .image-grid-favorite-btn svg[fill="none"] {
   color: var(--favorite-hover);
 }
 
-/* 信息区域：默认隐藏，悬停时从底部向上显示 */
+/* ───────────────────────────────────────────────────────────────
+   信息区域 - 悬浮渐变
+   ─────────────────────────────────────────────────────────────── */
 .masonry-item .image-grid-info {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: 6px 6px var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-2);
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, var(--overlay-darkest) 0%, var(--overlay-darker) 70%, transparent 100%);
+  background: linear-gradient(
+    to top,
+    var(--overlay-darkest) 0%,
+    var(--overlay-darker) 60%,
+    transparent 100%
+  );
   color: white;
   opacity: 0;
-  transform: translateY(100%);
+  transform: translateY(8px);
   transition: opacity var(--transition-normal), transform var(--transition-normal);
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
   pointer-events: none;
 }
 
@@ -153,32 +188,38 @@
 
 .masonry-item .image-grid-name {
   font-size: var(--text-xs);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: var(--font-medium);
+  transition: color var(--transition-fast);
 }
 
 .masonry-item .image-grid-item:hover .image-grid-name {
-  color: white;
+  color: var(--text-primary);
 }
 
 .masonry-item .image-grid-meta {
   font-size: var(--text-xs);
-  color: var(--text-secondary);
+  color: var(--text-muted);
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .masonry-item .image-grid-item:hover .image-grid-meta {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .masonry-item .image-grid-meta .file-size {
   opacity: 0.8;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   加载/错误状态
+   ─────────────────────────────────────────────────────────────── */
 .masonry-item .image-grid-loading,
 .masonry-item .image-grid-error {
   position: absolute;
@@ -186,6 +227,10 @@
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   font-size: var(--text-xs);
+}
+
+.masonry-item .image-grid-error {
+  color: var(--error);
 }

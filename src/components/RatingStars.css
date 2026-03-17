@@ -1,9 +1,17 @@
+/* ═══════════════════════════════════════════════════════════════
+   RatingStars.css - Refined Minimalism Aesthetic
+   设计哲学：微妙星标 · 精致动画 · 克制用色
+   ═══════════════════════════════════════════════════════════════ */
+
 .rating-stars {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   星星按钮 - 极简设计
+   ─────────────────────────────────────────────────────────────── */
 .rating-star {
   display: inline-flex;
   align-items: center;
@@ -18,8 +26,9 @@
 }
 
 .rating-star:hover {
-  transform: scale(1.1);
+  transform: scale(1.15);
   color: var(--star-filled);
+  filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.3));
 }
 
 .rating-star:focus-visible {
@@ -30,13 +39,16 @@
 
 .rating-star.is-filled {
   color: var(--star-filled);
+  filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.2));
 }
 
 .rating-star svg {
   display: block;
 }
 
-/* 尺寸变体 */
+/* ───────────────────────────────────────────────────────────────
+   尺寸变体
+   ─────────────────────────────────────────────────────────────── */
 .rating-stars.rating-small .rating-star svg {
   width: var(--icon-xs);
   height: var(--icon-xs);
@@ -52,7 +64,13 @@
   height: var(--icon-xl);
 }
 
-/* 加载状态 */
+.rating-stars.rating-large .rating-star {
+  gap: var(--space-1);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   加载状态
+   ─────────────────────────────────────────────────────────────── */
 .rating-stars.loading {
   opacity: 0.5;
   pointer-events: none;

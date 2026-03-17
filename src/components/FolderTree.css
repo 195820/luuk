@@ -1,9 +1,14 @@
+/* ═══════════════════════════════════════════════════════════════
+   FolderTree.css - Refined Minimalism Aesthetic
+   设计哲学：隐形树项 · 微妙缩进 · 幽灵图标 · 精致分层
+   ═══════════════════════════════════════════════════════════════ */
+
 .folder-tree {
   padding: var(--space-2);
 }
 
 .folder-tree-empty {
-  padding: var(--space-4);
+  padding: var(--space-6) var(--space-4);
   text-align: center;
   color: var(--text-muted);
 }
@@ -11,15 +16,18 @@
 .folder-tree-empty p {
   margin: 0;
   font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
-/* 收藏视图标签页 */
+/* ───────────────────────────────────────────────────────────────
+   收藏视图标签页 - 极简分段
+   ─────────────────────────────────────────────────────────────── */
 .favorite-view-tabs {
   display: flex;
   gap: var(--space-1);
   padding: var(--space-2);
   margin-bottom: var(--space-2);
-  border-bottom: 1px solid var(--overlay-lighter);
+  border-bottom: 1px solid var(--border);
 }
 
 .tab-btn {
@@ -28,24 +36,26 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-1);
-  padding: 6px var(--space-2);
-  border: none;
+  padding: var(--space-2) var(--space-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  background-color: var(--overlay-light);
+  background: transparent;
   color: var(--text-muted);
   font-size: var(--text-xs);
   cursor: pointer;
   transition: all var(--transition-fast);
+  letter-spacing: 0.02em;
 }
 
 .tab-btn:hover {
-  background-color: var(--overlay-lighter);
-  color: var(--text-light);
+  background: var(--overlay-light);
+  color: var(--text-secondary);
 }
 
 .tab-btn.active {
-  background-color: var(--overlay-selected);
+  background: var(--overlay-selected);
   color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .tab-btn:focus-visible {
@@ -65,6 +75,9 @@
   margin: 0;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   树节点 - 隐形层级
+   ─────────────────────────────────────────────────────────────── */
 .folder-tree-node {
   display: flex;
   flex-direction: column;
@@ -73,50 +86,59 @@
 .folder-tree-item {
   display: flex;
   align-items: center;
-  padding: 6px var(--space-2);
+  padding: var(--space-2) var(--space-2);
   cursor: pointer;
   user-select: none;
-  gap: var(--space-1);
+  gap: var(--space-2);
   border-radius: var(--radius-sm);
   margin: 2px var(--space-1);
-  transition: background-color var(--transition-fast);
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
 }
 
 .folder-tree-item:hover {
-  background-color: var(--overlay-lighter);
+  background: var(--overlay-light);
+  border-color: var(--border);
 }
 
 .folder-tree-item.selected {
-  background-color: var(--overlay-selected);
+  background: var(--overlay-selected);
+  border-color: var(--border-hover);
 }
 
 .folder-tree-item.root {
   font-weight: var(--font-medium);
-  background-color: var(--overlay-light);
+  background: var(--bg-tertiary);
   margin-bottom: var(--space-2);
+  border-color: var(--border);
 }
 
 .folder-tree-item.root:hover {
-  background-color: var(--overlay-lighter);
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
 }
 
 .folder-tree-item.root.selected {
-  background-color: rgba(99, 102, 241, 0.4);
+  background: var(--overlay-selected);
+  border-color: var(--border-hover);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   展开/折叠箭头
+   ─────────────────────────────────────────────────────────────── */
 .folder-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 16px;
   height: 16px;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--text-muted);
-  transition: transform var(--transition-fast);
+  transition: transform var(--transition-fast), color var(--transition-fast);
 }
 
 .folder-toggle:hover {
-  color: var(--text-light);
+  color: var(--text-secondary);
 }
 
 .folder-toggle.expanded {
@@ -132,31 +154,69 @@
   height: 16px;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   文件夹图标
+   ─────────────────────────────────────────────────────────────── */
 .folder-icon {
   font-size: var(--icon-lg);
   flex-shrink: 0;
+  opacity: 0.8;
+  transition: opacity var(--transition-fast);
 }
 
+.folder-tree-item:hover .folder-icon {
+  opacity: 1;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   文件夹名称
+   ─────────────────────────────────────────────────────────────── */
 .folder-name {
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-sm);
-  color: var(--text-light);
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
 }
 
+.folder-tree-item:hover .folder-name {
+  color: var(--text-primary);
+}
+
+.folder-tree-item.selected .folder-name {
+  color: var(--text-primary);
+  font-weight: var(--font-medium);
+}
+
+.folder-tree-item.root .folder-name {
+  color: var(--text-primary);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   文件计数徽章
+   ─────────────────────────────────────────────────────────────── */
 .folder-count {
   font-size: var(--text-xs);
   color: var(--text-muted);
-  padding: 2px 6px;
-  background-color: var(--overlay-light);
+  padding: 2px var(--space-2);
+  background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   flex-shrink: 0;
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  transition: all var(--transition-fast);
+}
+
+.folder-tree-item:hover .folder-count {
+  background: var(--bg-elevated);
+  border-color: var(--border-hover);
 }
 
 .folder-tree-item.selected .folder-count {
-  background-color: var(--overlay-selected);
+  background: var(--bg-secondary);
+  border-color: var(--border);
   color: var(--text-primary);
 }
 
@@ -165,6 +225,9 @@
   flex-direction: column;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   文件夹收藏按钮 - 微妙强调
+   ─────────────────────────────────────────────────────────────── */
 .folder-favorite-btn {
   display: flex;
   align-items: center;
@@ -183,7 +246,7 @@
 }
 
 .folder-favorite-btn:hover {
-  background-color: var(--overlay-lighter);
+  background: var(--overlay-lighter);
   color: var(--text-primary);
 }
 
@@ -192,7 +255,7 @@
 }
 
 .folder-favorite-btn.favorited:hover {
-  background-color: var(--overlay-folder-favorite);
+  background: var(--overlay-folder-favorite);
 }
 
 .folder-favorite-btn:focus-visible {

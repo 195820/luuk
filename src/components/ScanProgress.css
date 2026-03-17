@@ -1,16 +1,25 @@
+/* ═══════════════════════════════════════════════════════════════
+   ScanProgress.css - Refined Minimalism Aesthetic
+   设计哲学：悬浮对话框 · 毛玻璃背景 · 渐变进度条
+   ═══════════════════════════════════════════════════════════════ */
+
 .scan-progress-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: var(--overlay-dark);
+  background: var(--overlay-darkest);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   扫描进度对话框 - 悬浮卡片
+   ─────────────────────────────────────────────────────────────── */
 .scan-progress-dialog {
   background: var(--bg-dialog);
   border-radius: var(--radius-2xl);
@@ -18,6 +27,8 @@
   min-width: 400px;
   max-width: 600px;
   box-shadow: var(--shadow-lg);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
 }
 
 .scan-progress-header {
@@ -28,39 +39,67 @@
   margin: 0;
   color: var(--text-primary);
   font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.02em;
 }
 
 .scan-progress-body {
   color: var(--text-secondary);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   进度信息
+   ─────────────────────────────────────────────────────────────── */
 .progress-info {
   display: flex;
   justify-content: space-between;
   margin-bottom: var(--space-2);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
+.progress-current {
+  color: var(--text-primary);
+  font-weight: var(--font-medium);
+}
+
+.progress-total {
+  color: var(--text-muted);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   进度条 - 渐变填充
+   ─────────────────────────────────────────────────────────────── */
 .progress-bar-container {
   width: 100%;
-  height: 20px;
-  background: var(--bg-primary);
+  height: 6px;
+  background: var(--bg-tertiary);
   border-radius: var(--radius-full);
   overflow: hidden;
   margin-bottom: var(--space-3);
+  border: 1px solid var(--border);
 }
 
 .progress-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--progress-start), var(--progress-end));
+  background: linear-gradient(
+    90deg,
+    var(--progress-start) 0%,
+    var(--progress-end) 100%
+  );
   transition: width var(--transition-slow);
   border-radius: var(--radius-full);
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.3);
 }
 
+/* ───────────────────────────────────────────────────────────────
+   当前文件 - 滚动显示
+   ─────────────────────────────────────────────────────────────── */
 .current-file {
   font-size: var(--text-xs);
-  color: var(--text-dim);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: 'Consolas', 'Monaco', monospace;
 }

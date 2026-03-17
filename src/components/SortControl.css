@@ -1,3 +1,8 @@
+/* ═══════════════════════════════════════════════════════════════
+   SortControl.css - Refined Minimalism Aesthetic
+   设计哲学：极简选择器 · 微妙边框 · 精致交互
+   ═══════════════════════════════════════════════════════════════ */
+
 .sort-control {
   display: flex;
   align-items: center;
@@ -8,26 +13,34 @@
 
 .sort-label {
   color: var(--text-dim);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
 }
 
+/* ───────────────────────────────────────────────────────────────
+   排序选择器 - 毛玻璃效果
+   ─────────────────────────────────────────────────────────────── */
 .sort-select {
-  padding: 4px var(--space-2);
-  border: 1px solid var(--border-default);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-dialog);
+  background: var(--bg-tertiary);
   color: var(--text-primary);
   font-size: var(--text-sm);
   cursor: pointer;
   outline: none;
   transition: all var(--transition-fast);
+  min-width: 120px;
 }
 
 .sort-select:hover {
-  border-color: var(--text-muted);
+  border-color: var(--border-hover);
+  background: var(--bg-elevated);
 }
 
 .sort-select:focus {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
+  background: var(--bg-elevated);
 }
 
 .sort-select:focus-visible {
@@ -35,28 +48,38 @@
   outline-offset: 2px;
 }
 
+.sort-select option {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: var(--space-2);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   排序切换按钮
+   ─────────────────────────────────────────────────────────────── */
 .sort-order-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: var(--btn-sm);
-  height: 26px;
-  border: 1px solid var(--border-default);
+  height: 28px;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-dialog);
-  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
   font-size: var(--text-md);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: all var(--transition-fast);
 }
 
 .sort-order-btn:hover {
-  border-color: var(--text-muted);
-  background: var(--bg-tertiary);
+  border-color: var(--border-hover);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 .sort-order-btn:active {
-  background: var(--border-default);
+  background: var(--overlay-selected);
 }
 
 .sort-order-btn:focus-visible {
