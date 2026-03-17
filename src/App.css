@@ -47,6 +47,7 @@
    通用头部按钮 - 幽灵按钮风格
    ─────────────────────────────────────────────────────────────── */
 .header-action-btn {
+  position: relative; /* 确保 ::before 伪元素不会超出按钮边界 */
   padding: var(--space-2) var(--space-3);
   background: transparent;
   border: 1px solid var(--border);
@@ -70,6 +71,7 @@
   opacity: 0;
   transition: opacity var(--transition-fast);
   border-radius: var(--radius-md);
+  pointer-events: none; /* 防止伪元素拦截点击事件 */
 }
 
 .header-action-btn:hover {

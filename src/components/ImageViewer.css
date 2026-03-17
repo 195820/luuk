@@ -202,8 +202,8 @@
   top: 70px;
   right: var(--space-5);
   width: 280px;
-  background-color: rgba(30, 30, 30, 0.95);
-  border: 1px solid var(--border);
+  background-color: var(--bg-dialog);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
   backdrop-filter: blur(12px);
