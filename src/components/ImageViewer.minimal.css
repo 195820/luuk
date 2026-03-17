@@ -1,0 +1,494 @@
+/* ═══════════════════════════════════════════════════════════════
+   极致极简图片查看器样式
+   设计哲学：隐形 UI · 精准排印 · 克制用色
+   ═══════════════════════════════════════════════════════════════ */
+
+.image-viewer-minimal {
+  width: 100%;
+  height: 100%;
+  background-color: #0a0a0a;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   工具栏 - 悬浮岛屿设计
+   ─────────────────────────────────────────────────────────────── */
+.viewer-toolbar-minimal {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity var(--transition-slow), transform var(--transition-slow);
+  pointer-events: none;
+}
+
+.image-viewer-minimal:hover .viewer-toolbar-minimal,
+.viewer-toolbar-minimal:focus-within {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.toolbar-group-minimal {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.toolbar-group-minimal:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.toolbar-group-minimal:first-child {
+  padding-left: 0;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   幽灵按钮 - 极简交互
+   ─────────────────────────────────────────────────────────────── */
+.toolbar-btn-minimal {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.toolbar-btn-minimal::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.03);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.toolbar-btn-minimal:hover::before {
+  opacity: 1;
+}
+
+.toolbar-btn-minimal:hover {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.toolbar-btn-minimal:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.toolbar-btn-minimal:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+}
+
+.toolbar-btn-minimal:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+.toolbar-btn-minimal.active {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   图片计数器 - 精致排印
+   ─────────────────────────────────────────────────────────────── */
+.toolbar-counter-minimal {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.05em;
+  padding: 0 var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   图片容器
+   ─────────────────────────────────────────────────────────────── */
+.viewer-content-minimal {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.image-wrapper-minimal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  transform-origin: center center;
+}
+
+.viewer-image-minimal {
+  max-width: none;
+  max-height: none;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+  pointer-events: auto;
+  filter: brightness(1) contrast(1);
+  transition: filter var(--transition-slow);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   加载状态 - 呼吸动画
+   ─────────────────────────────────────────────────────────────── */
+.image-loading-minimal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+}
+
+.loading-indicator-minimal {
+  width: 40px;
+  height: 40px;
+  position: relative;
+}
+
+.loading-ring-minimal {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 1.5px solid rgba(255, 255, 255, 0.05);
+  border-top-color: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  animation: spin 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.loading-ring-minimal::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-top-color: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse;
+}
+
+.loading-text-minimal {
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+/* ───────────────────────────────────────────────────────────────
+   错误状态 - 克制提示
+   ─────────────────────────────────────────────────────────────── */
+.image-error-minimal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+}
+
+.error-icon-minimal {
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.2);
+  font-weight: 100;
+}
+
+.error-text-minimal {
+  font-size: var(--text-sm);
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: var(--font-normal);
+}
+
+.retry-btn-minimal {
+  padding: var(--space-2) var(--space-5);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.6);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  letter-spacing: 0.05em;
+}
+
+.retry-btn-minimal:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.retry-btn-minimal:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   图片信息面板 - 悬浮卡片
+   ─────────────────────────────────────────────────────────────── */
+.image-info-panel-minimal {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 260px;
+  background: rgba(20, 20, 20, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(16px);
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
+  pointer-events: none;
+}
+
+.image-viewer-minimal.show-info .image-info-panel-minimal {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.info-header-minimal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.info-title-minimal {
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.info-close-minimal {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.info-close-minimal:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.info-content-minimal {
+  padding: var(--space-3) var(--space-4);
+}
+
+.info-row-minimal {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+  font-size: var(--text-sm);
+}
+
+.info-label-minimal {
+  color: rgba(255, 255, 255, 0.3);
+  font-weight: var(--font-normal);
+}
+
+.info-value-minimal {
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: var(--font-medium);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-row-minimal + .info-row-minimal {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   底部控制栏 - 手势区域
+   ─────────────────────────────────────────────────────────────── */
+.viewer-controls-minimal {
+  position: absolute;
+  bottom: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%) translateY(100%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(12px);
+  z-index: 100;
+  opacity: 0;
+  transition: opacity var(--transition-slow), transform var(--transition-slow);
+  pointer-events: none;
+}
+
+.image-viewer-minimal:hover .viewer-controls-minimal {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
+.control-btn-minimal {
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  letter-spacing: 0.05em;
+}
+
+.control-btn-minimal:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.control-btn-minimal:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   收藏按钮 - 角落点缀
+   ─────────────────────────────────────────────────────────────── */
+.viewer-favorite-minimal {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 101;
+}
+
+.viewer-favorite-minimal:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.viewer-favorite-minimal:focus-visible {
+  outline: 1px solid rgba(255, 255, 255, 0.3);
+  outline-offset: 2px;
+}
+
+.viewer-favorite-minimal.is-favorited {
+  color: #ff4757;
+  border-color: rgba(255, 71, 87, 0.3);
+  background: rgba(255, 71, 87, 0.1);
+}
+
+.viewer-favorite-minimal.is-favorited:hover {
+  background: rgba(255, 71, 87, 0.2);
+  border-color: rgba(255, 71, 87, 0.5);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   导航区域 - 隐形边界
+   ─────────────────────────────────────────────────────────────── */
+.viewer-nav-zone-minimal {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  z-index: 50;
+}
+
+.image-viewer-minimal:hover .viewer-nav-zone-minimal {
+  opacity: 1;
+}
+
+.viewer-nav-zone-minimal:hover {
+  background: linear-gradient(to right, rgba(255, 255, 255, 0.02), transparent);
+}
+
+.viewer-nav-zone-minimal.prev {
+  left: 0;
+}
+
+.viewer-nav-zone-minimal.next {
+  right: 0;
+}
+
+.viewer-nav-zone-minimal:hover .nav-arrow-minimal {
+  transform: scale(1.1);
+}
+
+.nav-arrow-minimal {
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.3);
+  transition: transform var(--transition-fast), color var(--transition-fast);
+}
+
+.viewer-nav-zone-minimal:hover .nav-arrow-minimal {
+  color: rgba(255, 255, 255, 0.7);
+}

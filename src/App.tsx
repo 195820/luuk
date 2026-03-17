@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
+import { ImageViewerMinimal } from './components/ImageViewer.minimal'
 import { ImageGrid } from './components/ImageGrid'
 import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
@@ -15,6 +16,7 @@ const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
+  const [viewerStyle, setViewerStyle] = useState<'classic' | 'minimal'>('classic')
   const [thumbnailSize, setThumbnailSize] = useState(200)
   const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
   const [selectedInterval, setSelectedInterval] = useState(5)
@@ -672,6 +674,16 @@ function App() {
             </button>
           )}
 
+          {viewMode === 'viewer' && (
+            <button
+              onClick={() => setViewerStyle(viewerStyle === 'classic' ? 'minimal' : 'classic')}
+              className="view-toggle-btn"
+              title={viewerStyle === 'classic' ? '切换到极简风格' : '切换到经典风格'}
+            >
+              {viewerStyle === 'classic' ? '◇ 极简' : '◈ 经典'}
+            </button>
+          )}
+
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
             className="view-toggle-btn"
@@ -825,18 +837,35 @@ function App() {
               )
             )
           ) : currentImage ? (
-            <ImageViewer
-              src={`file://${currentImagePath}`}
-              alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
-              currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
-              totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
-              onPrevious={handlePrevious}
-              onNext={handleNext}
-              onClose={handleClose}
-              imageInfo={getCurrentImageInfo() || undefined}
-              slideshowSettings={slideshow}
-              onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
-            />
+            viewerStyle === 'minimal' ? (
+              <ImageViewerMinimal
+                src={`file://${currentImagePath}`}
+                alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
+                currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
+                totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
+                onPrevious={handlePrevious}
+                onNext={handleNext}
+                onClose={handleClose}
+                imageInfo={getCurrentImageInfo() || undefined}
+                slideshowSettings={slideshow}
+                onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
+                isFavorite={currentLibraryId ? isFavorite(currentLibraryId, currentImage.relative_path) : false}
+                onFavoriteChange={handleToggleFavorite}
+              />
+            ) : (
+              <ImageViewer
+                src={`file://${currentImagePath}`}
+                alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
+                currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
+                totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
+                onPrevious={handlePrevious}
+                onNext={handleNext}
+                onClose={handleClose}
+                imageInfo={getCurrentImageInfo() || undefined}
+                slideshowSettings={slideshow}
+                onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
+              />
+            )
           ) : null}
         </main>
       </div>
