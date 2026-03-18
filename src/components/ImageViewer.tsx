@@ -108,7 +108,7 @@ function ViewerContent({
     }
 
     applyScale(scale)
-  }, [fitMode, rotation, applyScale, src])
+  }, [fitMode, rotation, applyScale])
 
   return (
     <TransformComponent>
@@ -218,7 +218,9 @@ export function ImageViewer({
   // 处理适应模式应用
   const handleApplyFitMode = useCallback((scale: number) => {
     if (setTransformFn.current) {
-      setTransformFn.current(scale)
+      requestAnimationFrame(() => {
+        setTransformFn.current?.(scale)
+      })
     }
   }, [])
 
@@ -436,6 +438,7 @@ export function ImageViewer({
         maxScale={10}
         limitToBounds={false}
         centerOnInit
+        centerZoomedOut
         wheel={{ step: 0.5 }}
         pinch={{ step: 0.5 }}
         doubleClick={{ step: 1.5 }}
@@ -444,7 +447,9 @@ export function ImageViewer({
             // 存储 setTransform 函数
             setTransformFn.current = (scale: number) => {
               // 使用 centerView 方法居中并缩放
-              ref.centerView(scale)
+              requestAnimationFrame(() => {
+                ref.centerView(scale, 0, 0, false)
+              })
             }
           }
         }}
