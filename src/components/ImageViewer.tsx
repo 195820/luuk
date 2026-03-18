@@ -93,7 +93,8 @@ function ViewerContent({
     let scale = 1
     switch (fitMode) {
       case 'fit-window':
-        scale = Math.min(containerWidth / img.naturalWidth, containerHeight / img.naturalHeight, 1)
+        // 移除 1 的限制，让图片可以放大以填满窗口
+        scale = Math.min(containerWidth / img.naturalWidth, containerHeight / img.naturalHeight)
         break
       case 'actual-size':
         scale = 1
@@ -131,7 +132,8 @@ function ViewerContent({
             if (container && fitMode === 'fit-window') {
               const containerWidth = container.clientWidth
               const containerHeight = container.clientHeight
-              const scale = Math.min(containerWidth / width, containerHeight / height, 1)
+              // 移除 1 的限制，让图片可以放大以填满窗口
+              const scale = Math.min(containerWidth / width, containerHeight / height)
               onApplyFitMode(scale)
             }
           }}
@@ -175,7 +177,8 @@ export function ImageViewer({
 
     const containerWidth = container.clientWidth
     const containerHeight = container.clientHeight
-    return Math.min(containerWidth / img.naturalWidth, containerHeight / img.naturalHeight, 1)
+    // 移除 1 的限制，让图片可以放大以填满窗口
+    return Math.min(containerWidth / img.naturalWidth, containerHeight / img.naturalHeight)
   }, [])
 
   // 重置变换 - 使用适应窗口模式
