@@ -15,6 +15,7 @@ const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
+  const [isViewTransitioning, setIsViewTransitioning] = useState(false)
   const [thumbnailSize, setThumbnailSize] = useState(200)
   const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
   const [selectedInterval, setSelectedInterval] = useState(5)
@@ -95,6 +96,8 @@ function App() {
         // 'folder' 或 'all' 模式加载所有收藏图片
         loadFavoriteImages()
       }
+      // 视图模式切换时重置索引为 0
+      setFavoriteImageIndex(0)
     } else if (currentLibraryId) {
       loadImages()
     }
@@ -129,13 +132,31 @@ function App() {
     imagePath: fav.relative_path, // 使用 relative_path 字段
   }))
 
+  // 调试日志：单图收藏视图模式下打印数组信息
+  if (favoriteViewMode === 'single' && typeof window !== 'undefined') {
+    console.log('[App] 单图收藏模式 - singleFavoriteImages:', singleFavoriteImages.length, '张')
+    console.log('[App] 单图收藏模式 - favoriteGridImages:', favoriteGridImages.length, '张')
+    if (singleFavoriteImages.length > 0) {
+      console.log('[App] 单图收藏 - 第一张图片:', {
+        relative_path: singleFavoriteImages[0]?.relative_path,
+        library_id: singleFavoriteImages[0]?.library_id
+      })
+    }
+    if (favoriteGridImages.length > 0) {
+      console.log('[App] 网格图片 - 第一张:', {
+        imagePath: favoriteGridImages[0]?.imagePath,
+        libraryId: favoriteGridImages[0]?.libraryId
+      })
+    }
+  }
+
   // 处理文件夹选择
   const handleFolderSelect = useCallback((folderPath: string | null) => {
     // 如果当前在查看器模式，切换到网格视图
     if (viewMode === 'viewer') {
       setViewMode('grid')
     }
-    
+
     // 在收藏库中选中文件夹时，加载该文件夹下的收藏图片
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
       if (folderPath) {
@@ -150,18 +171,28 @@ function App() {
     }
   }, [viewMode, currentLibraryId, loadFavoriteFolderImages, loadFavoriteImages, setSelectedFavoriteFolder, setSelectedFolder])
 
+  // 切换到单图收藏视图（从文件夹收藏标签页切换）
+  const handleSwitchToSingleView = useCallback(() => {
+    // 如果当前在查看器模式，切换到网格视图
+    if (viewMode === 'viewer') {
+      setViewMode('grid')
+    }
+  }, [viewMode])
+
   const handlePrevious = useCallback(() => {
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
       setFavoriteImageIndex(prev => Math.max(0, prev - 1))
     } else {
       setCurrentIndex(prev => Math.max(0, prev - 1))
     }
-  }, [currentLibraryId])
+  }, [currentLibraryId, favoriteViewMode, singleFavoriteImages.length, favoriteImages.length])
 
   const handleNext = useCallback(() => {
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 根据视图模式使用正确的数组长度
+      const currentArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
       setFavoriteImageIndex(prev => {
-        if (prev >= favoriteImages.length - 1) return 0
+        if (prev >= currentArray.length - 1) return 0
         return prev + 1
       })
     } else {
@@ -170,7 +201,7 @@ function App() {
         return prev + 1
       })
     }
-  }, [currentLibraryId, images.length, favoriteImages.length])
+  }, [currentLibraryId, images.length, favoriteViewMode, singleFavoriteImages.length, favoriteImages.length])
 
   const handleFirst = useCallback(() => {
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
@@ -178,21 +209,25 @@ function App() {
     } else {
       setCurrentIndex(0)
     }
-  }, [currentLibraryId])
+  }, [currentLibraryId, favoriteViewMode, singleFavoriteImages.length, favoriteImages.length])
 
   const handleLast = useCallback(() => {
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-      setFavoriteImageIndex(favoriteImages.length - 1)
+      // 根据视图模式使用正确的数组
+      const targetArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
+      setFavoriteImageIndex(targetArray.length - 1)
     } else {
       setCurrentIndex(images.length - 1)
     }
-  }, [currentLibraryId, images.length, favoriteImages.length])
+  }, [currentLibraryId, images.length, favoriteViewMode, singleFavoriteImages.length, favoriteImages.length])
 
   // 当 currentIndex 变化时，更新 currentImage
   useEffect(() => {
     if (viewMode === 'viewer') {
       if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-        const fav = favoriteImages[favoriteImageIndex]
+        // 根据视图模式使用正确的数组
+        const targetArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
+        const fav = targetArray[favoriteImageIndex]
         if (fav) {
           setCurrentImage(fav as any)
         }
@@ -203,30 +238,21 @@ function App() {
         }
       }
     }
-  }, [currentIndex, favoriteImageIndex, images, favoriteImages, viewMode, currentLibraryId])
+  }, [currentIndex, favoriteImageIndex, images, favoriteImages, singleFavoriteImages, favoriteViewMode, viewMode, currentLibraryId])
 
   const handleImageClick = (image: ImageGridItem) => {
-    console.log('[App] handleImageClick 被调用', {
-      image,
-      currentLibraryId,
-      FAVORITE_LIBRARY_ID,
-      isFavorite: currentLibraryId === FAVORITE_LIBRARY_ID,
-      imagePath: image.imagePath,
-      libraryId: image.libraryId,
-      favoriteImagesCount: favoriteImages.length,
-    })
     // 单击只选中图片，不进入查看器
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 根据视图模式使用正确的数组
+      const targetArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
+
       // 使用 image.imagePath 和 image.libraryId 来查找索引，避免依赖重新创建的数组
-      const index = favoriteImages.findIndex((fav: any) => {
-        const match = fav.relative_path === image.imagePath && fav.library_id === image.libraryId
-        console.log('[App] 查找匹配', { favPath: fav.relative_path, favLibId: fav.library_id, imagePath: image.imagePath, imageLibId: image.libraryId, match })
-        return match
+      const index = targetArray.findIndex((fav: any) => {
+        return fav.relative_path === image.imagePath && fav.library_id === image.libraryId
       })
-      console.log('[App] 找到的索引:', index)
+
       if (index >= 0) {
         setFavoriteImageIndex(index)
-        console.log('[App] 设置收藏索引为:', index)
       }
     } else {
       const img = images.find((i: any) => i.id === image.id)
@@ -237,32 +263,22 @@ function App() {
   }
 
   const handleImageDoubleClick = (image: ImageGridItem) => {
-    console.log('[App] handleImageDoubleClick 被调用', {
-      image,
-      currentLibraryId,
-      FAVORITE_LIBRARY_ID,
-      isFavorite: currentLibraryId === FAVORITE_LIBRARY_ID,
-      imagePath: image.imagePath,
-      libraryId: image.libraryId,
-      favoriteImagesCount: favoriteImages.length,
-    })
     // 双击进入查看器
+    setIsViewTransitioning(true)
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
+      // 根据视图模式使用正确的数组
+      const targetArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
+
       // 使用 image.imagePath 和 image.libraryId 来查找索引，避免依赖重新创建的数组
-      const index = favoriteImages.findIndex((fav: any) => {
-        const match = fav.relative_path === image.imagePath && fav.library_id === image.libraryId
-        console.log('[App] 查找匹配', { favPath: fav.relative_path, favLibId: fav.library_id, imagePath: image.imagePath, imageLibId: image.libraryId, match })
-        return match
+      const index = targetArray.findIndex((fav: any) => {
+        return fav.relative_path === image.imagePath && fav.library_id === image.libraryId
       })
-      console.log('[App] 找到的索引:', index)
+
       if (index >= 0) {
-        console.log('[App] 准备进入查看器', { index, favImage: favoriteImages[index] })
         setFavoriteImageIndex(index)
-        setCurrentImage(favoriteImages[index] as any)
+        setCurrentImage(targetArray[index] as any)
         setViewMode('viewer')
-        console.log('[App] 已设置 viewMode = viewer')
-      } else {
-        console.warn('[App] 未找到匹配的图片!')
+        setTimeout(() => setIsViewTransitioning(false), 300)
       }
     } else {
       const img = images.find((i: any) => i.id === image.id)
@@ -270,6 +286,7 @@ function App() {
         setCurrentImage(img)
         setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
         setViewMode('viewer')
+        setTimeout(() => setIsViewTransitioning(false), 300)
       }
     }
   }
@@ -393,8 +410,16 @@ function App() {
       setCurrentLibrary(library.id)
 
       const checkScanComplete = async () => {
-        for (let i = 0; i < 600; i++) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
+        let attempts = 0
+        const maxAttempts = 60
+        let delay = 500 // 初始延迟 500ms
+
+        while (attempts < maxAttempts) {
+          attempts++
+          await new Promise(resolve => setTimeout(resolve, delay))
+
+          // 指数退避：每次延迟增加 1.5 倍，最大 3000ms
+          delay = Math.min(delay * 1.5, 3000)
 
           await loadLibraries()
 
@@ -405,7 +430,7 @@ function App() {
             const state = useImageStore.getState()
             if (state.currentLibraryId !== library.id) {
               setCurrentLibrary(library.id)
-              await new Promise(resolve => setTimeout(resolve, 500))
+              await new Promise(resolve => setTimeout(resolve, 300))
             }
 
             try {
@@ -413,7 +438,7 @@ function App() {
 
               if (!currentState.currentLibraryId) {
                 setCurrentLibrary(library.id)
-                await new Promise(resolve => setTimeout(resolve, 500))
+                await new Promise(resolve => setTimeout(resolve, 300))
               }
 
               await loadFolderTree()
@@ -426,7 +451,7 @@ function App() {
                 setCurrentLibrary(null)
                 await new Promise(resolve => setTimeout(resolve, 100))
                 setCurrentLibrary(library.id)
-                await new Promise(resolve => setTimeout(resolve, 500))
+                await new Promise(resolve => setTimeout(resolve, 300))
                 await loadFolderTree()
                 await loadImages()
               }
@@ -501,7 +526,6 @@ function App() {
     } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
       // 收藏库中的图片需要从原库获取路径
       const fav = currentImage as any
-      // 使用 relative_path 字段（数据库返回的字段名）
       const imagePath = fav.relative_path || fav.image_path || fav.imagePath
       const libraryId = fav.library_id || fav.libraryId
       if (libraryId && imagePath) {
@@ -516,7 +540,7 @@ function App() {
     } else {
       setCurrentImagePath('')
     }
-  }, [currentImage, currentLibraryId, favoriteImageIndex])
+  }, [currentImage, currentLibraryId])
 
   const getCurrentImagePath = async () => {
     if (!currentLibraryId || !currentImage || currentLibraryId === FAVORITE_LIBRARY_ID) return ''
@@ -710,6 +734,7 @@ function App() {
                       }
                     }
                   }}
+                  onSwitchToSingleView={handleSwitchToSingleView}
                 />
               ) : (
                 <FolderTree
@@ -767,78 +792,82 @@ function App() {
               </button>
             </div>
           ) : viewMode === 'grid' ? (
-            isFavoriteLibrary ? (
-              gridLayoutMode === 'grid' ? (
-                <ImageGrid
-                  key="favorites"
-                  images={favoriteGridImages}
-                  selectedId={currentImage?.id}
-                  onImageClick={handleImageClick}
-                  onImageDoubleClick={handleImageDoubleClick}
-                  onToggleFavorite={handleGridToggleFavorite}
-                  thumbnailSize={thumbnailSize}
-                  scrollPosition={gridScrollRef.current}
-                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                  libraryId={FAVORITE_LIBRARY_ID}
-                  isFavoriteLibrary={true}
-                />
+            <div className={isViewTransitioning ? 'view-transition-exit' : undefined}>
+              {isFavoriteLibrary ? (
+                gridLayoutMode === 'grid' ? (
+                  <ImageGrid
+                    key="favorites"
+                    images={favoriteGridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={FAVORITE_LIBRARY_ID}
+                    isFavoriteLibrary={true}
+                  />
+                ) : (
+                  <MasonryGrid
+                    key="favorites-masonry"
+                    images={favoriteGridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={FAVORITE_LIBRARY_ID}
+                    isFavoriteLibrary={true}
+                  />
+                )
               ) : (
-                <MasonryGrid
-                  key="favorites-masonry"
-                  images={favoriteGridImages}
-                  selectedId={currentImage?.id}
-                  onImageClick={handleImageClick}
-                  onImageDoubleClick={handleImageDoubleClick}
-                  onToggleFavorite={handleGridToggleFavorite}
-                  thumbnailSize={thumbnailSize}
-                  scrollPosition={gridScrollRef.current}
-                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                  libraryId={FAVORITE_LIBRARY_ID}
-                  isFavoriteLibrary={true}
-                />
-              )
-            ) : (
-              gridLayoutMode === 'grid' ? (
-                <ImageGrid
-                  key={`${currentLibraryId}-${selectedFolder || 'all'}`}
-                  images={gridImages}
-                  selectedId={currentImage?.id}
-                  onImageClick={handleImageClick}
-                  onImageDoubleClick={handleImageDoubleClick}
-                  onToggleFavorite={handleGridToggleFavorite}
-                  thumbnailSize={thumbnailSize}
-                  scrollPosition={gridScrollRef.current}
-                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                  libraryId={currentLibraryId!}
-                />
-              ) : (
-                <MasonryGrid
-                  key={`${currentLibraryId}-${selectedFolder || 'all'}-masonry`}
-                  images={gridImages}
-                  selectedId={currentImage?.id}
-                  onImageClick={handleImageClick}
-                  onImageDoubleClick={handleImageDoubleClick}
-                  onToggleFavorite={handleGridToggleFavorite}
-                  thumbnailSize={thumbnailSize}
-                  scrollPosition={gridScrollRef.current}
-                  onScrollChange={(pos) => { gridScrollRef.current = pos }}
-                  libraryId={currentLibraryId!}
-                />
-              )
-            )
+                gridLayoutMode === 'grid' ? (
+                  <ImageGrid
+                    key={`${currentLibraryId}-${selectedFolder || 'all'}`}
+                    images={gridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={currentLibraryId!}
+                  />
+                ) : (
+                  <MasonryGrid
+                    key={`${currentLibraryId}-${selectedFolder || 'all'}-masonry`}
+                    images={gridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={currentLibraryId!}
+                  />
+                )
+              )}
+            </div>
           ) : viewMode === 'viewer' && currentImage ? (
-            <ImageViewer
-              src={`file://${currentImagePath}`}
-              alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
+            <div className={isViewTransitioning ? 'view-transition-enter' : undefined}>
+              <ImageViewer
+                src={`file://${currentImagePath}`}
+                alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
                 currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
-                totalImages={isFavoriteLibrary ? favoriteImages.length : images.length}
+                totalImages={isFavoriteLibrary ? (favoriteViewMode === 'single' ? singleFavoriteImages.length : favoriteImages.length) : images.length}
                 onPrevious={handlePrevious}
                 onNext={handleNext}
                 onClose={handleClose}
                 imageInfo={getCurrentImageInfo() || undefined}
                 slideshowSettings={slideshow}
                 onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
-            />
+              />
+            </div>
           ) : null}
         </main>
       </div>
