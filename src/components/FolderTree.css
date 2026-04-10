@@ -157,8 +157,10 @@
 /* ───────────────────────────────────────────────────────────────
    文件夹图标
    ─────────────────────────────────────────────────────────────── */
-.folder-icon {
-  font-size: var(--icon-lg);
+.folder-icon,
+.folder-icon-svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
   flex-shrink: 0;
   opacity: 0.8;
   transition: opacity var(--transition-fast);
@@ -232,17 +234,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
-  font-size: var(--icon-sm);
   flex-shrink: 0;
   transition: all var(--transition-fast);
+}
+
+.folder-favorite-btn svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
 }
 
 .folder-favorite-btn:hover {

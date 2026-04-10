@@ -275,12 +275,12 @@
 }
 
 .folder-sidebar-header .close-sidebar-btn {
-  width: var(--icon-xl);
-  height: var(--icon-xl);
+  width: var(--icon-md);
+  height: var(--icon-md);
   border: none;
   background: transparent;
   color: var(--text-muted);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   cursor: pointer;
   border-radius: var(--radius-sm);
   display: flex;
