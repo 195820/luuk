@@ -5,7 +5,6 @@
 
 .masonry-grid {
   width: 100%;
-  padding: var(--space-4);
   background-color: var(--bg-primary);
 }
 

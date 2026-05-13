@@ -319,8 +319,7 @@
 }
 
 /* 视图切换容器 - 确保高度正确 */
-.view-transition-exit,
-.view-transition-enter {
+.grid-view-container {
   height: 100%;
   width: 100%;
 }

@@ -61,33 +61,45 @@ export function ImageViewer({
   const imageRef = useRef<HTMLImageElement>(null)
   const transformRef = useRef<any>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
+  const pendingImageRef = useRef<{ width: number; height: number } | null>(null)
 
-  // 计算并应用缩放比例
-  const applyZoom = useCallback((imgWidth: number, imgHeight: number) => {
+  // 计算目标缩放比例
+  const calcScale = useCallback(
+    (imgWidth: number, imgHeight: number): number => {
+      const wrapper = wrapperRef.current
+      if (!wrapper || imgWidth === 0 || imgHeight === 0) return 1
+      const containerWidth = wrapper.clientWidth
+      const containerHeight = wrapper.clientHeight
+      if (containerWidth === 0 || containerHeight === 0) return 1
+      switch (fitMode) {
+        case 'fit-window':
+          return Math.min(containerWidth / imgWidth, containerHeight / imgHeight)
+        case 'actual-size':
+          return 1
+        case 'fit-width':
+          return containerWidth / imgWidth
+        case 'fit-height':
+          return containerHeight / imgHeight
+        default:
+          return 1
+      }
+    },
+    [fitMode]
+  )
+
+  // 在库完全初始化后应用缩放
+  const applyFit = useCallback(() => {
+    const controller = transformRef.current
     const wrapper = wrapperRef.current
-    if (!wrapper || !transformRef.current) return
-
-    const containerWidth = wrapper.clientWidth
-    const containerHeight = wrapper.clientHeight
-
-    let scale = 1
-    switch (fitMode) {
-      case 'fit-window':
-        scale = Math.min(containerWidth / imgWidth, containerHeight / imgHeight)
-        break
-      case 'actual-size':
-        scale = 1
-        break
-      case 'fit-width':
-        scale = containerWidth / imgWidth
-        break
-      case 'fit-height':
-        scale = containerHeight / imgHeight
-        break
-    }
-
-    transformRef.current.setTransformScale(scale)
-  }, [fitMode])
+    const pending = pendingImageRef.current
+    if (!controller || !wrapper || !pending) return
+    const scale = calcScale(pending.width, pending.height)
+    const scaledWidth = pending.width * scale
+    const scaledHeight = pending.height * scale
+    const positionX = (wrapper.clientWidth - scaledWidth) / 2
+    const positionY = (wrapper.clientHeight - scaledHeight) / 2
+    controller.setTransform(positionX, positionY, scale, 0)
+  }, [calcScale])
 
   // 重置变换
   const handleReset = useCallback(() => {
@@ -95,15 +107,14 @@ export function ImageViewer({
     setRotation(0)
     setFlipHorizontal(false)
     setFlipVertical(false)
-
     requestAnimationFrame(() => {
       const img = imageRef.current
       if (img?.complete && img.naturalWidth) {
-        transformRef.current?.centerView(undefined, 0)
-        applyZoom(img.naturalWidth, img.naturalHeight)
+        pendingImageRef.current = { width: img.naturalWidth, height: img.naturalHeight }
+        applyFit()
       }
     })
-  }, [applyZoom])
+  }, [applyFit])
 
   // 旋转
   const handleRotate = useCallback(() => {
@@ -120,31 +131,35 @@ export function ImageViewer({
     setFlipVertical(prev => !prev)
   }, [])
 
+  // 放大
+  const handleZoomIn = useCallback(() => {
+    transformRef.current?.zoomIn(0.5)
+  }, [])
+
+  // 缩小
+  const handleZoomOut = useCallback(() => {
+    transformRef.current?.zoomOut(0.5)
+  }, [])
+
   // 适应模式切换
   const handleFitModeChange = useCallback((mode: FitMode) => {
     setFitMode(mode)
   }, [])
 
   // 图片加载完成
-  const handleImageLoaded = useCallback((width: number, height: number) => {
-    setLoadingState({
-      loading: false,
-      error: false,
-      naturalWidth: width,
-      naturalHeight: height,
-    })
-
-    // 调试：打印容器尺寸
-    console.log('图片加载完成，尺寸:', { width, height })
-    console.log('wrapperRef 尺寸:', wrapperRef.current?.clientWidth, wrapperRef.current?.clientHeight)
-
-    // 关键修复：图片加载完成后，先居中再缩放
-    requestAnimationFrame(() => {
-      console.log('准备居中，wrapper 尺寸:', wrapperRef.current?.clientWidth, wrapperRef.current?.clientHeight)
-      transformRef.current?.centerView(undefined, 0)
-      applyZoom(width, height)
-    })
-  }, [applyZoom])
+  const handleImageLoaded = useCallback(
+    (width: number, height: number) => {
+      setLoadingState({
+        loading: false,
+        error: false,
+        naturalWidth: width,
+        naturalHeight: height,
+      })
+      pendingImageRef.current = { width, height }
+      applyFit()
+    },
+    [applyFit]
+  )
 
   // 重置状态当 src 变化
   useEffect(() => {
@@ -160,14 +175,17 @@ export function ImageViewer({
   useEffect(() => {
     const img = imageRef.current
     if (img?.complete && img.naturalWidth) {
-      applyZoom(img.naturalWidth, img.naturalHeight)
+      pendingImageRef.current = { width: img.naturalWidth, height: img.naturalHeight }
+      applyFit()
     }
-  }, [fitMode, applyZoom])
+  }, [fitMode, applyFit])
 
   // rotation/flip 变化时重新居中
   useEffect(() => {
     requestAnimationFrame(() => {
-      transformRef.current?.centerView(undefined, 0)
+      const controller = transformRef.current
+      if (!controller) return
+      controller.centerView(undefined, 0)
     })
   }, [rotation, flipHorizontal, flipVertical])
 
@@ -176,9 +194,7 @@ export function ImageViewer({
     const handleResetEvent = () => {
       handleReset()
     }
-
     window.addEventListener('image-viewer-reset', handleResetEvent)
-
     return () => {
       window.removeEventListener('image-viewer-reset', handleResetEvent)
     }
@@ -190,8 +206,11 @@ export function ImageViewer({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return
       }
-
       switch (e.key) {
+        case 'r':
+        case 'R':
+          handleReset()
+          break
         case '0':
           setFitMode('fit-window')
           break
@@ -221,13 +240,11 @@ export function ImageViewer({
           break
       }
     }
-
     window.addEventListener('keydown', handleKeyDown)
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose, onPrevious, onNext])
+  }, [handleReset, onClose, onPrevious, onNext])
 
   // 格式化文件大小
   const formatFileSize = (bytes: number): string => {
@@ -244,11 +261,7 @@ export function ImageViewer({
   }
 
   return (
-    <div className="image-viewer" ref={(el) => {
-      if (el) {
-        console.log('ImageViewer 挂载，尺寸:', el.clientWidth, el.clientHeight)
-      }
-    }}>
+    <div className="image-viewer">
       {/* 工具栏 */}
       <div className="viewer-toolbar">
         <div className="toolbar-group">
@@ -349,7 +362,7 @@ export function ImageViewer({
         </div>
       </div>
 
-      {/* 图片查看区域 - 简化为一层容器 */}
+      {/* 图片查看区域 */}
       <div ref={wrapperRef} className="viewer-canvas">
         <TransformWrapper
           initialScale={1}
@@ -359,22 +372,18 @@ export function ImageViewer({
           centerZoomedOut={true}
           centerOnInit={false}
           animationTime={0}
+          alignmentAnimation={{ disabled: true }}
+          onInit={() => {
+            if (pendingImageRef.current) {
+              applyFit()
+            }
+          }}
           wheel={{ step: 0.5 }}
           pinch={{ step: 0.5 }}
           doubleClick={{ step: 1.5 }}
-          wrapperStyle={{
-            width: '100%',
-            height: '100%',
-          }}
-          contentStyle={{
-            width: '100%',
-            height: '100%',
-          }}
-          ref={(ref) => {
-            if (ref) {
-              transformRef.current = ref
-            }
-          }}
+          wrapperStyle={{ width: '100%', height: '100%' }}
+          contentStyle={{ width: '100%', height: '100%' }}
+          ref={(ref) => { if (ref) transformRef.current = ref }}
         >
           <TransformComponent>
             <img

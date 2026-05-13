@@ -135,7 +135,7 @@
   max-height: none;
   width: auto;
   height: auto;
-  object-fit: contain;
+  object-fit: none;
   user-select: none;
   pointer-events: auto;
   display: block;

@@ -792,7 +792,7 @@ function App() {
               </button>
             </div>
           ) : viewMode === 'grid' ? (
-            <div className={isViewTransitioning ? 'view-transition-exit' : undefined}>
+            <div className="grid-view-container">
               {isFavoriteLibrary ? (
                 gridLayoutMode === 'grid' ? (
                   <ImageGrid

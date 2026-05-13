@@ -150,10 +150,7 @@ export function MasonryGrid({
     <div
       ref={parentRef}
       className="masonry-grid"
-      style={{
-        height: '100%',
-        overflow: 'auto'
-      }}
+      style={{ height: '100%', overflow: 'auto' }}
     >
       <div
         className="masonry-grid-inner"
@@ -161,6 +158,7 @@ export function MasonryGrid({
           height: `${totalHeight}px`,
           position: 'relative',
           width: '100%',
+          padding: 'var(--space-4)',
         }}
       >
         {columns.map((column, columnIndex) => {
