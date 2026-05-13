@@ -41,11 +41,11 @@ npm run preview      # 预览构建结果
 
 ```
 E:\luuk\
-├── electron/           # Electron 主进程
-│   ├── main.ts         # 主入口，窗口创建，IPC 注册
-│   └── preload.ts      # 预加载脚本，暴露 electronAPI
+├── electron/                   # Electron 主进程
+│   ├── main.ts                 # 主入口，窗口创建，IPC 注册
+│   └── preload.ts              # 预加载脚本，暴露 electronAPI
 ├── src/
-│   ├── main/           # 后端服务
+│   ├── main/                   # 后端服务
 │   │   ├── services/
 │   │   │   ├── database.ts      # MasterDB + ThumbnailsDB
 │   │   │   ├── image-service.ts # 统一服务接口（单例）
@@ -54,19 +54,43 @@ E:\luuk\
 │   │   │   └── cache.ts         # LRU 内存缓存 (200MB)
 │   │   └── ipc/
 │   │       └── library-handlers.ts  # IPC 处理器
-│   ├── components/     # React 组件
-│   │   ├── ImageViewer.tsx  # 查看器（缩放/平移/旋转）
-│   │   ├── ImageGrid.tsx    # 网格视图（虚拟滚动）
-│   │   ├── MasonryGrid.tsx  # 瀑布流视图
-│   │   ├── FolderTree.tsx   # 文件夹树
-│   │   └── SortControl.tsx  # 排序控制
-│   ├── stores/
-│   │   └── imageStore.ts    # Zustand 状态（核心）
-│   └── types/
-│       └── index.ts         # TypeScript 类型定义
-├── dist/              # Vite 构建输出
-├── dist-electron/     # Electron 构建输出
-└── release/           # 安装包输出
+│   ├── components/             # React 组件
+│   │   ├── ImageViewer.tsx      # 查看器（缩放/平移/旋转/翻转/幻灯片）
+│   │   ├── ImageGrid.tsx        # 网格视图（虚拟滚动）
+│   │   ├── ImageGridItem.tsx    # 网格单项
+│   │   ├── MasonryGrid.tsx      # 瀑布流视图
+│   │   ├── FolderTree.tsx       # 文件夹树
+│   │   ├── SortControl.tsx      # 排序控制
+│   │   ├── RatingStars.tsx      # 评分组件
+│   │   ├── ScanProgress.tsx     # 扫描进度
+│   │   ├── layout/
+│   │   │   ├── AppHeader.tsx    # 应用头部
+│   │   │   ├── AppSidebar.tsx   # 侧边栏
+│   │   │   ├── AppFooter.tsx    # 应用底部
+│   │   │   └── SlideshowBar.tsx # 幻灯片控制栏
+│   │   ├── library/
+│   │   │   └── LibraryPanel.tsx # 库面板
+│   │   └── hooks/
+│   │       ├── useAppLogic.ts   # 应用逻辑 hook
+│   │       └── useDebugLog.ts   # 调试日志 hook
+│   ├── stores/                 # Zustand 状态管理（已从单文件拆分为多 store）
+│   │   ├── imageStore.ts        # 图片数据 store（核心）
+│   │   ├── libraryStore.ts      # 库信息 store
+│   │   ├── favoriteStore.ts     # 收藏 store
+│   │   ├── folderStore.ts       # 文件夹 store
+│   │   ├── uiStore.ts           # UI 状态 store
+│   │   └── index.ts             # 统一导出
+│   ├── utils/
+│   │   └── sort.ts              # 排序工具
+│   ├── types/
+│   │   └── index.ts             # TypeScript 类型定义
+│   ├── global.d.ts              # 全局类型声明
+│   ├── variables.module.css     # CSS 变量模块
+│   ├── App.module.css           # App 模块样式
+│   └── index.css                # 全局样式
+├── dist/                       # Vite 构建输出
+├── dist-electron/              # Electron 构建输出
+└── release/                    # 安装包输出
 ```
 
 ## 🔑 关键设计
@@ -105,7 +129,7 @@ E:\luuk\
 1. **Electron 下载**: 使用镜像源（项目已配置 `.npmrc`）
 2. **路径处理**: 使用 `path.normalize()` 处理跨平台路径
 3. **IPC 通信**: 前端通过 `window.electronAPI` 调用后端功能
-4. **状态管理**: 所有状态集中在 `imageStore.ts`，组件通过 hooks 访问
+4. **状态管理**: Zustand store 已拆分为多个独立 store（imageStore、libraryStore、favoriteStore、folderStore、uiStore），通过 `stores/index.ts` 统一导出。组件通过 hooks 访问
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
 

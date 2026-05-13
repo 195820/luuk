@@ -1,0 +1,215 @@
+/* ═══════════════════════════════════════════════════════════════
+   ImageGrid.module.css - Refined Minimalism Aesthetic
+
+   注意：此文件为 CSS Module，样式只作用于当前组件
+   ═══════════════════════════════════════════════════════════════ */
+
+.imageGrid {
+  width: 100%;
+  padding: var(--space-4);
+  background-color: var(--bg-primary);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   图片卡片 - 极简设计
+   ─────────────────────────────────────────────────────────────── */
+.imageGridItem {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+}
+
+.imageGridItem:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-elevated);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.imageGridItem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.imageGridItem.selected {
+  border-color: var(--border-hover);
+  background: var(--bg-tertiary);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   缩略图区域
+   ─────────────────────────────────────────────────────────────── */
+.imageGridThumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: 0;
+  overflow: hidden;
+  margin-bottom: 0;
+  aspect-ratio: 1;
+  position: relative;
+  transition: all var(--transition-fast);
+}
+
+.imageGridItem:hover .imageGridThumbnail {
+  background: var(--bg-elevated);
+}
+
+.imageGridThumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform var(--transition-slow);
+}
+
+.imageGridItem:hover .imageGridThumbnail img {
+  transform: scale(1.02);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   收藏按钮 - 角落点缀
+   ─────────────────────────────────────────────────────────────── */
+.imageGridFavoriteBtn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  border-radius: var(--radius-full);
+  background: var(--overlay-darker);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: all var(--transition-normal);
+  opacity: 0;
+  transform: scale(0.9);
+}
+
+.imageGridItem:hover .imageGridFavoriteBtn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.imageGridFavoriteBtn:hover {
+  background: var(--overlay-darkest);
+  border-color: var(--border-hover);
+  transform: scale(1.05);
+}
+
+.imageGridFavoriteBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+
+.imageGridFavoriteBtn svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--star-empty);
+  transition: all var(--transition-fast);
+}
+
+.imageGridFavoriteBtn:hover svg {
+  color: var(--favorite);
+}
+
+.imageGridFavoriteBtn svg[fill="currentColor"] {
+  color: var(--favorite);
+  filter: drop-shadow(0 2px 4px rgba(255, 71, 87, 0.3));
+}
+
+.imageGridThumbnail:hover .imageGridFavoriteBtn svg[fill="none"] {
+  color: var(--favorite-hover);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   信息区域 - 悬浮渐变
+   ─────────────────────────────────────────────────────────────── */
+.imageGridInfo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-2) var(--space-2);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(
+    to top,
+    var(--overlay-darkest) 0%,
+    var(--overlay-darker) 60%,
+    transparent 100%
+  );
+  color: white;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
+  pointer-events: none;
+}
+
+.imageGridItem:hover .imageGridInfo {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.imageGridName {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-medium);
+  transition: color var(--transition-fast);
+}
+
+.imageGridItem:hover .imageGridName {
+  color: var(--text-primary);
+}
+
+.imageGridMeta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.imageGridItem:hover .imageGridMeta {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.imageGridMeta .fileSize {
+  opacity: 0.8;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   加载/错误状态
+   ─────────────────────────────────────────────────────────────── */
+.imageGridLoading,
+.imageGridError {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.imageGridError {
+  color: var(--error);
+}

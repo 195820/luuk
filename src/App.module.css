@@ -1,9 +1,15 @@
 /* ═══════════════════════════════════════════════════════════════
-   App.css - Refined Minimalism Aesthetic
+   App.module.css - Refined Minimalism Aesthetic
    设计哲学：悬浮头部 · 毛玻璃效果 · 幽灵按钮 · 隐形边界
+
+   注意：此文件为 CSS Module，样式只作用于当前组件
+   使用 :global() 导出需要全局生效的样式
    ═══════════════════════════════════════════════════════════════ */
 
-.app-container {
+/* ───────────────────────────────────────────────────────────────
+   容器
+   ─────────────────────────────────────────────────────────────── */
+.appContainer {
   width: 100%;
   height: 100%;
   display: flex;
@@ -13,7 +19,7 @@
 /* ───────────────────────────────────────────────────────────────
    头部 - 悬浮毛玻璃设计
    ─────────────────────────────────────────────────────────────── */
-.app-header {
+.appHeader {
   height: var(--header-height);
   padding: 0 var(--space-5);
   display: flex;
@@ -26,7 +32,7 @@
   transition: all var(--transition-normal);
 }
 
-.app-header h1 {
+.appHeader h1 {
   font-size: var(--text-lg);
   font-weight: var(--font-semibold);
   letter-spacing: 0.02em;
@@ -36,7 +42,7 @@
   background-clip: text;
 }
 
-.header-actions {
+.headerActions {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -46,8 +52,8 @@
 /* ───────────────────────────────────────────────────────────────
    通用头部按钮 - 幽灵按钮风格
    ─────────────────────────────────────────────────────────────── */
-.header-action-btn {
-  position: relative; /* 确保 ::before 伪元素不会超出按钮边界 */
+.headerActionBtn {
+  position: relative;
   padding: var(--space-2) var(--space-3);
   background: transparent;
   border: 1px solid var(--border);
@@ -63,7 +69,7 @@
   letter-spacing: 0.02em;
 }
 
-.header-action-btn::before {
+.headerActionBtn::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -71,32 +77,32 @@
   opacity: 0;
   transition: opacity var(--transition-fast);
   border-radius: var(--radius-md);
-  pointer-events: none; /* 防止伪元素拦截点击事件 */
+  pointer-events: none;
 }
 
-.header-action-btn:hover {
+.headerActionBtn:hover {
   border-color: var(--border-hover);
   color: var(--text-primary);
   background: var(--overlay-light);
 }
 
-.header-action-btn:focus-visible {
+.headerActionBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.header-action-btn:disabled {
+.headerActionBtn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
-.header-action-btn:disabled:hover {
+.headerActionBtn:disabled:hover {
   background: transparent;
   border-color: var(--border);
 }
 
 /* 文件夹切换按钮 */
-.folder-toggle-btn {
+.folderToggleBtn {
   width: var(--btn-md);
   height: var(--btn-md);
   padding: 0;
@@ -112,19 +118,19 @@
   justify-content: center;
 }
 
-.folder-toggle-btn:hover {
+.folderToggleBtn:hover {
   border-color: var(--border-hover);
   color: var(--text-primary);
   background: var(--overlay-light);
 }
 
-.folder-toggle-btn:focus-visible {
+.folderToggleBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* 库管理按钮 */
-.library-btn {
+.libraryBtn {
   padding: var(--space-2) var(--space-3);
   background: transparent;
   border: 1px solid var(--border);
@@ -136,42 +142,42 @@
   letter-spacing: 0.02em;
 }
 
-.library-btn:hover {
+.libraryBtn:hover {
   border-color: var(--border-hover);
   color: var(--text-primary);
   background: var(--overlay-light);
 }
 
-.library-btn:focus-visible {
+.libraryBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* 视图切换按钮 - 强调色 */
-.header-view-btn {
+.headerViewBtn {
   background: var(--overlay-selected);
   border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
-.header-view-btn:hover {
+.headerViewBtn:hover {
   background: var(--overlay-lighter);
   border-color: var(--border-hover);
 }
 
 /* 风格切换按钮 - 更 subtle */
-.header-style-btn {
+.headerStyleBtn {
   background: var(--bg-tertiary);
   border-color: var(--border);
 }
 
-.header-style-btn:hover {
+.headerStyleBtn:hover {
   background: var(--bg-elevated);
   border-color: var(--border-hover);
 }
 
 /* 缩略图尺寸调节 - 精致滑块 */
-.thumbnail-size-control {
+.thumbnailSizeControl {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -179,7 +185,7 @@
   color: var(--text-secondary);
 }
 
-.thumbnail-size-control input[type="range"] {
+.thumbnailSizeControl input[type="range"] {
   width: 80px;
   height: 4px;
   -webkit-appearance: none;
@@ -189,11 +195,11 @@
   transition: all var(--transition-fast);
 }
 
-.thumbnail-size-control input[type="range"]:hover {
+.thumbnailSizeControl input[type="range"]:hover {
   background: var(--bg-elevated);
 }
 
-.thumbnail-size-control input[type="range"]::-webkit-slider-thumb {
+.thumbnailSizeControl input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: var(--icon-sm);
   height: var(--icon-sm);
@@ -204,13 +210,13 @@
   box-shadow: var(--shadow-sm);
 }
 
-.thumbnail-size-control input[type="range"]::-webkit-slider-thumb:hover {
+.thumbnailSizeControl input[type="range"]::-webkit-slider-thumb:hover {
   background: var(--text-primary);
   transform: scale(1.15);
   box-shadow: 0 2px 8px rgba(255, 255, 255, 0.1);
 }
 
-.thumbnail-size-control span {
+.thumbnailSizeControl span {
   min-width: 40px;
   text-align: right;
   font-size: var(--text-xs);
@@ -219,7 +225,7 @@
 }
 
 /* 图片计数 - 悬浮徽章 */
-.image-count {
+.imageCount {
   font-size: var(--text-xs);
   color: var(--text-muted);
   background: var(--bg-tertiary);
@@ -230,7 +236,7 @@
   transition: all var(--transition-fast);
 }
 
-.image-count:hover {
+.imageCount:hover {
   border-color: var(--border-hover);
   background: var(--bg-elevated);
 }
@@ -238,14 +244,14 @@
 /* ───────────────────────────────────────────────────────────────
    主体区域
    ─────────────────────────────────────────────────────────────── */
-.app-body {
+.appBody {
   flex: 1;
   display: flex;
   overflow: hidden;
 }
 
 /* 侧边栏 - 毛玻璃分隔 */
-.folder-sidebar {
+.folderSidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-min-width);
   max-width: var(--sidebar-max-width);
@@ -257,7 +263,7 @@
   transition: all var(--transition-normal);
 }
 
-.folder-sidebar-header {
+.folderSidebarHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -266,7 +272,7 @@
   background: var(--bg-tertiary);
 }
 
-.folder-sidebar-header h2 {
+.folderSidebarHeader h2 {
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
   color: var(--text-primary);
@@ -274,7 +280,7 @@
   text-transform: uppercase;
 }
 
-.folder-sidebar-header .close-sidebar-btn {
+.folderSidebarHeader .closeSidebarBtn {
   width: var(--icon-md);
   height: var(--icon-md);
   border: none;
@@ -289,52 +295,38 @@
   transition: all var(--transition-fast);
 }
 
-.folder-sidebar-header .close-sidebar-btn:hover {
+.folderSidebarHeader .closeSidebarBtn:hover {
   background: var(--overlay-lighter);
   color: var(--text-primary);
 }
 
-.folder-sidebar-header .close-sidebar-btn:focus-visible {
+.folderSidebarHeader .closeSidebarBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.folder-sidebar-content {
+.folderSidebarContent {
   flex: 1;
   overflow-y: auto;
   padding: var(--space-2) 0;
 }
 
 /* 主内容区域 */
-.app-main {
+.appMain {
   flex: 1;
   overflow: hidden;
   position: relative;
   background: var(--bg-primary);
-  height: 100%;
 }
 
-.app-main.with-sidebar {
+.appMain.withSidebar {
   /* 当有侧边栏时，主内容区域自动适应 */
-}
-
-/* 视图切换容器 - 确保高度正确 */
-.view-transition-exit,
-.view-transition-enter {
-  height: 100%;
-  width: 100%;
-}
-
-/* 图片查看器容器 - 始终有高度 */
-.image-viewer-container {
-  height: 100%;
-  width: 100%;
 }
 
 /* ───────────────────────────────────────────────────────────────
    底部状态栏 - 隐形边界
    ─────────────────────────────────────────────────────────────── */
-.app-footer {
+.appFooter {
   height: var(--footer-height);
   padding: 0 var(--space-5);
   display: flex;
@@ -349,14 +341,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.app-footer span {
+.appFooter span {
   -webkit-app-region: no-drag;
 }
 
 /* ───────────────────────────────────────────────────────────────
    幻灯片控制栏 - 强调色带
    ─────────────────────────────────────────────────────────────── */
-.slideshow-bar {
+.slideshowBar {
   height: 44px;
   padding: 0 var(--space-5);
   display: flex;
@@ -369,14 +361,14 @@
   border-bottom: 1px solid var(--border);
 }
 
-.slideshow-controls {
+.slideshowControls {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   -webkit-app-region: no-drag;
 }
 
-.slideshow-controls select {
+.slideshowControls select {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -387,21 +379,21 @@
   transition: all var(--transition-fast);
 }
 
-.slideshow-controls select:hover {
+.slideshowControls select:hover {
   border-color: var(--border-hover);
 }
 
-.slideshow-controls select:focus-visible {
+.slideshowControls select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.slideshow-controls select option {
+.slideshowControls select option {
   background: var(--bg-secondary);
   color: var(--text-primary);
 }
 
-.slideshow-stop-btn {
+.slideshowStopBtn {
   padding: var(--space-1) var(--space-3);
   background: transparent;
   border: 1px solid var(--border);
@@ -412,12 +404,12 @@
   transition: all var(--transition-fast);
 }
 
-.slideshow-stop-btn:hover {
+.slideshowStopBtn:hover {
   border-color: var(--text-muted);
   color: var(--text-primary);
 }
 
-.slideshow-stop-btn:focus-visible {
+.slideshowStopBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -425,7 +417,7 @@
 /* ───────────────────────────────────────────────────────────────
    库管理面板 - 悬浮卡片
    ─────────────────────────────────────────────────────────────── */
-.library-panel {
+.libraryPanel {
   position: absolute;
   top: var(--header-height);
   left: var(--space-5);
@@ -440,7 +432,7 @@
   overflow: hidden;
 }
 
-.library-panel-header {
+.libraryPanelHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -449,14 +441,14 @@
   background: var(--bg-tertiary);
 }
 
-.library-panel-header h3 {
+.libraryPanelHeader h3 {
   font-size: var(--text-md);
   font-weight: var(--font-semibold);
   margin: 0;
   letter-spacing: 0.02em;
 }
 
-.library-panel-header .close-btn {
+.libraryPanelHeader .closeBtn {
   width: var(--btn-sm);
   height: var(--btn-sm);
   border: none;
@@ -471,23 +463,23 @@
   transition: all var(--transition-fast);
 }
 
-.library-panel-header .close-btn:hover {
+.libraryPanelHeader .closeBtn:hover {
   background: var(--overlay-lighter);
   color: var(--text-primary);
 }
 
-.library-panel-header .close-btn:focus-visible {
+.libraryPanelHeader .closeBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.library-panel-content {
+.libraryPanelContent {
   padding: var(--space-3) var(--space-4);
   max-height: 320px;
   overflow-y: auto;
 }
 
-.add-library-btn {
+.addLibraryBtn {
   width: 100%;
   padding: var(--space-3) var(--space-4);
   background: var(--overlay-selected);
@@ -500,18 +492,18 @@
   letter-spacing: 0.02em;
 }
 
-.add-library-btn:hover {
+.addLibraryBtn:hover {
   background: var(--overlay-lighter);
   border-color: var(--border-hover);
 }
 
-.add-library-btn:focus-visible {
+.addLibraryBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 /* 空状态提示 */
-.empty-hint {
+.emptyHint {
   text-align: center;
   color: var(--text-secondary);
   font-size: var(--text-base);
@@ -519,13 +511,13 @@
 }
 
 /* 库列表 */
-.library-list {
+.libraryList {
   list-style: none;
   padding: 0;
   margin: var(--space-3) 0 0 0;
 }
 
-.library-item {
+.libraryItem {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -537,54 +529,54 @@
   transition: all var(--transition-fast);
 }
 
-.library-item:hover {
+.libraryItem:hover {
   background: var(--bg-elevated);
   border-color: var(--border);
 }
 
-.library-item:focus-visible {
+.libraryItem:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.library-item.active {
+.libraryItem.active {
   border-color: var(--border-hover);
   background: var(--overlay-accent);
 }
 
-.library-item-info {
+.libraryItemInfo {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.library-item-info strong {
+.libraryItemInfo strong {
   font-size: var(--text-md);
   color: var(--text-primary);
   font-weight: var(--font-medium);
 }
 
-.library-path {
+.libraryPath {
   font-size: var(--text-xs);
   color: var(--text-muted);
   word-break: break-all;
   font-family: 'Consolas', 'Monaco', monospace;
 }
 
-.library-status {
+.libraryStatus {
   font-size: var(--text-xs);
   color: var(--text-dim);
   margin-top: var(--space-1);
 }
 
-.library-item-actions {
+.libraryItemActions {
   display: flex;
   gap: var(--space-2);
   flex-shrink: 0;
 }
 
-.library-item-actions button {
+.libraryItemActions button {
   padding: var(--space-1) var(--space-2);
   border: none;
   border-radius: var(--radius-sm);
@@ -595,29 +587,29 @@
   color: var(--text-secondary);
 }
 
-.library-item-actions button:hover {
+.libraryItemActions button:hover {
   background: var(--overlay-lighter);
   color: var(--text-primary);
 }
 
-.library-item-actions button:focus-visible {
+.libraryItemActions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.scan-btn {
+.scanBtn {
   color: var(--text-secondary);
 }
 
-.scan-btn:hover {
+.scanBtn:hover {
   color: var(--success);
 }
 
-.remove-btn {
+.removeBtn {
   color: var(--text-secondary);
 }
 
-.remove-btn:hover {
+.removeBtn:hover {
   color: var(--error);
   background: rgba(244, 67, 54, 0.1);
 }
@@ -625,13 +617,13 @@
 /* ───────────────────────────────────────────────────────────────
    库选择器
    ─────────────────────────────────────────────────────────────── */
-.library-selector {
+.librarySelector {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.library-selector select {
+.librarySelector select {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
@@ -643,50 +635,29 @@
   transition: all var(--transition-fast);
 }
 
-.library-selector select:hover {
+.librarySelector select:hover {
   border-color: var(--border-hover);
 }
 
-.library-selector select:focus {
+.librarySelector select:focus {
   border-color: var(--border-hover);
 }
 
-.library-selector select:focus-visible {
+.librarySelector select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.library-selector select:disabled {
+.librarySelector select:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.library-btn {
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: var(--text-base);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.library-btn:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border-hover);
-}
-
-.library-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 /* ───────────────────────────────────────────────────────────────
    空状态 - 居中提示
    ─────────────────────────────────────────────────────────────── */
-.no-library-hint,
-.no-images-hint {
+.noLibraryHint,
+.noImagesHint {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -696,8 +667,8 @@
   color: var(--text-secondary);
 }
 
-.no-library-hint h2,
-.no-images-hint h2 {
+.noLibraryHint h2,
+.noImagesHint h2 {
   font-size: var(--text-xl);
   margin: 0;
   color: var(--text-primary);
@@ -705,15 +676,15 @@
   letter-spacing: 0.02em;
 }
 
-.no-library-hint p,
-.no-images-hint p {
+.noLibraryHint p,
+.noImagesHint p {
   font-size: var(--text-md);
   margin: 0;
   color: var(--text-muted);
 }
 
-.add-library-btn-large,
-.scan-btn-large {
+.addLibraryBtnLarge,
+.scanBtnLarge {
   padding: var(--space-3) var(--space-6);
   background: var(--overlay-selected);
   border: 1px solid var(--border-hover);
@@ -726,14 +697,14 @@
   letter-spacing: 0.02em;
 }
 
-.add-library-btn-large:hover,
-.scan-btn-large:hover {
+.addLibraryBtnLarge:hover,
+.scanBtnLarge:hover {
   background: var(--overlay-lighter);
   border-color: var(--border-hover);
 }
 
-.add-library-btn-large:focus-visible,
-.scan-btn-large:focus-visible {
+.addLibraryBtnLarge:focus-visible,
+.scanBtnLarge:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -741,8 +712,8 @@
 /* ───────────────────────────────────────────────────────────────
    全局加载/错误状态
    ─────────────────────────────────────────────────────────────── */
-.global-loading,
-.global-error {
+.globalLoading,
+.globalError {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -752,7 +723,7 @@
   color: var(--text-secondary);
 }
 
-.global-loading .loading-spinner {
+.globalLoading .loadingSpinner {
   width: 40px;
   height: 40px;
   border: 2px solid var(--border);
@@ -765,8 +736,41 @@
   to { transform: rotate(360deg); }
 }
 
-.global-error .error-icon {
+.globalError .errorIcon {
   font-size: var(--icon-2xl);
   color: var(--error);
   opacity: 0.8;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   视图过渡动画
+   ─────────────────────────────────────────────────────────────── */
+.viewTransitionEnter {
+  animation: viewFadeIn 0.3s var(--ease-out-expo) forwards;
+}
+
+.viewTransitionExit {
+  animation: viewFadeOut 0.3s var(--ease-out-expo) forwards;
+}
+
+@keyframes viewFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes viewFadeOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.98);
+  }
 }

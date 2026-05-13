@@ -1,0 +1,82 @@
+/* ═══════════════════════════════════════════════════════════════
+   RatingStars.module.css - Refined Minimalism Aesthetic
+
+   注意：此文件为 CSS Module，样式只作用于当前组件
+   ═══════════════════════════════════════════════════════════════ */
+
+.ratingStars {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   星星按钮 - 极简设计
+   ─────────────────────────────────────────────────────────────── */
+.ratingStar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--star-empty);
+  transition: all var(--transition-fast);
+  padding: 0;
+  border-radius: 0;
+}
+
+.ratingStar:hover {
+  transform: scale(1.15);
+  color: var(--star-filled);
+  filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.3));
+}
+
+.ratingStar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  color: var(--star-filled);
+}
+
+.ratingStar.isFilled {
+  color: var(--star-filled);
+  filter: drop-shadow(0 2px 4px rgba(255, 215, 0, 0.2));
+}
+
+.ratingStar svg {
+  display: block;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   尺寸变体
+   ─────────────────────────────────────────────────────────────── */
+.ratingStars.ratingSmall .ratingStar svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+.ratingStars.ratingMedium .ratingStar svg {
+  width: var(--icon-md);
+  height: var(--icon-md);
+}
+
+.ratingStars.ratingLarge .ratingStar svg {
+  width: var(--icon-xl);
+  height: var(--icon-xl);
+}
+
+.ratingStars.ratingLarge .ratingStar {
+  gap: var(--space-1);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   加载状态
+   ─────────────────────────────────────────────────────────────── */
+.ratingStars.loading {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.ratingStars.loading .ratingStar {
+  cursor: wait;
+}

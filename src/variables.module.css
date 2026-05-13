@@ -1,0 +1,153 @@
+/* ═══════════════════════════════════════════════════════════
+   variables.module.css - 全局 CSS 变量
+   通过 :global() 导出变量，供所有组件使用
+   ═══════════════════════════════════════════════════════════ */
+
+:global {
+  /* ═══════════════════════════════════════════════════════════
+     精致极简设计系统 · Refined Minimalism
+     ═══════════════════════════════════════════════════════════ */
+
+  /* ────────────────────────────────────────────────────────────
+     颜色系统
+     ──────────────────────────────────────────────────────────── */
+  /* 背景色 - 纯黑画布 */
+  --bg-primary: #050505;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #0f0f0f;
+  --bg-dialog: #0a0a0a;
+  --bg-elevated: #141414;
+
+  /* 文字颜色 - 克制分层 */
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.3);
+  --text-light: rgba(255, 255, 255, 0.7);
+
+  /* 主题色 - 克制的强调 */
+  --accent: rgba(255, 255, 255, 0.9);
+  --accent-hover: rgba(255, 255, 255, 1);
+
+  /* 功能色 - 低饱和度 */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --success: rgba(76, 175, 80, 0.8);
+  --warning: rgba(255, 152, 0, 0.8);
+  --error: rgba(244, 67, 54, 0.8);
+
+  /* 特殊颜色 - 精致克制 */
+  --star-empty: rgba(255, 255, 255, 0.2);
+  --star-filled: #ffd700;
+  --favorite: rgba(255, 71, 87, 0.9);
+  --favorite-hover: rgba(255, 71, 87, 1);
+  --folder-favorite: rgba(251, 191, 36, 0.8);
+  --progress-start: rgba(76, 175, 80, 0.7);
+  --progress-end: rgba(139, 195, 74, 0.7);
+
+  /* 叠加层颜色 - 微妙的深度 */
+  --overlay-dark: rgba(0, 0, 0, 0.6);
+  --overlay-darker: rgba(0, 0, 0, 0.75);
+  --overlay-darkest: rgba(0, 0, 0, 0.9);
+  --overlay-light: rgba(255, 255, 255, 0.03);
+  --overlay-lighter: rgba(255, 255, 255, 0.05);
+  --overlay-selected: rgba(255, 255, 255, 0.08);
+  --overlay-accent: rgba(255, 255, 255, 0.04);
+  --overlay-folder-favorite: rgba(251, 191, 36, 0.1);
+
+  /* 阴影 - 微妙的深度暗示 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.5);
+
+  /* 毛玻璃效果 */
+  --glass-bg: rgba(20, 20, 20, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-blur: 20px;
+
+  /* ==============================
+     间距尺度（基于 4px 网格）
+     ============================== */
+  --space-0: 0;
+  --space-1: 0.25rem;   /* 4px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+
+  /* ==============================
+     字体排印系统
+     ============================== */
+  /* 字号 */
+  --text-xs: 0.625rem;   /* 10px */
+  --text-sm: 0.75rem;    /* 12px */
+  --text-base: 0.875rem; /* 14px */
+  --text-md: 0.95rem;    /* 15px */
+  --text-lg: 1rem;       /* 16px */
+  --text-xl: 1.125rem;   /* 18px */
+  --text-2xl: 1.25rem;   /* 20px */
+
+  /* 字重 */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* 行高 */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  /* ==============================
+     圆角尺度
+     ============================== */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-2xl: 12px;
+  --radius-full: 9999px;
+
+  /* ────────────────────────────────────────────────────────────
+     过渡与动画 - 精致的缓动曲线
+     ──────────────────────────────────────────────────────────── */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-smooth: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* 弹性动画 */
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+
+  /* ==============================
+     组件尺寸
+     ============================== */
+  /* 图标尺寸 */
+  --icon-xs: 14px;
+  --icon-sm: 16px;
+  --icon-md: 18px;
+  --icon-lg: 20px;
+  --icon-xl: 24px;
+  --icon-2xl: 32px;
+  --icon-3xl: 48px;
+
+  /* 按钮尺寸 */
+  --btn-sm: 28px;
+  --btn-md: 36px;
+  --btn-lg: 44px;
+
+  /* 布局尺寸 */
+  --header-height: 50px;
+  --footer-height: 32px;
+  --sidebar-width: 240px;
+  --sidebar-min-width: 200px;
+  --sidebar-max-width: 320px;
+}

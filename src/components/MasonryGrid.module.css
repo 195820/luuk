@@ -1,0 +1,32 @@
+/* ═══════════════════════════════════════════════════════════════
+   MasonryGrid.module.css - Refined Minimalism Aesthetic
+
+   注意：此文件为 CSS Module，样式只作用于当前组件
+   ═══════════════════════════════════════════════════════════════ */
+
+.masonryGrid {
+  width: 100%;
+  padding: var(--space-4);
+  background-color: var(--bg-primary);
+}
+
+.masonryGridInner {
+  width: 100%;
+  position: relative;
+}
+
+.masonryColumn {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  box-sizing: border-box;
+}
+
+.masonryItem {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transition: transform var(--transition-normal);
+}

@@ -1,14 +1,23 @@
-.image-viewer {
+/* ═══════════════════════════════════════════════════════════════
+   ImageViewer.module.css - Refined Minimalism Aesthetic
+
+   注意：此文件为 CSS Module，样式只作用于当前组件
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 主容器 */
+.imageViewer {
   width: 100%;
   height: 100%;
   background-color: var(--bg-primary);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-/* 工具栏 */
-.viewer-toolbar {
+/* ───────────────────────────────────────────────────────────────
+   工具栏
+   ─────────────────────────────────────────────────────────────── */
+.viewerToolbar {
   height: var(--header-height);
   padding: 0 var(--space-4);
   display: flex;
@@ -17,7 +26,6 @@
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
-  flex-shrink: 0;
   animation: toolbarSlideIn 0.3s var(--ease-out-expo) forwards;
 }
 
@@ -32,7 +40,7 @@
   }
 }
 
-.toolbar-group {
+.toolbarGroup {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -40,12 +48,12 @@
   opacity: 0;
 }
 
-.toolbar-group:nth-child(1) { animation-delay: 0.05s; }
-.toolbar-group:nth-child(2) { animation-delay: 0.1s; }
-.toolbar-group:nth-child(3) { animation-delay: 0.15s; }
-.toolbar-group:nth-child(4) { animation-delay: 0.2s; }
-.toolbar-group:nth-child(5) { animation-delay: 0.25s; }
-.toolbar-group:nth-child(6) { animation-delay: 0.3s; }
+.toolbarGroup:nth-child(1) { animation-delay: 0.05s; }
+.toolbarGroup:nth-child(2) { animation-delay: 0.1s; }
+.toolbarGroup:nth-child(3) { animation-delay: 0.15s; }
+.toolbarGroup:nth-child(4) { animation-delay: 0.2s; }
+.toolbarGroup:nth-child(5) { animation-delay: 0.25s; }
+.toolbarGroup:nth-child(6) { animation-delay: 0.3s; }
 
 @keyframes buttonFadeIn {
   from {
@@ -58,7 +66,7 @@
   }
 }
 
-.toolbar-btn {
+.toolbarBtn {
   width: var(--btn-md);
   height: var(--btn-md);
   display: flex;
@@ -74,45 +82,45 @@
   padding: 0;
 }
 
-.toolbar-btn svg {
+.toolbarBtn svg {
   width: var(--icon-lg);
   height: var(--icon-lg);
   flex-shrink: 0;
   transition: transform var(--transition-fast);
 }
 
-.toolbar-btn:hover:not(:disabled) {
+.toolbarBtn:hover:not(:disabled) {
   background-color: var(--bg-tertiary);
   border-color: var(--border);
   color: var(--text-primary);
 }
 
-.toolbar-btn:hover:not(:disabled) svg {
+.toolbarBtn:hover:not(:disabled) svg {
   transform: scale(1.1);
 }
 
-.toolbar-btn:active:not(:disabled) {
+.toolbarBtn:active:not(:disabled) {
   background-color: var(--overlay-selected);
   border-color: var(--border-hover);
   color: var(--text-primary);
   transform: scale(0.95);
 }
 
-.toolbar-btn:focus-visible:not(:disabled) {
+.toolbarBtn:focus-visible:not(:disabled) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.toolbar-btn:disabled {
+.toolbarBtn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
-.toolbar-btn:disabled svg {
+.toolbarBtn:disabled svg {
   color: var(--text-muted);
 }
 
-.toolbar-info {
+.toolbarInfo {
   font-size: var(--text-base);
   color: var(--text-secondary);
   padding: 0 var(--space-2);
@@ -120,17 +128,32 @@
   text-align: center;
 }
 
-/* 图片画布区域 - 简化为一层 */
-.viewer-canvas {
+/* ───────────────────────────────────────────────────────────────
+   图片查看区域
+   ─────────────────────────────────────────────────────────────── */
+.reactTransformWrapper {
   flex: 1;
   width: 100%;
   height: 0;
   min-height: 0;
-  position: relative;
-  overflow: hidden;
 }
 
-.viewer-image {
+.reactTransformComponent {
+  width: 100%;
+  height: 100%;
+}
+
+.imageWrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  transform-origin: center center;
+}
+
+.viewerImage {
   max-width: none;
   max-height: none;
   width: auto;
@@ -138,11 +161,12 @@
   object-fit: contain;
   user-select: none;
   pointer-events: auto;
-  display: block;
 }
 
-/* 图片控制按钮 */
-.viewer-controls {
+/* ───────────────────────────────────────────────────────────────
+   图片控制按钮
+   ─────────────────────────────────────────────────────────────── */
+.viewerControls {
   position: absolute;
   bottom: var(--space-5);
   right: var(--space-5);
@@ -150,7 +174,7 @@
   gap: var(--space-2);
 }
 
-.control-btn {
+.controlBtn {
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -165,30 +189,32 @@
   backdrop-filter: blur(8px);
 }
 
-.control-btn svg {
+.controlBtn svg {
   width: var(--icon-md);
   height: var(--icon-md);
   flex-shrink: 0;
 }
 
-.control-btn:hover {
+.controlBtn:hover {
   background-color: var(--bg-elevated);
   border-color: var(--border-hover);
   color: var(--text-primary);
   transform: translateY(-1px);
 }
 
-.control-btn:active {
+.controlBtn:active {
   transform: translateY(0);
 }
 
-.control-btn:focus-visible {
+.controlBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* 加载状态 */
-.image-loading {
+/* ───────────────────────────────────────────────────────────────
+   加载状态
+   ─────────────────────────────────────────────────────────────── */
+.imageLoading {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -201,7 +227,7 @@
   animation: fadeIn 0.3s var(--ease-out-expo) forwards;
 }
 
-.loading-spinner {
+.loadingSpinner {
   width: var(--icon-2xl);
   height: var(--icon-2xl);
   color: var(--text-muted);
@@ -213,16 +239,14 @@
 }
 
 @keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-/* 错误状态 */
-.image-error {
+/* ───────────────────────────────────────────────────────────────
+   错误状态
+   ─────────────────────────────────────────────────────────────── */
+.imageError {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -235,7 +259,7 @@
   animation: fadeIn 0.3s var(--ease-out-expo) forwards;
 }
 
-.error-icon {
+.errorIcon {
   width: var(--icon-2xl);
   height: var(--icon-2xl);
   color: var(--error);
@@ -254,7 +278,7 @@
   }
 }
 
-.retry-btn {
+.retryBtn {
   padding: var(--space-2) var(--space-4);
   background-color: var(--bg-tertiary);
   border: 1px solid var(--border);
@@ -265,24 +289,26 @@
   transition: all var(--transition-fast);
 }
 
-.retry-btn:hover {
+.retryBtn:hover {
   background-color: var(--bg-elevated);
   border-color: var(--border-hover);
   color: var(--text-primary);
   transform: translateY(-1px);
 }
 
-.retry-btn:active {
+.retryBtn:active {
   transform: translateY(0);
 }
 
-.retry-btn:focus-visible {
+.retryBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* 图片信息面板 */
-.image-info-panel {
+/* ───────────────────────────────────────────────────────────────
+   图片信息面板
+   ─────────────────────────────────────────────────────────────── */
+.imageInfoPanel {
   position: absolute;
   top: 70px;
   right: var(--space-5);
@@ -308,7 +334,7 @@
   }
 }
 
-.info-header {
+.infoHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -318,7 +344,7 @@
   color: var(--text-primary);
 }
 
-.info-header .close-btn {
+.infoHeader .closeBtn {
   width: var(--btn-sm);
   height: var(--btn-sm);
   display: flex;
@@ -333,56 +359,58 @@
   padding: 0;
 }
 
-.info-header .close-btn svg {
+.infoHeader .closeBtn svg {
   width: var(--icon-md);
   height: var(--icon-md);
 }
 
-.info-header .close-btn:hover {
+.infoHeader .closeBtn:hover {
   background-color: var(--bg-tertiary);
   color: var(--text-primary);
 }
 
-.info-header .close-btn:focus-visible {
+.infoHeader .closeBtn:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.info-content {
+.infoContent {
   padding: var(--space-3) var(--space-4);
 }
 
-.info-row {
+.infoRow {
   display: flex;
   justify-content: space-between;
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border);
 }
 
-.info-row:last-child {
+.infoRow:last-child {
   border-bottom: none;
 }
 
-.info-label {
+.infoLabel {
   color: var(--text-secondary);
   font-size: var(--text-base);
 }
 
-.info-value {
+.infoValue {
   color: var(--text-primary);
   font-size: var(--text-base);
   text-align: right;
   word-break: break-all;
 }
 
-/* 工具栏按钮激活状态 */
-.toolbar-btn.active {
+/* ───────────────────────────────────────────────────────────────
+   工具栏按钮激活状态
+   ─────────────────────────────────────────────────────────────── */
+.toolbarBtn.active {
   background-color: var(--overlay-selected);
   border-color: var(--border-hover);
   color: var(--text-primary);
 }
 
-.toolbar-btn.active:hover {
+.toolbarBtn.active:hover {
   background-color: var(--overlay-lighter);
   border-color: var(--border-hover);
 }

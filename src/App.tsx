@@ -854,7 +854,7 @@ function App() {
               )}
             </div>
           ) : viewMode === 'viewer' && currentImage ? (
-            <div className={isViewTransitioning ? 'view-transition-enter' : undefined}>
+            <div className="image-viewer-container">
               <ImageViewer
                 src={`file://${currentImagePath}`}
                 alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
