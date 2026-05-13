@@ -1,4 +1,5 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
+import path from 'path';
 import { getImageService } from '../services/image-service';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 
@@ -47,17 +48,13 @@ export function registerLibraryHandlers(): void {
     if (windows.length === 0) {
       return null;
     }
-    try {
-      const result = await dialog.showOpenDialog(windows[0], {
-        properties: ['openDirectory']
-      });
-      if (result.canceled || result.filePaths.length === 0) {
-        return null;
-      }
-      return result.filePaths[0];
-    } catch (error) {
-      throw error
+    const result = await dialog.showOpenDialog(windows[0], {
+      properties: ['openDirectory']
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
     }
+    return result.filePaths[0];
   });
 
   // 删除库
@@ -282,22 +279,36 @@ export function registerLibraryHandlers(): void {
     service.clearCache();
   });
 
-  // 读取本地文件
+  // 读取本地文件（限制在库目录内）
   ipcMain.handle('readFile', async (
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<Buffer> => {
     const fs = await import('fs');
-    return fs.promises.readFile(filePath);
+    const resolvedPath = path.resolve(filePath);
+    const libraries = service.getLibraries();
+    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
+    const isAllowed = allowedPaths.some(root => resolvedPath.startsWith(root + path.sep) || resolvedPath === root);
+    if (!isAllowed) {
+      throw new Error('Access denied: path outside allowed library directory');
+    }
+    return fs.promises.readFile(resolvedPath);
   });
 
-  // 检查文件是否存在
+  // 检查文件是否存在（限制在库目录内）
   ipcMain.handle('fileExists', async (
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<boolean> => {
     const fs = await import('fs');
-    return fs.promises.access(filePath).then(() => true).catch(() => false);
+    const resolvedPath = path.resolve(filePath);
+    const libraries = service.getLibraries();
+    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
+    const isAllowed = allowedPaths.some(root => resolvedPath.startsWith(root + path.sep) || resolvedPath === root);
+    if (!isAllowed) {
+      return false;
+    }
+    return fs.promises.access(resolvedPath).then(() => true).catch(() => false);
   });
 
   // 更新扫描进度
@@ -342,6 +353,19 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('getImageCount');
   ipcMain.removeHandler('getImageCountByFolder');
   ipcMain.removeHandler('getImagePath');
+  ipcMain.removeHandler('getImagePathByRelativePath');
+  ipcMain.removeHandler('getImageByRelativePath');
+  ipcMain.removeHandler('getFavoriteImages');
+  ipcMain.removeHandler('getFavoriteImagesCount');
+  ipcMain.removeHandler('addFavoriteFolder');
+  ipcMain.removeHandler('removeFavoriteFolder');
+  ipcMain.removeHandler('getFavoriteFolders');
+  ipcMain.removeHandler('getFavoriteFolderTree');
+  ipcMain.removeHandler('isFavoriteFolder');
+  ipcMain.removeHandler('getFavoriteFolderImages');
+  ipcMain.removeHandler('getFavoriteFolderImageCount');
+  ipcMain.removeHandler('getSingleFavoriteImages');
+  ipcMain.removeHandler('getSingleFavoriteCount');
   ipcMain.removeHandler('getThumbnail');
   ipcMain.removeHandler('getThumbnails');
   ipcMain.removeHandler('toggleFavorite');
@@ -352,8 +376,4 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('fileExists');
   ipcMain.removeHandler('updateScanProgress');
   ipcMain.removeHandler('clearScanProgress');
-  ipcMain.removeHandler('getFavoriteImages');
-  ipcMain.removeHandler('getFavoriteImagesCount');
-  ipcMain.removeHandler('getImagePathByRelativePath');
-  ipcMain.removeHandler('getImageByRelativePath');
 }

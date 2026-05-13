@@ -15,7 +15,6 @@ const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
-  const [isViewTransitioning, setIsViewTransitioning] = useState(false)
   const [thumbnailSize, setThumbnailSize] = useState(200)
   const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
   const [selectedInterval, setSelectedInterval] = useState(5)
@@ -118,8 +117,8 @@ function App() {
   // 收藏库图片
   // - 单图收藏模式：显示单图收藏列表，isFavorite = true
   // - 文件夹收藏模式：显示文件夹收藏中的图片，isFavorite = 该图片是否也在单图收藏中
-  const favoriteGridImages: ImageGridItem[] = (favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages || []).map((fav: any, index: number) => ({
-    id: `${fav.library_id}-${fav.relative_path || ''}-${index}`, // 使用 library_id + relative_path + index 作为唯一 ID
+  const favoriteGridImages: ImageGridItem[] = (favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages || []).map((fav: any) => ({
+    id: `${fav.library_id}-${fav.relative_path || ''}`,
     src: '',
     alt: (fav.relative_path || '').split('/').pop() || (fav.relative_path || ''),
     width: fav.width || 0,
@@ -131,24 +130,6 @@ function App() {
     libraryId: fav.library_id,
     imagePath: fav.relative_path, // 使用 relative_path 字段
   }))
-
-  // 调试日志：单图收藏视图模式下打印数组信息
-  if (favoriteViewMode === 'single' && typeof window !== 'undefined') {
-    console.log('[App] 单图收藏模式 - singleFavoriteImages:', singleFavoriteImages.length, '张')
-    console.log('[App] 单图收藏模式 - favoriteGridImages:', favoriteGridImages.length, '张')
-    if (singleFavoriteImages.length > 0) {
-      console.log('[App] 单图收藏 - 第一张图片:', {
-        relative_path: singleFavoriteImages[0]?.relative_path,
-        library_id: singleFavoriteImages[0]?.library_id
-      })
-    }
-    if (favoriteGridImages.length > 0) {
-      console.log('[App] 网格图片 - 第一张:', {
-        imagePath: favoriteGridImages[0]?.imagePath,
-        libraryId: favoriteGridImages[0]?.libraryId
-      })
-    }
-  }
 
   // 处理文件夹选择
   const handleFolderSelect = useCallback((folderPath: string | null) => {
@@ -264,7 +245,6 @@ function App() {
 
   const handleImageDoubleClick = (image: ImageGridItem) => {
     // 双击进入查看器
-    setIsViewTransitioning(true)
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
       // 根据视图模式使用正确的数组
       const targetArray = favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages
@@ -278,7 +258,6 @@ function App() {
         setFavoriteImageIndex(index)
         setCurrentImage(targetArray[index] as any)
         setViewMode('viewer')
-        setTimeout(() => setIsViewTransitioning(false), 300)
       }
     } else {
       const img = images.find((i: any) => i.id === image.id)
@@ -286,7 +265,6 @@ function App() {
         setCurrentImage(img)
         setCurrentIndex(images.findIndex((i: any) => i.id === image.id))
         setViewMode('viewer')
-        setTimeout(() => setIsViewTransitioning(false), 300)
       }
     }
   }

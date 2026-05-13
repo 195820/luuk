@@ -106,12 +106,13 @@ export class LibraryScanner {
     this.sendProgress(0, result.total, '');
 
     // 处理每个文件
+    let processedCount = 0;
     for (const filePath of imageFiles) {
+      processedCount++;
       const relativePath = path.relative(this.libraryPath, filePath);
       scannedPaths.add(relativePath);
 
       // 发送进度更新（每 50 张发送一次）
-      const processedCount = imageFiles.indexOf(filePath) + 1;
       if (processedCount % 50 === 0 || processedCount === result.total) {
         this.sendProgress(processedCount, result.total, relativePath);
       }

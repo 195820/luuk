@@ -284,13 +284,11 @@ const ImageGridItem = function ImageGridItem({
     }
   }, [libraryId, image.id, realImageId, isFavoriteLibrary, image.libraryId, hasLoadedImageInfo, image.alt])
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    console.log('[ImageGridItem] handleClick 被调用', { image, clickCount: e.detail })
+  const handleClick = useCallback(() => {
     onClick?.(image)
   }, [onClick, image])
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    console.log('[ImageGridItem] handleDoubleClick 被调用', { image, clickCount: e.detail })
+  const handleDoubleClick = useCallback(() => {
     onDoubleClick?.(image)
   }, [onDoubleClick, image])
 

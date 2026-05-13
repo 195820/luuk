@@ -42,6 +42,7 @@ export class ImageService {
   private scanners: Map<string, LibraryScanner> = new Map();
   private cache: LRUCache;
   private initialized: boolean = false;
+  private scanningLibraries: Set<number> = new Set();
 
   constructor() {
     this.masterDB = getMasterDB();
@@ -173,27 +174,30 @@ export class ImageService {
    * 扫描库
    */
   async scanLibrary(libraryId: number): Promise<ScanResult> {
+    if (this.scanningLibraries.has(libraryId)) {
+      throw new Error(`库正在扫描中：${libraryId}`);
+    }
+
     const library = this.masterDB.getLibrary(libraryId);
     if (!library) {
       throw new Error(`库不存在：${libraryId}`);
     }
 
-    // 检查库路径是否存在
     if (!fs.existsSync(library.rootPath)) {
-      // 路径不存在，更新为离线状态
       this.masterDB.updateLibraryStatus(libraryId, 'offline', 0);
       throw new Error(`库路径不存在：${library.rootPath}`);
     }
 
-    const db = this.connectLibrary(libraryId);
-    const scanner = new LibraryScanner(db, library.rootPath);
-
-    const result = await scanner.scan();
-
-    // 更新库状态
-    this.masterDB.updateLibraryStatus(libraryId, 'online', result.total);
-
-    return result;
+    this.scanningLibraries.add(libraryId);
+    try {
+      const db = this.connectLibrary(libraryId);
+      const scanner = new LibraryScanner(db, library.rootPath);
+      const result = await scanner.scan();
+      this.masterDB.updateLibraryStatus(libraryId, 'online', result.total);
+      return result;
+    } finally {
+      this.scanningLibraries.delete(libraryId);
+    }
   }
 
   /**
@@ -727,6 +731,7 @@ export class ImageService {
     closeAllDatabases();
     this.thumbnailsDBs.clear();
     this.scanners.clear();
+    this.scanningLibraries.clear();
     this.cache.clear();
     this.initialized = false;
   }

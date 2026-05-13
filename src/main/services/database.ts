@@ -4,6 +4,15 @@ import fs from 'fs';
 import { app } from 'electron';
 import type { Library, ThumbnailSize } from '../../types';
 
+const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time'] as const;
+const ALLOWED_ORDER = ['ASC', 'DESC'] as const;
+
+function validateOrderBy(orderBy: string, order: string): { orderBy: string; order: string } {
+  const validatedOrderBy = ALLOWED_ORDER_BY.includes(orderBy as any) ? orderBy : 'relative_path';
+  const validatedOrder = ALLOWED_ORDER.includes(order as any) ? order : 'ASC';
+  return { orderBy: validatedOrderBy, order: validatedOrder };
+}
+
 // 本地 Image 类型定义（用于数据库操作）
 export interface Image {
   id: number;
@@ -569,7 +578,8 @@ export class ThumbnailsDB {
   getImages(options: { limit: number; offset: number; orderBy?: string; order?: string }): Image[] {
     if (!this.db) return [];
     const { limit, offset, orderBy = 'relative_path', order = 'ASC' } = options;
-    const stmt = this.db.prepare(`SELECT * FROM images WHERE is_deleted = 0 ORDER BY ${orderBy} ${order} LIMIT ? OFFSET ?`);
+    const { orderBy: safeOrderBy, order: safeOrder } = validateOrderBy(orderBy, order);
+    const stmt = this.db.prepare(`SELECT * FROM images WHERE is_deleted = 0 ORDER BY ${safeOrderBy} ${safeOrder} LIMIT ? OFFSET ?`);
     return stmt.all(limit, offset) as Image[];
   }
 
@@ -788,28 +798,29 @@ export class ThumbnailsDB {
     options: { limit: number; offset: number; orderBy?: string; order?: string }
   ): Image[] {
     if (!this.db) return [];
-    
+
     const { limit, offset, orderBy = 'relative_path', order = 'ASC' } = options;
-    
+    const { orderBy: safeOrderBy, order: safeOrder } = validateOrderBy(orderBy, order);
+
     if (folderPath === null) {
       // 获取所有图片
       const stmt = this.db.prepare(`
-        SELECT * FROM images 
-        WHERE is_deleted = 0 
-        ORDER BY ${orderBy} ${order} 
+        SELECT * FROM images
+        WHERE is_deleted = 0
+        ORDER BY ${safeOrderBy} ${safeOrder}
         LIMIT ? OFFSET ?
       `);
       return stmt.all(limit, offset) as Image[];
     }
-    
+
     // 获取指定文件夹下的图片（包括子文件夹）
     // 需要同时匹配 / 和 \ 分隔符
     const normalizedPath = folderPath.replace(/\//g, '\\');
     const stmt = this.db.prepare(`
-      SELECT * FROM images 
-      WHERE is_deleted = 0 
+      SELECT * FROM images
+      WHERE is_deleted = 0
         AND (relative_path LIKE ? OR relative_path LIKE ? OR relative_path LIKE ? OR relative_path = ? OR relative_path = ?)
-      ORDER BY ${orderBy} ${order} 
+      ORDER BY ${safeOrderBy} ${safeOrder}
       LIMIT ? OFFSET ?
     `);
     return stmt.all(
@@ -818,7 +829,7 @@ export class ThumbnailsDB {
       `${folderPath}\\%`,
       normalizedPath,
       folderPath,
-      limit, 
+      limit,
       offset
     ) as Image[];
   }
