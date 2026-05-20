@@ -1,0 +1,64 @@
+.card {
+  flex-shrink: 0;
+  width: 160px;
+  height: 90px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all var(--transition-fast);
+}
+
+.card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-tertiary);
+}
+
+.waveform {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 1px;
+  padding: 8px 8px 0;
+}
+
+.waveBar {
+  width: 3px;
+  background: var(--accent);
+  opacity: 0.3;
+  border-radius: 1px;
+  transition: opacity var(--transition-fast);
+}
+
+.card:hover .waveBar {
+  opacity: 0.5;
+}
+
+.info {
+  padding: 4px 8px 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.name {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.duration {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}

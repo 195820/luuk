@@ -212,3 +212,20 @@
 .image-grid-error {
   color: var(--error);
 }
+
+/* ───────────────────────────────────────────────────────────────
+   视频时长 Badge
+   ─────────────────────────────────────────────────────────────── */
+.video-duration-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--overlay-darkest);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}

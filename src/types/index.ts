@@ -46,6 +46,10 @@ export interface ElectronAPI {
   fileExists: (filePath: string) => Promise<boolean>
   // 初始化服务
   initImageService: () => Promise<void>
+  // 媒体相关
+  getMediaPath: (libraryId: number, imageId: number) => Promise<string>
+  extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) => Promise<{ duration: number; codec: string; width: number; height: number }>
+  generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -103,6 +107,16 @@ export interface ImageQueryOptions {
   order?: 'ASC' | 'DESC'
 }
 
+// 媒体类型
+export type MediaType = 'image' | 'video' | 'audio'
+
+// 支持的文件扩展名按媒体类型分类
+export const MEDIA_EXTENSIONS = {
+  image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'],
+  video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
+  audio: ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'],
+} as const
+
 // 图片类型 (数据库记录)
 export interface Image {
   id: number
@@ -117,6 +131,10 @@ export interface Image {
   modified_time?: string
   indexed_time: string
   is_deleted: number
+  // 多媒体字段
+  media_type: MediaType
+  duration: number | null  // 时长（秒），仅视频/音频
+  codec: string | null     // 编码格式
   // 附加字段 (非数据库)
   library_id?: number
   library_name?: string
@@ -137,6 +155,10 @@ export interface ImageInfo {
   modifiedTime?: string
   indexedTime: string
   isDeleted: boolean
+  // 多媒体字段
+  mediaType: MediaType
+  duration: number | null
+  codec: string | null
 }
 
 // 缩略图尺寸

@@ -5,8 +5,11 @@ import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
 import { SortControl } from './components/SortControl'
+import { AudioPlayer } from './components/AudioPlayer'
+import { AudioCard } from './components/AudioCard'
+import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
-import { useImageStore, FAVORITE_LIBRARY_ID } from './stores/imageStore'
+import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore } from './stores'
 import type { Library } from './types'
 import './App.css'
 
@@ -68,6 +71,19 @@ function App() {
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
   const [currentImagePath, setCurrentImagePath] = useState<string>('')
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
+  const [showAudio, setShowAudio] = useState(false)
+  const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
+
+  // 将 Windows 路径转换为 file:// URL
+  const toFileUrl = (filePath: string): string => {
+    if (!filePath) return ''
+    const normalized = filePath.replace(/\\/g, '/')
+    return `file:///${normalized}`
+  }
+
+  const {
+    currentAudio,
+  } = useAudioStore()
 
   // 初始化服务
   useEffect(() => {
@@ -112,12 +128,30 @@ function App() {
     fileSize: img.file_size,
     format: img.format.toLowerCase(),
     isFavorite: isFavorite(currentLibraryId || 0, img.relative_path),
+    mediaType: img.mediaType || img.media_type || 'image',
+    duration: img.duration,
   }))
 
-  // 收藏库图片
-  // - 单图收藏模式：显示单图收藏列表，isFavorite = true
-  // - 文件夹收藏模式：显示文件夹收藏中的图片，isFavorite = 该图片是否也在单图收藏中
-  const favoriteGridImages: ImageGridItem[] = (favoriteViewMode === 'single' ? singleFavoriteImages : favoriteImages || []).map((fav: any) => ({
+  // 当前文件夹的音频文件
+  const audioItems = images.filter((img: any) => (img.mediaType || img.media_type) === 'audio')
+
+  // 音频区域显示时用筛选后的收藏图片
+
+  // 收藏库图片（根据媒体类型筛选）
+  const filterFavoritesByMediaType = (items: any[]) => {
+    if (mediaFilter === 'all') return items
+    return items.filter((item: any) => {
+      const mt = item.mediaType || item.media_type
+      if (mediaFilter === 'image') return !mt || mt === 'image'
+      if (mediaFilter === 'video') return mt === 'video'
+      return true
+    })
+  }
+
+  const filteredFavoriteImages = filterFavoritesByMediaType(favoriteImages || [])
+  const filteredSingleFavoriteImages = filterFavoritesByMediaType(singleFavoriteImages)
+
+  const favoriteGridImages: ImageGridItem[] = (favoriteViewMode === 'single' ? filteredSingleFavoriteImages : filteredFavoriteImages).map((fav: any) => ({
     id: `${fav.library_id}-${fav.relative_path || ''}`,
     src: '',
     alt: (fav.relative_path || '').split('/').pop() || (fav.relative_path || ''),
@@ -129,6 +163,8 @@ function App() {
     isFavorite: favoriteViewMode === 'single' ? true : isFavorite(fav.library_id, fav.relative_path),
     libraryId: fav.library_id,
     imagePath: fav.relative_path, // 使用 relative_path 字段
+    mediaType: fav.media_type || 'image',
+    duration: fav.duration,
   }))
 
   // 处理文件夹选择
@@ -566,6 +602,16 @@ function App() {
         return
       }
 
+      // Ctrl+Space - 音频播放/暂停
+      if (e.key === ' ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault()
+        const audioState = useAudioStore.getState()
+        if (audioState.currentAudio) {
+          audioState.isPlaying ? audioState.pause() : audioState.resume()
+        }
+        return
+      }
+
       if (viewMode === 'viewer') {
         // 方向键由 ImageViewer 组件内部处理
         if (e.key === 'Escape') handleClose()
@@ -600,7 +646,11 @@ function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>📷 图片查看器</h1>
+        {currentAudio ? (
+          <AudioPlayer />
+        ) : (
+          <h1>📷 图片查看器</h1>
+        )}
         <div className="header-actions">
           <button onClick={toggleFolderSidebar} className="folder-toggle-btn" title="切换文件夹面板 (F6)">
             📁
@@ -683,6 +733,17 @@ function App() {
           >
             {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
           </button>
+
+          {/* 显示音频开关 */}
+          {viewMode === 'grid' && currentLibraryId && (
+            <button
+              onClick={() => setShowAudio(!showAudio)}
+              className={`header-action-btn ${showAudio ? 'active' : ''}`}
+              title={showAudio ? '隐藏音频' : '显示音频'}
+            >
+              🎵 音频
+            </button>
+          )}
         </div>
       </header>
 
@@ -834,7 +895,7 @@ function App() {
           ) : viewMode === 'viewer' && currentImage ? (
             <div className="image-viewer-container">
               <ImageViewer
-                src={`file://${currentImagePath}`}
+                src={toFileUrl(currentImagePath)}
                 alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
                 currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
                 totalImages={isFavoriteLibrary ? (favoriteViewMode === 'single' ? singleFavoriteImages.length : favoriteImages.length) : images.length}
@@ -844,6 +905,7 @@ function App() {
                 imageInfo={getCurrentImageInfo() || undefined}
                 slideshowSettings={slideshow}
                 onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
+                mediaType={(currentImage as any).mediaType || (currentImage as any).media_type || 'image'}
               />
             </div>
           ) : null}
@@ -905,6 +967,38 @@ function App() {
             <button onClick={toggleSlideshow} className="slideshow-stop-btn">
               ⏸ 暂停
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 收藏视图媒体筛选 */}
+      {isFavoriteLibrary && viewMode === 'grid' && (
+        <div className="favorite-filter-bar">
+          <MediaFilter value={mediaFilter} onChange={setMediaFilter} />
+        </div>
+      )}
+
+      {/* 底部音频区域 */}
+      {showAudio && viewMode === 'grid' && currentLibraryId && (
+        <div className="audio-area">
+          <div className="audio-area-header">
+            <span className="audio-area-title">🎵 音频文件 ({audioItems.length})</span>
+          </div>
+          <div className="audio-scroll-area">
+            {audioItems.length === 0 ? (
+              <span className="audio-empty-hint">当前文件夹没有音频文件</span>
+            ) : (
+              audioItems.map((audio: any) => (
+                <AudioCard
+                  key={audio.id}
+                  libraryId={currentLibraryId}
+                  imageId={audio.id}
+                  name={audio.relative_path.split('/').pop() || audio.relative_path}
+                  duration={audio.duration || 0}
+                  src=""
+                />
+              ))
+            )}
           </div>
         </div>
       )}

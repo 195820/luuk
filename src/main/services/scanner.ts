@@ -3,7 +3,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { BrowserWindow } from 'electron';
 import { ThumbnailsDB } from './database';
-import { getImageMetadata } from './thumbnailer';
+import { getImageMetadata, getAudioMetadata } from './thumbnailer';
 
 /**
  * 扫描结果
@@ -13,7 +13,7 @@ export interface ScanResult {
   updated: number;    // 更新图片数
   deleted: number;    // 删除图片数
   skipped: number;    // 跳过（未变化）数
-  total: number;      // 总图片数
+  total: number;      // 总媒体数
 }
 
 /**
@@ -27,7 +27,21 @@ export interface ScanOptions {
 /**
  * 支持的文件扩展名
  */
-const DEFAULT_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'];
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
+const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'];
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'];
+const DEFAULT_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
+
+/**
+ * 根据扩展名判断媒体类型
+ */
+function getMediaType(ext: string): 'image' | 'video' | 'audio' | null {
+  const lower = ext.toLowerCase();
+  if (IMAGE_EXTENSIONS.includes(lower)) return 'image';
+  if (VIDEO_EXTENSIONS.includes(lower)) return 'video';
+  if (AUDIO_EXTENSIONS.includes(lower)) return 'audio';
+  return null;
+}
 
 /**
  * 文件扫描服务
@@ -120,6 +134,8 @@ export class LibraryScanner {
       try {
         const stat = fs.statSync(filePath);
         const modifiedTime = stat.mtime.toISOString();
+        const ext = path.extname(filePath).toLowerCase();
+        const mediaType = getMediaType(ext) || 'image';
 
         // 检查文件是否已存在
         if (existingPaths.has(relativePath)) {
@@ -133,32 +149,102 @@ export class LibraryScanner {
           }
 
           // 文件已修改，更新记录
-          const metadata = await getImageMetadata(filePath);
-          const fileHash = await this.calculateFileHash(filePath);
+          if (mediaType === 'image') {
+            const metadata = await getImageMetadata(filePath);
+            const fileHash = await this.calculateFileHash(filePath);
 
-          this.db.updateImage(existingImage!.id, {
-            file_hash: fileHash,
-            width: metadata.width,
-            height: metadata.height,
-            file_size: metadata.size,
-            modified_time: modifiedTime
-          });
+            this.db.updateImage(existingImage!.id, {
+              file_hash: fileHash,
+              width: metadata.width,
+              height: metadata.height,
+              file_size: metadata.size,
+              modified_time: modifiedTime,
+              duration: null,
+              codec: null,
+            });
+          } else if (mediaType === 'video') {
+            // 视频：延迟提取元数据，只更新基本信息
+            const fileHash = await this.calculateFileHash(filePath);
+            this.db.updateImage(existingImage!.id, {
+              file_hash: fileHash,
+              file_size: stat.size,
+              modified_time: modifiedTime,
+            });
+          } else if (mediaType === 'audio') {
+            // 音频：扫描时提取时长
+            try {
+              const audioMeta = await getAudioMetadata(filePath);
+              this.db.updateImage(existingImage!.id, {
+                file_size: stat.size,
+                modified_time: modifiedTime,
+                duration: audioMeta.duration,
+                codec: audioMeta.codec,
+              });
+            } catch {
+              this.db.updateImage(existingImage!.id, {
+                file_size: stat.size,
+                modified_time: modifiedTime,
+              });
+            }
+          }
 
           result.updated++;
         } else {
           // 新文件，插入记录
-          const metadata = await getImageMetadata(filePath);
-          const fileHash = await this.calculateFileHash(filePath);
+          if (mediaType === 'image') {
+            const metadata = await getImageMetadata(filePath);
+            const fileHash = await this.calculateFileHash(filePath);
 
-          this.db.addImage({
-            relative_path: relativePath,
-            file_hash: fileHash,
-            width: metadata.width,
-            height: metadata.height,
-            file_size: metadata.size,
-            format: metadata.format.toUpperCase(),
-            modified_time: modifiedTime
-          });
+            this.db.addImage({
+              relative_path: relativePath,
+              file_hash: fileHash,
+              width: metadata.width,
+              height: metadata.height,
+              file_size: metadata.size,
+              format: metadata.format.toUpperCase(),
+              modified_time: modifiedTime,
+              media_type: 'image',
+            });
+          } else if (mediaType === 'video') {
+            // 视频：首次扫描只记录基本信息
+            const fileHash = await this.calculateFileHash(filePath);
+            this.db.addImage({
+              relative_path: relativePath,
+              file_hash: fileHash,
+              width: 0,
+              height: 0,
+              file_size: stat.size,
+              format: ext.slice(1).toUpperCase(),
+              modified_time: modifiedTime,
+              media_type: 'video',
+              duration: null,
+              codec: null,
+            });
+          } else if (mediaType === 'audio') {
+            // 音频：扫描时提取时长
+            let duration = 0;
+            let codec = '';
+            try {
+              const audioMeta = await getAudioMetadata(filePath);
+              duration = audioMeta.duration;
+              codec = audioMeta.codec;
+            } catch {
+              // 提取失败，使用默认值
+            }
+
+            this.db.addImage({
+              relative_path: relativePath,
+              file_hash: '',
+              width: 0,
+              height: 0,
+              file_size: stat.size,
+              format: ext.slice(1).toUpperCase(),
+              modified_time: modifiedTime,
+              media_type: 'audio',
+              duration,
+              codec,
+            });
+          }
 
           result.added++;
         }

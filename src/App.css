@@ -769,3 +769,70 @@
   color: var(--error);
   opacity: 0.8;
 }
+
+/* ───────────────────────────────────────────────────────────────
+   音频区域
+   ─────────────────────────────────────────────────────────────── */
+.audio-area {
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  padding: var(--space-3) var(--space-4);
+}
+
+.audio-area-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--space-3);
+}
+
+.audio-area-title {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  font-weight: var(--font-medium);
+}
+
+.audio-scroll-area {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.audio-scroll-area::-webkit-scrollbar {
+  height: 6px;
+}
+
+.audio-scroll-area::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+.audio-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--border-hover);
+  border-radius: 3px;
+}
+
+.audio-empty-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  padding: var(--space-4) 0;
+}
+
+/* ───────────────────────────────────────────────────────────────
+   收藏筛选栏
+   ─────────────────────────────────────────────────────────────── */
+.favorite-filter-bar {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) var(--space-4);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ───────────────────────────────────────────────────────────────
+   活跃按钮状态
+   ─────────────────────────────────────────────────────────────── */
+.header-action-btn.active {
+  background: var(--overlay-lighter);
+  color: var(--text-primary);
+}

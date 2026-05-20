@@ -64,27 +64,28 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   // 加载收藏库图片（优化：批量预加载缩略图）
   loadFavoriteImages: async () => {
     try {
+      // @ts-ignore
       const [favoriteImages, favoriteCount] = await Promise.all([
+        // @ts-ignore
         window.electronAPI.getFavoriteImages({ limit: 100, offset: 0 }),
+        // @ts-ignore
         window.electronAPI.getFavoriteImagesCount(),
       ])
       console.log('[FavoriteStore] loadFavoriteImages 返回:', {
         count: favoriteImages.length,
         firstItem: favoriteImages[0] ? {
           id: favoriteImages[0].id,
-          hasThumbnail: !!favoriteImages[0].thumbnail,
-          thumbnailLength: favoriteImages[0].thumbnail?.length,
           relativePath: favoriteImages[0].relative_path,
         } : '无数据',
       });
       set({ favoriteImages, favoriteCount })
 
-      // 批量预加载缩略图（跨库）
+      // 批量预加载缩略图（仅当前库）
       const itemsToPreload = favoriteImages
         .filter(img => img.id > 0 && img.library_id > 0)
-        .map(img => ({ libraryId: img.library_id, imageId: img.id }))
+        .map(img => img.id)
       if (itemsToPreload.length > 0) {
-        useImageStore.getState().prefetchFavoriteThumbnails(itemsToPreload, 'medium')
+        useImageStore.getState().prefetchThumbnails(itemsToPreload, 'medium')
       }
     } catch (error) {
       console.error('[FavoriteStore] 加载收藏库图片失败:', error)
@@ -113,8 +114,11 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   // 加载收藏文件夹中的图片（优化：批量预加载缩略图）
   loadFavoriteFolderImages: async (folderPath: string) => {
     try {
+      // @ts-ignore
       const [images, favoriteCount] = await Promise.all([
+        // @ts-ignore
         window.electronAPI.getFavoriteFolderImages(folderPath, { limit: 100, offset: 0 }),
+        // @ts-ignore
         window.electronAPI.getFavoriteFolderImageCount(folderPath),
       ])
       // 将 Image[] 转换为 FavoriteImage[]
@@ -125,12 +129,12 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       }))
       set({ favoriteImages, favoriteCount })
 
-      // 批量预加载缩略图（跨库）
+      // 批量预加载缩略图（仅当前库）
       const itemsToPreload = favoriteImages
         .filter(img => img.id > 0 && img.library_id > 0)
-        .map(img => ({ libraryId: img.library_id, imageId: img.id }))
+        .map(img => img.id)
       if (itemsToPreload.length > 0) {
-        useImageStore.getState().prefetchFavoriteThumbnails(itemsToPreload, 'medium')
+        useImageStore.getState().prefetchThumbnails(itemsToPreload, 'medium')
       }
     } catch (error) {
       console.error('[FavoriteStore] 加载收藏文件夹图片失败:', error)
@@ -153,27 +157,28 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   // 加载单图收藏（优化：批量预加载缩略图）
   loadSingleFavoriteImages: async () => {
     try {
+      // @ts-ignore
       const [singleFavoriteImages, singleFavoriteCount] = await Promise.all([
+        // @ts-ignore
         window.electronAPI.getSingleFavoriteImages({ limit: 100, offset: 0 }),
+        // @ts-ignore
         window.electronAPI.getSingleFavoriteCount(),
       ])
       console.log('[FavoriteStore] loadSingleFavoriteImages 返回:', {
         count: singleFavoriteImages.length,
         firstItem: singleFavoriteImages[0] ? {
           id: singleFavoriteImages[0].id,
-          hasThumbnail: !!singleFavoriteImages[0].thumbnail,
-          thumbnailLength: singleFavoriteImages[0].thumbnail?.length,
           relativePath: singleFavoriteImages[0].relative_path,
         } : '无数据',
       });
       set({ singleFavoriteImages, singleFavoriteCount })
 
-      // 批量预加载缩略图（跨库）
+      // 批量预加载缩略图（仅当前库）
       const itemsToPreload = singleFavoriteImages
         .filter(img => img.id > 0 && img.library_id > 0)
-        .map(img => ({ libraryId: img.library_id, imageId: img.id }))
+        .map(img => img.id)
       if (itemsToPreload.length > 0) {
-        useImageStore.getState().prefetchFavoriteThumbnails(itemsToPreload, 'medium')
+        useImageStore.getState().prefetchThumbnails(itemsToPreload, 'medium')
       }
     } catch (error) {
       console.error('[FavoriteStore] 加载单图收藏失败:', error)

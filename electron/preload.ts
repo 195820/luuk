@@ -85,6 +85,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 
+  // 媒体相关
+  getMediaPath: (libraryId: number, imageId: number) =>
+    ipcRenderer.invoke('getMediaPath', libraryId, imageId),
+  extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) =>
+    ipcRenderer.invoke('extractVideoMetadata', libraryId, imageId, relativePath),
+  generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) =>
+    ipcRenderer.invoke('generateVideoThumbnail', libraryId, imageId, relativePath),
+
   // 扫描进度监听
   onScanProgress: (callback: (progress: any) => void) => {
     const subscription = (_event: any, progress: any) => callback(progress)

@@ -233,7 +233,15 @@ export function registerLibraryHandlers(): void {
     imageId: number,
     size: ThumbnailSize = 'medium'
   ): Promise<string> => {
-    return service.getThumbnail(libraryId, imageId, size);
+    console.log(`[IPC] getThumbnail request: lib=${libraryId} id=${imageId} size=${size}`);
+    try {
+      const result = await service.getThumbnail(libraryId, imageId, size);
+      console.log(`[IPC] getThumbnail success: lib=${libraryId} id=${imageId} resultLen=${result?.length || 0}`);
+      return result;
+    } catch (err) {
+      console.error(`[IPC] getThumbnail FAILED: lib=${libraryId} id=${imageId}`, err);
+      throw err;
+    }
   });
 
   // 批量获取缩略图
@@ -335,6 +343,37 @@ export function registerLibraryHandlers(): void {
       });
     }
   });
+
+  // ==================== 媒体相关 IPC ====================
+
+  // 获取媒体文件路径
+  ipcMain.handle('getMediaPath', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imageId: number
+  ): Promise<string> => {
+    return service.getMediaPath(libraryId, imageId);
+  });
+
+  // 延迟提取视频元数据
+  ipcMain.handle('extractVideoMetadata', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imageId: number,
+    relativePath: string
+  ): Promise<{ duration: number; codec: string; width: number; height: number }> => {
+    return service.extractVideoMetadata(libraryId, imageId, relativePath);
+  });
+
+  // 生成视频缩略图
+  ipcMain.handle('generateVideoThumbnail', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imageId: number,
+    relativePath: string
+  ): Promise<string> => {
+    return service.generateVideoThumbnail(libraryId, imageId, relativePath);
+  });
 }
 
 /**
@@ -376,4 +415,7 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('fileExists');
   ipcMain.removeHandler('updateScanProgress');
   ipcMain.removeHandler('clearScanProgress');
+  ipcMain.removeHandler('getMediaPath');
+  ipcMain.removeHandler('extractVideoMetadata');
+  ipcMain.removeHandler('generateVideoThumbnail');
 }

@@ -137,6 +137,13 @@ export function ImageGridItemComponent({
     onToggleFavorite?.(image)
   }, [onToggleFavorite, image])
 
+  // 格式化视频时长
+  const formatDuration = (seconds: number): string => {
+    const m = Math.floor(seconds / 60)
+    const s = Math.floor(seconds % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
   return (
     <div
       className={`image-grid-item ${isSelected ? 'selected' : ''}`}
@@ -185,6 +192,23 @@ export function ImageGridItemComponent({
           />
         ) : (
           <div style={{ width: '100%', height: '100%', background: 'var(--bg-tertiary)' }}>加载中</div>
+        )}
+        {/* 视频时长 badge */}
+        {image.mediaType === 'video' && (
+          <span className="video-duration-badge">
+            {image.duration ? formatDuration(image.duration) : 'VIDEO'}
+          </span>
+        )}
+        {/* 不支持的格式 overlay */}
+        {image.mediaType === 'video' && (['avi', 'mkv'].includes(image.format?.toLowerCase() || '')) && (
+          <div className="unsupported-format-overlay">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>不支持</span>
+          </div>
         )}
       </div>
       <div className="image-grid-info">

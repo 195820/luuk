@@ -4,6 +4,9 @@ import './ImageViewer.css'
 
 export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 
+const BROWSER_VIDEO_FORMATS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'mp4', 'webm', 'mov'])
+const VIDEO_FORMATS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv'])
+
 export interface SlideshowSettings {
   enabled: boolean
   interval: number
@@ -28,6 +31,7 @@ interface ImageViewerProps {
   libraryId?: number
   isFavorite?: boolean
   onFavoriteChange?: (isFavorite: boolean) => void
+  mediaType?: 'image' | 'video' | 'audio'
 }
 
 interface LoadingState {
@@ -46,6 +50,7 @@ export function ImageViewer({
   onNext,
   onClose,
   imageInfo,
+  mediaType = 'image',
 }: ImageViewerProps) {
   const [rotation, setRotation] = useState(0)
   const [flipHorizontal, setFlipHorizontal] = useState(false)
@@ -62,6 +67,10 @@ export function ImageViewer({
   const transformRef = useRef<any>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const pendingImageRef = useRef<{ width: number; height: number } | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [videoVolume, setVideoVolume] = useState(1)
+  const [isGifPlaying, setIsGifPlaying] = useState(true)
 
   // 计算目标缩放比例
   const calcScale = useCallback(
@@ -129,6 +138,56 @@ export function ImageViewer({
   // 垂直翻转
   const handleFlipVertical = useCallback(() => {
     setFlipVertical(prev => !prev)
+  }, [])
+
+  const formatTime = (seconds: number): string => {
+    if (!isFinite(seconds)) return '0:00'
+    const m = Math.floor(seconds / 60)
+    const s = Math.floor(seconds % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  const toggleVideoPlayback = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    if (isVideoPlaying) {
+      video.pause()
+    } else {
+      video.play().catch(() => {})
+    }
+    setIsVideoPlaying(!isVideoPlaying)
+  }, [isVideoPlaying])
+
+  const handleVideoSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current
+    if (!video || !video.duration) return
+    video.currentTime = parseFloat(e.target.value)
+  }, [])
+
+  const handleVideoVolumeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current
+    const vol = parseFloat(e.target.value)
+    setVideoVolume(vol)
+    if (video) video.volume = vol
+  }, [])
+
+  const handleVideoLoaded = useCallback(() => {
+    const video = videoRef.current
+    if (video) {
+      setLoadingState({
+        loading: false,
+        error: false,
+        naturalWidth: video.videoWidth,
+        naturalHeight: video.videoHeight,
+      })
+    }
+  }, [])
+
+  const handleVideoTimeUpdate = useCallback(() => {
+    const video = videoRef.current
+    if (video) {
+      setIsVideoPlaying(!video.paused)
+    }
   }, [])
 
   // 放大
@@ -228,6 +287,12 @@ export function ImageViewer({
         case 'i':
         case 'I':
           setShowInfo(prev => !prev)
+          break
+        case ' ':
+          if (mediaType === 'video') {
+            e.preventDefault()
+            toggleVideoPlayback()
+          }
           break
         case 'Escape':
           onClose?.()
@@ -371,7 +436,6 @@ export function ImageViewer({
           limitToBounds={false}
           centerZoomedOut={true}
           centerOnInit={false}
-          animationTime={0}
           alignmentAnimation={{ disabled: true }}
           onInit={() => {
             if (pendingImageRef.current) {
@@ -381,23 +445,52 @@ export function ImageViewer({
           wheel={{ step: 0.5 }}
           pinch={{ step: 0.5 }}
           doubleClick={{ step: 1.5 }}
-          wrapperStyle={{ width: '100%', height: '100%' }}
-          contentStyle={{ width: '100%', height: '100%' }}
           ref={(ref) => { if (ref) transformRef.current = ref }}
         >
           <TransformComponent>
-            <img
-              ref={imageRef}
-              src={src}
-              alt={alt || '图片'}
-              className="viewer-image"
-              draggable={false}
-              style={transformStyle}
-              onLoad={(e) => {
-                const img = e.currentTarget
-                handleImageLoaded(img.naturalWidth, img.naturalHeight)
-              }}
-            />
+            {mediaType === 'video' && VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) ? (
+              BROWSER_VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) ? (
+                <video
+                  ref={videoRef}
+                  src={src}
+                  className="viewer-video"
+                  style={transformStyle}
+                  onLoadedMetadata={handleVideoLoaded}
+                  onTimeUpdate={handleVideoTimeUpdate}
+                  onPlay={() => setIsVideoPlaying(true)}
+                  onPause={() => setIsVideoPlaying(false)}
+                  controls={false}
+                  draggable={false}
+                />
+              ) : (
+                <div className="viewer-unsupported-placeholder">
+                  <svg className="unsupported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <rect x="2" y="2" width="20" height="20" rx="2"/>
+                    <polygon points="10,8 16,12 10,16"/>
+                    <line x1="18" y1="6" x2="6" y2="18" stroke="rgba(255,70,70,0.6)"/>
+                  </svg>
+                  <span className="unsupported-label">不支持的格式: {imageInfo?.format?.toUpperCase()}</span>
+                  <span className="unsupported-hint">浏览器无法直接播放此格式</span>
+                  {alt && <span className="unsupported-filename">{alt}</span>}
+                  {imageInfo?.width && (imageInfo?.height ?? 0) > 0 && (
+                    <span className="unsupported-dims">{imageInfo.width} x {imageInfo.height}</span>
+                  )}
+                </div>
+              )
+            ) : (
+              <img
+                ref={imageRef}
+                src={src}
+                alt={alt || '图片'}
+                className="viewer-image"
+                draggable={false}
+                style={transformStyle}
+                onLoad={(e) => {
+                  const img = e.currentTarget
+                  handleImageLoaded(img.naturalWidth, img.naturalHeight)
+                }}
+              />
+            )}
           </TransformComponent>
         </TransformWrapper>
       </div>
@@ -491,6 +584,76 @@ export function ImageViewer({
           </svg>
         </button>
       </div>
+
+      {/* Video controls bar */}
+      {mediaType === 'video' && BROWSER_VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) && !loadingState.loading && !loadingState.error && (
+        <div className="video-controls-bar">
+          <button
+            onClick={toggleVideoPlayback}
+            className="video-ctrl-btn"
+            title={isVideoPlaying ? '暂停 (Space)' : '播放 (Space)'}
+          >
+            {isVideoPlaying ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="2" y="1" width="4" height="14" rx="1"/>
+                <rect x="10" y="1" width="4" height="14" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                <polygon points="3,1 14,8 3,15"/>
+              </svg>
+            )}
+          </button>
+          <span className="video-time">{formatTime(videoRef.current?.currentTime || 0)}</span>
+          <input
+            type="range"
+            min="0"
+            max={videoRef.current?.duration || 0}
+            step="0.1"
+            defaultValue="0"
+            onChange={handleVideoSeek}
+            className="video-progress-bar"
+          />
+          <span className="video-time">{formatTime(videoRef.current?.duration || 0)}</span>
+          <div className="video-volume-group">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.6 }}>
+              <path d="M6 2L2 6H0v4h2l4 4V2z"/>
+            </svg>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={videoVolume}
+              onChange={handleVideoVolumeChange}
+              className="video-volume-slider"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* GIF controls */}
+      {imageInfo?.format?.toLowerCase() === 'gif' && !loadingState.loading && !loadingState.error && (
+        <div className="gif-controls">
+          <button
+            onClick={() => setIsGifPlaying(prev => !prev)}
+            className="gif-ctrl-btn"
+            title={isGifPlaying ? '暂停动画' : '播放动画'}
+          >
+            {isGifPlaying ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="2" y="1" width="4" height="14" rx="1"/>
+                <rect x="10" y="1" width="4" height="14" rx="1"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <polygon points="3,1 14,8 3,15"/>
+              </svg>
+            )}
+          </button>
+          <span className="gif-label">GIF</span>
+        </div>
+      )}
     </div>
   )
 }

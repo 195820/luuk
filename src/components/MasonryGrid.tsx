@@ -42,6 +42,12 @@ export function MasonryGrid({
   const [columnTops, setColumnTops] = useState<number[][]>([])
   const scrollRestoreRef = useRef<boolean>(true)
 
+  // 过滤掉音频文件（音频在底部独立区域显示）
+  const displayImages = images.filter((img) => {
+    const mt = img.mediaType || (img as any).media_type
+    return mt !== 'audio'
+  })
+
   // 计算列数
   useEffect(() => {
     if (fixedColumnCount) {
@@ -80,7 +86,7 @@ export function MasonryGrid({
     const heights: number[] = Array(columnCount).fill(0)
     const tops: number[][] = Array.from({ length: columnCount }, () => [])
 
-    images.forEach((image) => {
+    displayImages.forEach((image) => {
       // 找到当前最矮的列
       let minHeight = Math.min(...heights)
       let minIndex = heights.indexOf(minHeight)
@@ -101,7 +107,7 @@ export function MasonryGrid({
     setColumns(newColumns)
     setColumnHeights(heights)
     setColumnTops(tops)
-  }, [images, columnCount, thumbnailSize])
+  }, [displayImages, columnCount, thumbnailSize])
 
   // 计算总高度（所有列中最高的一列）
   const totalHeight = columnHeights.length > 0 ? Math.max(...columnHeights) : 0

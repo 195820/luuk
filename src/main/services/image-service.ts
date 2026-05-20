@@ -8,7 +8,7 @@ import {
   closeThumbnailsDB,
   closeAllDatabases 
 } from './database';
-import { getThumbnailer, generateThumbnail } from './thumbnailer';
+import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
 import { LibraryScanner, ScanResult } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
 import type { Library, ThumbnailSize } from '../../types';
@@ -212,11 +212,14 @@ export class ImageService {
     const db = this.connectLibrary(libraryId);
     const images = db.getImages(options);
 
-    // 附加库信息
+    // 附加库信息 + 字段名映射（蛇形转驼峰）
     return images.map(img => ({
       ...img,
       library_id: libraryId,
-      library_name: library.name
+      library_name: library.name,
+      mediaType: (img as any).media_type || 'image',
+      duration: (img as any).duration ?? null,
+      codec: (img as any).codec ?? null,
     }));
   }
 
@@ -251,11 +254,14 @@ export class ImageService {
     const db = this.connectLibrary(libraryId);
     const images = db.getImagesByFolder(folderPath, options);
 
-    // 附加库信息
+    // 附加库信息 + 字段名映射（蛇形转驼峰）
     return images.map(img => ({
       ...img,
       library_id: libraryId,
-      library_name: library.name
+      library_name: library.name,
+      mediaType: (img as any).media_type || 'image',
+      duration: (img as any).duration ?? null,
+      codec: (img as any).codec ?? null,
     }));
   }
 
@@ -354,12 +360,25 @@ export class ImageService {
       return '';
     }
 
-    // 生成缩略图
-    const thumbnail = await generateThumbnail(fullPath, size);
+    // 生成缩略图（根据媒体类型选择不同的生成方式）
+    const mediaType = (image as any).media_type || 'image'
 
-    // 保存到数据库
-    const thumbMetadata = await getThumbnailer().getImageMetadata(fullPath);
-    db.saveThumbnail(imageId, size, thumbnail, thumbMetadata.width, thumbMetadata.height);
+    // 音频文件不生成缩略图
+    if (mediaType === 'audio') {
+      return ''
+    }
+
+    let thumbnail: Buffer
+    if (mediaType === 'video') {
+      // 视频：使用 ffmpeg 截取第 1 秒帧
+      thumbnail = await generateVideoThumbnail(fullPath)
+      db.saveThumbnail(imageId, 'medium', thumbnail)
+    } else {
+      // 图片：使用 sharp 生成
+      thumbnail = await generateThumbnail(fullPath, size)
+      const thumbMetadata = await getThumbnailer().getImageMetadata(fullPath)
+      db.saveThumbnail(imageId, size, thumbnail, thumbMetadata.width, thumbMetadata.height)
+    }
 
     // 写入内存缓存
     const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
@@ -442,12 +461,75 @@ export class ImageService {
 
     const db = this.connectLibrary(libraryId);
     const image = db.getImage(imageId);
-    
+
     if (!image) {
       throw new Error(`图片不存在：${imageId}`);
     }
 
     return path.join(library.rootPath, image.relative_path);
+  }
+
+  /**
+   * 获取媒体文件路径（用于视频/音频播放）
+   */
+  getMediaPath(libraryId: number, imageId: number): string {
+    return this.getImagePath(libraryId, imageId);
+  }
+
+  /**
+   * 延迟提取视频元数据
+   */
+  async extractVideoMetadata(libraryId: number, imageId: number, relativePath: string): Promise<{ duration: number; codec: string; width: number; height: number }> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const fullPath = path.join(library.rootPath, relativePath);
+    const metadata = await getVideoMetadata(fullPath);
+
+    // 更新数据库
+    const db = this.connectLibrary(libraryId);
+    db.updateImage(imageId, {
+      duration: metadata.duration,
+      codec: metadata.codec,
+    });
+
+    return metadata;
+  }
+
+  /**
+   * 生成视频缩略图
+   */
+  async generateVideoThumbnail(libraryId: number, imageId: number, relativePath: string): Promise<string> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const fullPath = path.join(library.rootPath, relativePath);
+    const cacheKey = `${libraryId}-${imageId}`;
+
+    // 检查缓存
+    const cached = this.cache.get(cacheKey, 'medium');
+    if (cached) return cached;
+
+    const db = this.connectLibrary(libraryId);
+    const cachedThumb = db.getThumbnail(imageId, 'medium');
+    if (cachedThumb) {
+      const base64 = `data:image/webp;base64,${cachedThumb.toString('base64')}`;
+      this.cache.set(cacheKey, 'medium', base64);
+      return base64;
+    }
+
+    // 生成视频缩略图
+    const thumbnail = await generateVideoThumbnail(fullPath);
+
+    // 保存
+    db.saveThumbnail(imageId, 'medium', thumbnail);
+    const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
+    this.cache.set(cacheKey, 'medium', base64);
+    return base64;
   }
 
   /**
@@ -500,6 +582,9 @@ export class ImageService {
           height: imageInfo?.height || 0,
           file_size: imageInfo?.file_size || 0,
           format: imageInfo?.format || '',
+          media_type: imageInfo?.media_type || 'image',
+          duration: imageInfo?.duration,
+          codec: imageInfo?.codec,
           is_favorite: true,
           favorited_at: fav.created_at,
         };
@@ -514,6 +599,9 @@ export class ImageService {
           height: 0,
           file_size: 0,
           format: '',
+          media_type: 'image',
+          duration: null,
+          codec: null,
           is_favorite: true,
           favorited_at: fav.created_at,
         };

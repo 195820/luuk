@@ -13,6 +13,8 @@ export interface ImageGridItem {
   libraryId?: number
   imagePath?: string
   isFavorite?: boolean
+  mediaType?: 'image' | 'video' | 'audio'
+  duration?: number | null
 }
 
 interface ImageGridProps {
@@ -45,8 +47,13 @@ export function ImageGrid({
   const scrollRestoreRef = useRef<boolean>(true)
 
   // 计算每行能放多少张图片
+  // 过滤掉音频文件（音频在底部独立区域显示）
+  const displayImages = images.filter((img) => {
+    const mt = img.mediaType || (img as any).media_type
+    return mt !== 'audio'
+  })
   const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 32)))
-  const rowCount = Math.ceil(images.length / columns)
+  const rowCount = Math.ceil(displayImages.length / columns)
 
   // 更新容器宽度
   useEffect(() => {
@@ -122,8 +129,8 @@ export function ImageGrid({
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const rowIndex = virtualRow.index
           const startIndex = rowIndex * columns
-          const endIndex = Math.min(startIndex + columns, images.length)
-          const rowImages = images.slice(startIndex, endIndex)
+          const endIndex = Math.min(startIndex + columns, displayImages.length)
+          const rowImages = displayImages.slice(startIndex, endIndex)
 
           return (
             <div
@@ -192,6 +199,13 @@ const ImageGridItem = function ImageGridItem({
   const [realImageId, setRealImageId] = useState<number | string | null>(null)
   const [hasLoadedImageInfo, setHasLoadedImageInfo] = useState(false)
 
+  // 格式化视频时长
+  const formatDuration = (seconds: number): string => {
+    const m = Math.floor(seconds / 60)
+    const s = Math.floor(seconds % 60)
+    return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
   // 收藏库需要获取真实的图片 ID
   useEffect(() => {
     if (isFavoriteLibrary && image.libraryId && image.imagePath && !hasLoadedImageInfo) {
@@ -242,6 +256,13 @@ const ImageGridItem = function ImageGridItem({
     const loadThumbnail = async () => {
       // 等待获取真实 ID
       if (!hasLoadedImageInfo) return
+
+      // 音频文件不加载缩略图
+      const mt = image.mediaType || (image as any).media_type
+      if (mt === 'audio') {
+        setIsLoading(false)
+        return
+      }
 
       // 如果没有真实 ID，标记为错误
       if (realImageId === null && isFavoriteLibrary) {
@@ -342,6 +363,23 @@ const ImageGridItem = function ImageGridItem({
           />
         ) : (
           <div style={{ width: '100%', height: '100%', background: 'var(--bg-tertiary)' }}>加载中</div>
+        )}
+        {/* 视频时长 badge */}
+        {image.mediaType === 'video' && (
+          <span className="video-duration-badge">
+            {image.duration ? formatDuration(image.duration) : 'VIDEO'}
+          </span>
+        )}
+        {/* 不支持的格式 overlay */}
+        {image.mediaType === 'video' && (['avi', 'mkv'].includes(image.format?.toLowerCase() || '')) && (
+          <div className="unsupported-format-overlay">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>不支持</span>
+          </div>
         )}
       </div>
       <div className="image-grid-info">
