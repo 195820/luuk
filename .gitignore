@@ -43,3 +43,13 @@ cache/*
 !cache/.gitkeep
 data/*
 !data/.gitkeep
+
+# Claude Code
+.agents/
+.claude/
+
+# Test data
+test-data/
+
+# Library internal
+*.ivlib/thumbs.db
