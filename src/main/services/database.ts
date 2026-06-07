@@ -177,16 +177,24 @@ export class MasterDB {
   }
 
   /**
-   * 获取所有收藏的图片（带库信息）
+   * 获取所有收藏的图片（带库信息和图片元数据）
    */
-  getFavoriteImages(): Array<{ 
-    library_id: number; 
+  getFavoriteImages(): Array<{
+    library_id: number;
     library_name: string;
     library_root_path: string;
     image_path: string;
-    tags: string[]; 
+    tags: string[];
     rating: number;
     created_at: string;
+    image_id?: number;
+    width?: number;
+    height?: number;
+    file_size?: number;
+    format?: string;
+    media_type?: string;
+    duration?: number | null;
+    codec?: string | null;
   }> {
     if (!this.db) return [];
     const stmt = this.db.prepare(`
@@ -197,9 +205,9 @@ export class MasterDB {
       WHERE l.status = 'online'
       ORDER BY f.created_at DESC
     `);
-    return (stmt.all() as any[]).map(row => ({ 
-      ...row, 
-      tags: JSON.parse(row.tags || '[]') 
+    return (stmt.all() as any[]).map(row => ({
+      ...row,
+      tags: JSON.parse(row.tags || '[]')
     }));
   }
 

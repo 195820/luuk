@@ -4,8 +4,7 @@ import './ImageViewer.css'
 
 export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 
-const BROWSER_VIDEO_FORMATS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'tif', 'mp4', 'webm', 'mov'])
-const VIDEO_FORMATS = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv'])
+const BROWSER_VIDEO_FORMATS = new Set(['mp4', 'webm', 'mov'])
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -448,7 +447,7 @@ export function ImageViewer({
           ref={(ref) => { if (ref) transformRef.current = ref }}
         >
           <TransformComponent>
-            {mediaType === 'video' && VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) ? (
+            {mediaType === 'video' ? (
               BROWSER_VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) ? (
                 <video
                   ref={videoRef}

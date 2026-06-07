@@ -13,12 +13,18 @@
 - 应用布局拆分 (AppHeader, AppSidebar, AppFooter, SlideshowBar)
 - 库面板 (LibraryPanel)
 - 应用逻辑 hook (useAppLogic)
+- **多媒体支持**：视频/音频播放（`luuk-file://` 自定义协议，流式加载，支持 range 请求）
+- **IPC 接口**：`loadFullImage`（图片 data URL）、`getMediaUrl`（媒体流式 URL）
+- **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名，比数据库 `media_type` 更可靠
 
 ### 优化
 - ImageViewer 组件 SVG 图标系统
 - 按钮过渡动画和微交互
 - 缩略图加载性能优化（消除重复调用、跨库批量 API、前端缓存、路径规范化）
 - Store 拆分重构（imageStore → imageStore + libraryStore + favoriteStore + folderStore + uiStore）
+- `getFavoriteImages()` 返回值增加完整图片元数据（width, height, format, media_type, duration, codec）
+- ImageViewer 视频判断逻辑简化，仅依赖 `mediaType` 不再检查扩展名集合
+- 媒体加载增加 `cancelled` 标记防止异步竞态
 
 ### 修复
 - 修复收藏库视图切换时索引和数组不同步的问题

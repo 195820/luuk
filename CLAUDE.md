@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📦 项目概述
 
-一个专为**大量高清写真图片**设计的本地图片查看器，基于 Electron + React + TypeScript。
+一个专为**大量高清写真图片和多媒体文件**（视频/音频）设计的本地图片查看器，基于 Electron + React + TypeScript。
+支持通过 `luuk-file://` 自定义协议流式加载大媒体文件。
 
 ## 🔧 开发命令
 
@@ -22,13 +23,19 @@ npm run preview      # 预览构建结果
 ┌─────────────────────────────────────────────────┐
 │           UI 层 (React 19)                       │
 │  FolderTree │ ImageGrid (虚拟滚动)              │
-│  ImageViewer (缩放/旋转/翻转/幻灯片)            │
+│  ImageViewer (缩放/旋转/翻转/幻灯片/视频播放)   │
 ├─────────────────────────────────────────────────┤
-│         状态管理 (Zustand - imageStore.ts)       │
-│  libraries | images | folderTree | cache        │
+│         状态管理 (Zustand - 多 store 拆分)       │
+│  imageStore | libraryStore | favoriteStore      │
+│  folderStore | uiStore                          │
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
+│  loadFullImage | getMediaUrl (流式媒体)          │
+├─────────────────────────────────────────────────┤
+│         自定义协议层                              │
+│  luuk-file:// — 流式加载视频/音频/大图           │
+│  支持 range 请求，含库路径安全检查               │
 ├─────────────────────────────────────────────────┤
 │           数据层                                  │
 │  MasterDB (master.db) - 库/收藏/标签/历史        │
@@ -40,9 +47,9 @@ npm run preview      # 预览构建结果
 ## 📁 核心目录结构
 
 ```
-E:\luuk\
+D:\luuk\
 ├── electron/                   # Electron 主进程
-│   ├── main.ts                 # 主入口，窗口创建，IPC 注册
+│   ├── main.ts                 # 主入口，窗口创建，IPC 注册，luuk-file:// 协议
 │   └── preload.ts              # 预加载脚本，暴露 electronAPI
 ├── src/
 │   ├── main/                   # 后端服务
@@ -55,7 +62,7 @@ E:\luuk\
 │   │   └── ipc/
 │   │       └── library-handlers.ts  # IPC 处理器
 │   ├── components/             # React 组件
-│   │   ├── ImageViewer.tsx      # 查看器（缩放/平移/旋转/翻转/幻灯片）
+│   │   ├── ImageViewer.tsx      # 查看器（缩放/平移/旋转/翻转/幻灯片/视频播放）
 │   │   ├── ImageGrid.tsx        # 网格视图（虚拟滚动）
 │   │   ├── ImageGridItem.tsx    # 网格单项
 │   │   ├── MasonryGrid.tsx      # 瀑布流视图
@@ -95,6 +102,12 @@ E:\luuk\
 
 ## 🔑 关键设计
 
+### 多媒体支持
+- **luuk-file:// 自定义协议**：流式加载视频/音频/大图，支持 range 请求
+- **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
+- **加载策略**：图片 → data URL；视频/音频 → luuk-file:// 流式 URL
+- **安全检查**：协议处理器限制访问范围在已注册库路径内
+
 ### 数据库架构
 - **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史
 - **thumbs.db**: 每个库独立的分库，存储图片元数据、缩略图缓存（WebP 格式）
@@ -132,6 +145,9 @@ E:\luuk\
 4. **状态管理**: Zustand store 已拆分为多个独立 store（imageStore、libraryStore、favoriteStore、folderStore、uiStore），通过 `stores/index.ts` 统一导出。组件通过 hooks 访问
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
+7. **自定义协议**: `luuk-file://` 在 `app.whenReady()` 中注册，路径使用 base64url 编码
+8. **Native 模块**: 使用 `electron-rebuild` 重建 better-sqlite3 和 sharp 等原生模块
+9. **媒体类型**: 优先使用文件扩展名判断（`getMediaTypeFromPath`），数据库中 `media_type` 可能不准确
 
 ## ⌨️ 快捷键
 

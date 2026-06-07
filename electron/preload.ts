@@ -81,6 +81,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 文件操作
   readFile: (filePath: string) => ipcRenderer.invoke('readFile', filePath),
   fileExists: (filePath: string) => ipcRenderer.invoke('fileExists', filePath),
+  loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
+  getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
 
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),

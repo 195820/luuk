@@ -4,6 +4,15 @@ import { getImageService } from '../services/image-service';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 
 /**
+ * 将文件路径转换为 luuk-file:// URL
+ * 使用 base64url 编码路径，避免特殊字符
+ */
+function pathToMediaUrl(filePath: string): string {
+  const encoded = Buffer.from(path.resolve(filePath)).toString('base64url')
+  return `luuk-file://${encoded}`
+}
+
+/**
  * 注册库管理相关的 IPC 处理器
  */
 export function registerLibraryHandlers(): void {
@@ -319,6 +328,61 @@ export function registerLibraryHandlers(): void {
     return fs.promises.access(resolvedPath).then(() => true).catch(() => false);
   });
 
+  // 加载完整图片文件为 data URL（限制在库目录内）
+  ipcMain.handle('loadFullImage', async (
+    _event: Electron.IpcMainInvokeEvent,
+    filePath: string
+  ): Promise<string> => {
+    const fs = await import('fs');
+    const resolvedPath = path.resolve(filePath);
+    const libraries = service.getLibraries();
+    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
+    // 使用大小写不敏感的比较（Windows 兼容性）
+    const resolvedLower = resolvedPath.toLowerCase();
+    const isAllowed = allowedPaths.some(root => {
+      const rootLower = path.resolve(root).toLowerCase();
+      return resolvedLower.startsWith(rootLower + path.sep) || resolvedLower === rootLower;
+    });
+    if (!isAllowed) {
+      throw new Error('Access denied: path outside allowed library directory');
+    }
+    const buffer = await fs.promises.readFile(resolvedPath);
+    const ext = path.extname(resolvedPath).toLowerCase().slice(1);
+    // 映射扩展名到 MIME 类型
+    const mimeMap: Record<string, string> = {
+      jpg: 'jpeg', jpeg: 'jpeg', png: 'png', gif: 'gif', webp: 'webp',
+      bmp: 'bmp', tiff: 'tiff', tif: 'tiff', ico: 'ico', svg: 'svg+xml',
+      avif: 'avif', mp4: 'mp4', webm: 'webm', mov: 'quicktime',
+      mp3: 'mpeg', wav: 'wav', flac: 'flac', ogg: 'ogg',
+    };
+    const mime = mimeMap[ext] || 'octet-stream';
+    return `data:${mime.startsWith('video') || mime.startsWith('audio') ? `${mime}` : `image/${mime}`};base64,${buffer.toString('base64')}`;
+  });
+
+  // 获取媒体文件 URL（用于视频/音频流式播放）
+  ipcMain.handle('getMediaUrl', async (
+    _event: Electron.IpcMainInvokeEvent,
+    filePath: string
+  ): Promise<string> => {
+    const resolvedPath = path.resolve(filePath);
+    const libraries = service.getLibraries();
+    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
+    // 使用大小写不敏感的比较（Windows 兼容性）
+    const resolvedLower = resolvedPath.toLowerCase();
+    const isAllowed = allowedPaths.some(root => {
+      const rootLower = path.resolve(root).toLowerCase();
+      return resolvedLower.startsWith(rootLower + path.sep) || resolvedLower === rootLower;
+    });
+    if (!isAllowed) {
+      throw new Error('Access denied: path outside allowed library directory');
+    }
+    const fs = await import('fs');
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error('File not found');
+    }
+    return pathToMediaUrl(resolvedPath);
+  });
+
   // 更新扫描进度
   ipcMain.handle('updateScanProgress', async (
     _event: Electron.IpcMainInvokeEvent,
@@ -413,6 +477,8 @@ export function unregisterLibraryHandlers(): void {
   ipcMain.removeHandler('clearCache');
   ipcMain.removeHandler('readFile');
   ipcMain.removeHandler('fileExists');
+  ipcMain.removeHandler('loadFullImage');
+  ipcMain.removeHandler('getMediaUrl');
   ipcMain.removeHandler('updateScanProgress');
   ipcMain.removeHandler('clearScanProgress');
   ipcMain.removeHandler('getMediaPath');

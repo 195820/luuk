@@ -70,6 +70,7 @@ E:\luuk\
 | [LICENSE](../LICENSE) | ISC 许可证 |
 | [CLAUDE.md](../CLAUDE.md) | AI 助手开发指引 |
 | [requirements.md](../requirements.md) | 原始需求规格文档 |
+| [environment.yml](../environment.yml) | Conda 环境配置（Node.js ≥25, Python ≥3.14） |
 
 ---
 

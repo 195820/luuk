@@ -69,17 +69,11 @@ function App() {
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
-  const [currentImagePath, setCurrentImagePath] = useState<string>('')
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
 
-  // 将 Windows 路径转换为 file:// URL
-  const toFileUrl = (filePath: string): string => {
-    if (!filePath) return ''
-    const normalized = filePath.replace(/\\/g, '/')
-    return `file:///${normalized}`
-  }
+  const [currentImageSrc, setCurrentImageSrc] = useState<string>('')
 
   const {
     currentAudio,
@@ -530,30 +524,56 @@ function App() {
     }
   }
 
-  // 加载当前图片路径
+  // 加载当前图片/媒体的 URL
+  // 图片使用 data: URL，视频/音频使用 luuk-file:// 流式 URL
   useEffect(() => {
+    let cancelled = false
+
+    const loadMedia = async (filePath: string, mediaType: string) => {
+      if (!filePath || cancelled) return
+      try {
+        let url: string
+        if (mediaType === 'video' || mediaType === 'audio') {
+          // 视频/音频使用自定义协议流式加载
+          url = await (window as any).electronAPI.getMediaUrl(filePath)
+        } else {
+          // 图片使用 data URL
+          url = await (window as any).electronAPI.loadFullImage(filePath)
+        }
+        if (!cancelled) setCurrentImageSrc(url)
+      } catch (err) {
+        console.error('获取媒体 URL 失败:', err)
+        if (!cancelled) setCurrentImageSrc('')
+      }
+    }
+
     if (currentImage && currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
-      getCurrentImagePath().then(setCurrentImagePath).catch(err => {
+      const mediaType = (currentImage as any).mediaType || (currentImage as any).media_type || 'image'
+      console.log('[App] loadMedia: non-favorite, mediaType=', mediaType, 'image=', currentImage)
+      getCurrentImagePath().then((filePath) => loadMedia(filePath, mediaType)).catch(err => {
         console.error('获取图片路径失败:', err)
-        setCurrentImagePath('')
+        if (!cancelled) setCurrentImageSrc('')
       })
     } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
       // 收藏库中的图片需要从原库获取路径
       const fav = currentImage as any
       const imagePath = fav.relative_path || fav.image_path || fav.imagePath
       const libraryId = fav.library_id || fav.libraryId
+      const mediaType = fav.mediaType || fav.media_type || 'image'
+      console.log('[App] loadMedia: favorite, mediaType=', mediaType, 'imagePath=', imagePath, 'libraryId=', libraryId, 'fav=', fav)
       if (libraryId && imagePath) {
-        getFavoriteImagePath(libraryId, imagePath).then(setCurrentImagePath).catch(err => {
+        getFavoriteImagePath(libraryId, imagePath).then((filePath) => loadMedia(filePath, mediaType)).catch(err => {
           console.error('获取收藏图片路径失败:', err)
-          setCurrentImagePath('')
+          if (!cancelled) setCurrentImageSrc('')
         })
       } else {
         console.warn('[App] 收藏库图片缺少 libraryId 或 imagePath', fav)
-        setCurrentImagePath('')
+        if (!cancelled) setCurrentImageSrc('')
       }
     } else {
-      setCurrentImagePath('')
+      if (!cancelled) setCurrentImageSrc('')
     }
+    return () => { cancelled = true }
   }, [currentImage, currentLibraryId])
 
   const getCurrentImagePath = async () => {
@@ -895,7 +915,7 @@ function App() {
           ) : viewMode === 'viewer' && currentImage ? (
             <div className="image-viewer-container">
               <ImageViewer
-                src={toFileUrl(currentImagePath)}
+                src={currentImageSrc}
                 alt={currentImage.relative_path?.split('/').pop() || (currentImage as any).relativePath?.split('/').pop() || ''}
                 currentIndex={currentLibraryId === FAVORITE_LIBRARY_ID ? favoriteImageIndex : currentIndex}
                 totalImages={isFavoriteLibrary ? (favoriteViewMode === 'single' ? singleFavoriteImages.length : favoriteImages.length) : images.length}
