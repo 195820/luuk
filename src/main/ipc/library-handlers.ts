@@ -380,7 +380,17 @@ export function registerLibraryHandlers(): void {
     if (!fs.existsSync(resolvedPath)) {
       throw new Error('File not found');
     }
-    return pathToMediaUrl(resolvedPath);
+    // 返回 data: URL（Chrome 媒体管道不支持自定义协议）
+    const ext = path.extname(resolvedPath).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+      '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
+      '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+    };
+    const mimeType = mimeTypes[ext] || 'application/octet-stream';
+    const buffer = await fs.promises.readFile(resolvedPath);
+    const base64 = buffer.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
   });
 
   // 更新扫描进度

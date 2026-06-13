@@ -124,11 +124,12 @@ export class MasterDB {
   }
 
   private mapLibrary(row: any): Library {
+    const cleanPath = (row.root_path || '').trim().replace(/\r/g, '');
     return {
       id: row.id,
-      name: row.name,
-      rootPath: row.root_path,
-      root_path: row.root_path,
+      name: (row.name || '').trim(),
+      rootPath: cleanPath,
+      root_path: cleanPath,
       status: row.status,
       lastScan: row.last_scan,
       last_scan: row.last_scan,

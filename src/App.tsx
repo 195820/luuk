@@ -157,7 +157,7 @@ function App() {
     isFavorite: favoriteViewMode === 'single' ? true : isFavorite(fav.library_id, fav.relative_path),
     libraryId: fav.library_id,
     imagePath: fav.relative_path, // 使用 relative_path 字段
-    mediaType: fav.media_type || 'image',
+    mediaType: fav.mediaType || fav.media_type || 'image',
     duration: fav.duration,
   }))
 
@@ -533,7 +533,12 @@ function App() {
       if (!filePath || cancelled) return
       try {
         let url: string
-        if (mediaType === 'video' || mediaType === 'audio') {
+        // 通过文件扩展名兜底检测媒体类型（比数据库字段更可靠）
+        const ext = filePath.split('.').pop()?.toLowerCase()
+        const videoExts = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'])
+        const audioExts = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'])
+        const detectedType = videoExts.has(ext || '') ? 'video' : audioExts.has(ext || '') ? 'audio' : mediaType
+        if (detectedType === 'video' || detectedType === 'audio') {
           // 视频/音频使用自定义协议流式加载
           url = await (window as any).electronAPI.getMediaUrl(filePath)
         } else {

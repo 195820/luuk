@@ -31,11 +31,7 @@ npm run preview      # 预览构建结果
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
-│  loadFullImage | getMediaUrl (流式媒体)          │
-├─────────────────────────────────────────────────┤
-│         自定义协议层                              │
-│  luuk-file:// — 流式加载视频/音频/大图           │
-│  支持 range 请求，含库路径安全检查               │
+│  loadFullImage | getMediaUrl (data URL)          │
 ├─────────────────────────────────────────────────┤
 │           数据层                                  │
 │  MasterDB (master.db) - 库/收藏/标签/历史        │
@@ -103,10 +99,11 @@ D:\luuk\
 ## 🔑 关键设计
 
 ### 多媒体支持
-- **luuk-file:// 自定义协议**：流式加载视频/音频/大图，支持 range 请求
+- **data: URL 加载**：视频/音频/图片统一通过 `getMediaUrl` IPC 返回 base64 data URL
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
-- **加载策略**：图片 → data URL；视频/音频 → luuk-file:// 流式 URL
-- **安全检查**：协议处理器限制访问范围在已注册库路径内
+- **加载策略**：图片和视频/音频均返回 data URL（`loadFullImage` / `getMediaUrl`）
+- **安全检查**：IPC 处理器限制访问范围在已注册库路径内
+- **数据库路径清理**：`mapLibrary` 中使用 `.trim().replace(/\r/g, '')` 清理库路径中的不可见字符
 
 ### 数据库架构
 - **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史

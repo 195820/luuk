@@ -182,6 +182,15 @@ export function ImageViewer({
     }
   }, [])
 
+  const handleVideoError = useCallback(() => {
+    setLoadingState({
+      loading: false,
+      error: true,
+      naturalWidth: 0,
+      naturalHeight: 0,
+    })
+  }, [])
+
   const handleVideoTimeUpdate = useCallback(() => {
     const video = videoRef.current
     if (video) {
@@ -455,6 +464,7 @@ export function ImageViewer({
                   className="viewer-video"
                   style={transformStyle}
                   onLoadedMetadata={handleVideoLoaded}
+                  onError={handleVideoError}
                   onTimeUpdate={handleVideoTimeUpdate}
                   onPlay={() => setIsVideoPlaying(true)}
                   onPause={() => setIsVideoPlaying(false)}
@@ -500,7 +510,7 @@ export function ImageViewer({
           <svg className="loading-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="10" strokeWidth="2" strokeDasharray="32" strokeLinecap="round"/>
           </svg>
-          <span>正在加载图片...</span>
+          <span>{mediaType === 'video' ? '正在加载视频...' : mediaType === 'audio' ? '正在加载音频...' : '正在加载图片...'}</span>
         </div>
       )}
 
@@ -512,7 +522,7 @@ export function ImageViewer({
             <line x1="15" y1="9" x2="9" y2="15"/>
             <line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
-          <span>图片加载失败</span>
+          <span>{mediaType === 'video' ? '视频加载失败' : mediaType === 'audio' ? '音频加载失败' : '图片加载失败'}</span>
           <button onClick={() => setLoadingState(prev => ({ ...prev, loading: true, error: false }))} className="retry-btn">
             重试
           </button>

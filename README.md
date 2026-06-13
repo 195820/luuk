@@ -40,7 +40,7 @@ npm run build:dir
 - **sharp** - 图片处理
 - **chokidar** - 文件监听
 - **electron-store** - 配置存储
-- **luuk-file://** - 自定义协议，流式加载大媒体文件
+- **data: URL** - base视频文件视频/音频 base64 编码加载
 - **electron-rebuild** - 原生模块重建
 
 ## 📁 项目结构
