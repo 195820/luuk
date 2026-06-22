@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
+import { isBrowserPlayableVideo } from '../utils/media'
+import { ImageLightbox, lightboxActions } from './ImageLightbox'
+import { AudioViewer } from './AudioViewer'
 import './ImageViewer.css'
 
 export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
-
-const BROWSER_VIDEO_FORMATS = new Set(['mp4', 'webm', 'mov'])
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -31,6 +31,10 @@ interface ImageViewerProps {
   isFavorite?: boolean
   onFavoriteChange?: (isFavorite: boolean) => void
   mediaType?: 'image' | 'video' | 'audio'
+  /** 视频播完回调（幻灯片模式下用于自动前进） */
+  onVideoEnded?: () => void
+  /** 视频播放状态变化回调 */
+  onVideoPlayStateChange?: (isPlaying: boolean) => void
 }
 
 interface LoadingState {
@@ -50,11 +54,9 @@ export function ImageViewer({
   onClose,
   imageInfo,
   mediaType = 'image',
+  onVideoEnded,
+  onVideoPlayStateChange,
 }: ImageViewerProps) {
-  const [rotation, setRotation] = useState(0)
-  const [flipHorizontal, setFlipHorizontal] = useState(false)
-  const [flipVertical, setFlipVertical] = useState(false)
-  const [fitMode, setFitMode] = useState<FitMode>('fit-window')
   const [loadingState, setLoadingState] = useState<LoadingState>({
     loading: true,
     error: false,
@@ -62,82 +64,13 @@ export function ImageViewer({
     naturalHeight: 0,
   })
   const [showInfo, setShowInfo] = useState(false)
-  const imageRef = useRef<HTMLImageElement>(null)
-  const transformRef = useRef<any>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  const pendingImageRef = useRef<{ width: number; height: number } | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+  const [videoDuration, setVideoDuration] = useState(0)
   const [videoVolume, setVideoVolume] = useState(1)
   const [isGifPlaying, setIsGifPlaying] = useState(true)
-
-  // 计算目标缩放比例
-  const calcScale = useCallback(
-    (imgWidth: number, imgHeight: number): number => {
-      const wrapper = wrapperRef.current
-      if (!wrapper || imgWidth === 0 || imgHeight === 0) return 1
-      const containerWidth = wrapper.clientWidth
-      const containerHeight = wrapper.clientHeight
-      if (containerWidth === 0 || containerHeight === 0) return 1
-      switch (fitMode) {
-        case 'fit-window':
-          return Math.min(containerWidth / imgWidth, containerHeight / imgHeight)
-        case 'actual-size':
-          return 1
-        case 'fit-width':
-          return containerWidth / imgWidth
-        case 'fit-height':
-          return containerHeight / imgHeight
-        default:
-          return 1
-      }
-    },
-    [fitMode]
-  )
-
-  // 在库完全初始化后应用缩放
-  const applyFit = useCallback(() => {
-    const controller = transformRef.current
-    const wrapper = wrapperRef.current
-    const pending = pendingImageRef.current
-    if (!controller || !wrapper || !pending) return
-    const scale = calcScale(pending.width, pending.height)
-    const scaledWidth = pending.width * scale
-    const scaledHeight = pending.height * scale
-    const positionX = (wrapper.clientWidth - scaledWidth) / 2
-    const positionY = (wrapper.clientHeight - scaledHeight) / 2
-    controller.setTransform(positionX, positionY, scale, 0)
-  }, [calcScale])
-
-  // 重置变换
-  const handleReset = useCallback(() => {
-    setFitMode('fit-window')
-    setRotation(0)
-    setFlipHorizontal(false)
-    setFlipVertical(false)
-    requestAnimationFrame(() => {
-      const img = imageRef.current
-      if (img?.complete && img.naturalWidth) {
-        pendingImageRef.current = { width: img.naturalWidth, height: img.naturalHeight }
-        applyFit()
-      }
-    })
-  }, [applyFit])
-
-  // 旋转
-  const handleRotate = useCallback(() => {
-    setRotation(prev => (prev + 90) % 360)
-  }, [])
-
-  // 水平翻转
-  const handleFlipHorizontal = useCallback(() => {
-    setFlipHorizontal(prev => !prev)
-  }, [])
-
-  // 垂直翻转
-  const handleFlipVertical = useCallback(() => {
-    setFlipVertical(prev => !prev)
-  }, [])
 
   const formatTime = (seconds: number): string => {
     if (!isFinite(seconds)) return '0:00'
@@ -179,6 +112,7 @@ export function ImageViewer({
         naturalWidth: video.videoWidth,
         naturalHeight: video.videoHeight,
       })
+      setVideoDuration(video.duration)
     }
   }, [])
 
@@ -194,24 +128,24 @@ export function ImageViewer({
   const handleVideoTimeUpdate = useCallback(() => {
     const video = videoRef.current
     if (video) {
+      setVideoCurrentTime(video.currentTime)
       setIsVideoPlaying(!video.paused)
     }
   }, [])
 
-  // 放大
-  const handleZoomIn = useCallback(() => {
-    transformRef.current?.zoomIn(0.5)
-  }, [])
+  // 视频播完回调
+  const handleVideoEnded = useCallback(() => {
+    setIsVideoPlaying(false)
+    onVideoEnded?.()
+  }, [onVideoEnded])
 
-  // 缩小
-  const handleZoomOut = useCallback(() => {
-    transformRef.current?.zoomOut(0.5)
-  }, [])
-
-  // 适应模式切换
-  const handleFitModeChange = useCallback((mode: FitMode) => {
-    setFitMode(mode)
-  }, [])
+  // 图片操作（通过事件转发给 ImageLightbox）
+  const handleRotate = useCallback(() => lightboxActions.rotate(), [])
+  const handleFlipHorizontal = useCallback(() => lightboxActions.flipH(), [])
+  const handleFlipVertical = useCallback(() => lightboxActions.flipV(), [])
+  const handleZoomIn = useCallback(() => lightboxActions.zoomIn(), [])
+  const handleZoomOut = useCallback(() => lightboxActions.zoomOut(), [])
+  const handleReset = useCallback(() => lightboxActions.reset(), [])
 
   // 图片加载完成
   const handleImageLoaded = useCallback(
@@ -222,10 +156,8 @@ export function ImageViewer({
         naturalWidth: width,
         naturalHeight: height,
       })
-      pendingImageRef.current = { width, height }
-      applyFit()
     },
-    [applyFit]
+    []
   )
 
   // 重置状态当 src 变化
@@ -238,33 +170,11 @@ export function ImageViewer({
     })
   }, [src])
 
-  // fitMode 变化时重新应用缩放
-  useEffect(() => {
-    const img = imageRef.current
-    if (img?.complete && img.naturalWidth) {
-      pendingImageRef.current = { width: img.naturalWidth, height: img.naturalHeight }
-      applyFit()
-    }
-  }, [fitMode, applyFit])
-
-  // rotation/flip 变化时重新居中
-  useEffect(() => {
-    requestAnimationFrame(() => {
-      const controller = transformRef.current
-      if (!controller) return
-      controller.centerView(undefined, 0)
-    })
-  }, [rotation, flipHorizontal, flipVertical])
-
   // 监听全局重置事件
   useEffect(() => {
-    const handleResetEvent = () => {
-      handleReset()
-    }
+    const handleResetEvent = () => handleReset()
     window.addEventListener('image-viewer-reset', handleResetEvent)
-    return () => {
-      window.removeEventListener('image-viewer-reset', handleResetEvent)
-    }
+    return () => window.removeEventListener('image-viewer-reset', handleResetEvent)
   }, [handleReset])
 
   // 监听全局快捷键事件
@@ -278,19 +188,13 @@ export function ImageViewer({
         case 'R':
           handleReset()
           break
-        case '0':
-          setFitMode('fit-window')
-          break
-        case '1':
-          setFitMode('actual-size')
-          break
         case 'h':
         case 'H':
-          setFlipHorizontal(prev => !prev)
+          handleFlipHorizontal()
           break
         case 'v':
         case 'V':
-          setFlipVertical(prev => !prev)
+          handleFlipVertical()
           break
         case 'i':
         case 'I':
@@ -314,10 +218,8 @@ export function ImageViewer({
       }
     }
     window.addEventListener('keydown', handleKeyDown)
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [handleReset, onClose, onPrevious, onNext])
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleReset, handleFlipHorizontal, handleFlipVertical, onClose, onPrevious, onNext, mediaType, toggleVideoPlayback])
 
   // 格式化文件大小
   const formatFileSize = (bytes: number): string => {
@@ -326,11 +228,6 @@ export function ImageViewer({
     const sizes = ['B', 'KB', 'MB', 'GB']
     const i = Math.floor(Math.log(bytes) / Math.log(k))
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
-
-  const transformStyle = {
-    transform: `rotate(${rotation}deg) scaleX(${flipHorizontal ? -1 : 1}) scaleY(${flipVertical ? -1 : 1})`,
-    transformOrigin: 'center center',
   }
 
   return (
@@ -375,50 +272,57 @@ export function ImageViewer({
           </span>
         </div>
 
-        <div className="toolbar-group">
-          <button onClick={handleRotate} className="toolbar-btn" title="旋转 90° (R)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="23 4 23 10 17 10"/>
-              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-            </svg>
-          </button>
-          <button onClick={handleFlipHorizontal} className="toolbar-btn" title="水平翻转 (H)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 3v18"/>
-              <path d="M8 8l-4 4 4 4"/>
-              <path d="M16 16l4-4-4-4"/>
-            </svg>
-          </button>
-          <button onClick={handleFlipVertical} className="toolbar-btn" title="垂直翻转 (V)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M3 12h18"/>
-              <path d="M8 16l4 4 4-4"/>
-              <path d="M16 8l-4-4-4 4"/>
-            </svg>
-          </button>
-        </div>
+        {/* 图片操作按钮（仅图片类型显示） */}
+        {mediaType === 'image' && (
+          <>
+            <div className="toolbar-group">
+              <button onClick={handleRotate} className="toolbar-btn" title="旋转 90°">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="23 4 23 10 17 10"/>
+                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                </svg>
+              </button>
+              <button onClick={handleFlipHorizontal} className="toolbar-btn" title="水平翻转 (H)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 3v18"/>
+                  <path d="M8 8l-4 4 4 4"/>
+                  <path d="M16 16l4-4-4-4"/>
+                </svg>
+              </button>
+              <button onClick={handleFlipVertical} className="toolbar-btn" title="垂直翻转 (V)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 12h18"/>
+                  <path d="M8 16l4 4 4-4"/>
+                  <path d="M16 8l-4-4-4 4"/>
+                </svg>
+              </button>
+            </div>
 
-        <div className="toolbar-group">
-          <button
-            onClick={() => handleFitModeChange('fit-window')}
-            className={`toolbar-btn ${fitMode === 'fit-window' ? 'active' : ''}`}
-            title="适应窗口 (0)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-            </svg>
-          </button>
-          <button
-            onClick={() => handleFitModeChange('actual-size')}
-            className={`toolbar-btn ${fitMode === 'actual-size' ? 'active' : ''}`}
-            title="实际大小 (1)"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M21 21H3V3h18v18z"/>
-              <path d="M9 9h6v6H9z"/>
-            </svg>
-          </button>
-        </div>
+            <div className="toolbar-group">
+              <button onClick={handleZoomIn} className="toolbar-btn" title="放大">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  <line x1="11" y1="8" x2="11" y2="14"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+              </button>
+              <button onClick={handleZoomOut} className="toolbar-btn" title="缩小">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  <line x1="8" y1="11" x2="14" y2="11"/>
+                </svg>
+              </button>
+              <button onClick={handleReset} className="toolbar-btn" title="重置 (R)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                </svg>
+              </button>
+            </div>
+          </>
+        )}
 
         <div className="toolbar-group">
           <button
@@ -435,73 +339,48 @@ export function ImageViewer({
         </div>
       </div>
 
-      {/* 图片查看区域 */}
+      {/* 媒体查看区域 */}
       <div ref={wrapperRef} className="viewer-canvas">
-        <TransformWrapper
-          initialScale={1}
-          minScale={0.1}
-          maxScale={10}
-          limitToBounds={false}
-          centerZoomedOut={true}
-          centerOnInit={false}
-          alignmentAnimation={{ disabled: true }}
-          onInit={() => {
-            if (pendingImageRef.current) {
-              applyFit()
-            }
-          }}
-          wheel={{ step: 0.5 }}
-          pinch={{ step: 0.5 }}
-          doubleClick={{ step: 1.5 }}
-          ref={(ref) => { if (ref) transformRef.current = ref }}
-        >
-          <TransformComponent>
-            {mediaType === 'video' ? (
-              BROWSER_VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) ? (
-                <video
-                  ref={videoRef}
-                  src={src}
-                  className="viewer-video"
-                  style={transformStyle}
-                  onLoadedMetadata={handleVideoLoaded}
-                  onError={handleVideoError}
-                  onTimeUpdate={handleVideoTimeUpdate}
-                  onPlay={() => setIsVideoPlaying(true)}
-                  onPause={() => setIsVideoPlaying(false)}
-                  controls={false}
-                  draggable={false}
-                />
-              ) : (
-                <div className="viewer-unsupported-placeholder">
-                  <svg className="unsupported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <rect x="2" y="2" width="20" height="20" rx="2"/>
-                    <polygon points="10,8 16,12 10,16"/>
-                    <line x1="18" y1="6" x2="6" y2="18" stroke="rgba(255,70,70,0.6)"/>
-                  </svg>
-                  <span className="unsupported-label">不支持的格式: {imageInfo?.format?.toUpperCase()}</span>
-                  <span className="unsupported-hint">浏览器无法直接播放此格式</span>
-                  {alt && <span className="unsupported-filename">{alt}</span>}
-                  {imageInfo?.width && (imageInfo?.height ?? 0) > 0 && (
-                    <span className="unsupported-dims">{imageInfo.width} x {imageInfo.height}</span>
-                  )}
-                </div>
-              )
-            ) : (
-              <img
-                ref={imageRef}
-                src={src}
-                alt={alt || '图片'}
-                className="viewer-image"
-                draggable={false}
-                style={transformStyle}
-                onLoad={(e) => {
-                  const img = e.currentTarget
-                  handleImageLoaded(img.naturalWidth, img.naturalHeight)
-                }}
-              />
-            )}
-          </TransformComponent>
-        </TransformWrapper>
+        {mediaType === 'video' ? (
+          isBrowserPlayableVideo(alt || '') ? (
+            <video
+              ref={videoRef}
+              src={src}
+              className="viewer-video"
+              onLoadedMetadata={handleVideoLoaded}
+              onError={handleVideoError}
+              onTimeUpdate={handleVideoTimeUpdate}
+              onPlay={() => { setIsVideoPlaying(true); onVideoPlayStateChange?.(true) }}
+              onPause={() => { setIsVideoPlaying(false); onVideoPlayStateChange?.(false) }}
+              onEnded={handleVideoEnded}
+              controls={false}
+              draggable={false}
+            />
+          ) : (
+            <div className="viewer-unsupported-placeholder">
+              <svg className="unsupported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="2" width="20" height="20" rx="2"/>
+                <polygon points="10,8 16,12 10,16"/>
+                <line x1="18" y1="6" x2="6" y2="18" stroke="rgba(255,70,70,0.6)"/>
+              </svg>
+              <span className="unsupported-label">不支持的格式: {imageInfo?.format?.toUpperCase()}</span>
+              <span className="unsupported-hint">浏览器无法直接播放此格式</span>
+              {alt && <span className="unsupported-filename">{alt}</span>}
+              {imageInfo?.width && (imageInfo?.height ?? 0) > 0 && (
+                <span className="unsupported-dims">{imageInfo.width} x {imageInfo.height}</span>
+              )}
+            </div>
+          )
+        ) : mediaType === 'audio' ? (
+          <AudioViewer src={src} filename={alt || ''} />
+        ) : (
+          <ImageLightbox
+            src={src}
+            alt={alt || '图片'}
+            onImageLoaded={handleImageLoaded}
+            onError={() => setLoadingState({ loading: false, error: true, naturalWidth: 0, naturalHeight: 0 })}
+          />
+        )}
       </div>
 
       {/* 加载状态 */}
@@ -568,34 +447,8 @@ export function ImageViewer({
         </div>
       )}
 
-      {/* 控制按钮 */}
-      <div className="viewer-controls">
-        <button onClick={handleReset} className="control-btn" title="重置 (R)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="1 4 1 10 7 10"/>
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-          </svg>
-          <span>重置</span>
-        </button>
-        <button onClick={handleZoomOut} className="control-btn" title="缩小 (-)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            <line x1="8" y1="11" x2="14" y2="11"/>
-          </svg>
-        </button>
-        <button onClick={handleZoomIn} className="control-btn" title="放大 (+)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="11" cy="11" r="8"/>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            <line x1="11" y1="8" x2="11" y2="14"/>
-            <line x1="8" y1="11" x2="14" y2="11"/>
-          </svg>
-        </button>
-      </div>
-
       {/* Video controls bar */}
-      {mediaType === 'video' && BROWSER_VIDEO_FORMATS.has((imageInfo?.format || '').toLowerCase()) && !loadingState.loading && !loadingState.error && (
+      {mediaType === 'video' && isBrowserPlayableVideo(alt || '') && !loadingState.loading && !loadingState.error && (
         <div className="video-controls-bar">
           <button
             onClick={toggleVideoPlayback}
@@ -613,17 +466,17 @@ export function ImageViewer({
               </svg>
             )}
           </button>
-          <span className="video-time">{formatTime(videoRef.current?.currentTime || 0)}</span>
+          <span className="video-time">{formatTime(videoCurrentTime)}</span>
           <input
             type="range"
             min="0"
-            max={videoRef.current?.duration || 0}
+            max={videoDuration || 0}
             step="0.1"
-            defaultValue="0"
+            value={videoCurrentTime}
             onChange={handleVideoSeek}
             className="video-progress-bar"
           />
-          <span className="video-time">{formatTime(videoRef.current?.duration || 0)}</span>
+          <span className="video-time">{formatTime(videoDuration)}</span>
           <div className="video-volume-group">
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.6 }}>
               <path d="M6 2L2 6H0v4h2l4 4V2z"/>

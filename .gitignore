@@ -53,3 +53,4 @@ test-data/
 
 # Library internal
 *.ivlib/thumbs.db
+test-results/

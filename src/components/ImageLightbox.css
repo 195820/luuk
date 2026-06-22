@@ -1,0 +1,40 @@
+/* ImageLightbox 样式 */
+.image-lightbox-wrapper {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 旋转/翻转层 */
+.image-lightbox-transform-layer {
+  width: 100%;
+  height: 100%;
+}
+
+/* YARL inline 容器覆盖 */
+.image-lightbox-wrapper .yarl__root {
+  width: 100% !important;
+  height: 100% !important;
+  position: relative !important;
+}
+
+.image-lightbox-wrapper .yarl__container {
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+}
+
+.image-lightbox-wrapper .yarl__toolbar {
+  display: none !important;
+}
+
+.image-lightbox-wrapper .yarl__navigation {
+  display: none !important;
+}
+
+.image-lightbox-wrapper .yarl__button_close {
+  display: none !important;
+}
+
+/* YARL 默认的 ImageSlide 会自动设置 maxWidth/maxHeight，无需额外约束 */

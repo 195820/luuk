@@ -10,6 +10,7 @@ import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore } from './stores'
+import { getMediaTypeFromPath } from './utils/media'
 import type { Library } from './types'
 import './App.css'
 
@@ -23,6 +24,7 @@ function App() {
   const [selectedInterval, setSelectedInterval] = useState(5)
   const gridScrollRef = useRef<number>(0)
   const slideshowTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
 
   const {
     libraries,
@@ -128,6 +130,7 @@ function App() {
 
   // 当前文件夹的音频文件
   const audioItems = images.filter((img: any) => (img.mediaType || img.media_type) === 'audio')
+  const hasAudio = audioItems.length > 0
 
   // 音频区域显示时用筛选后的收藏图片
 
@@ -314,19 +317,16 @@ function App() {
     setSelectedInterval(interval)
   }, [])
 
-  // 幻灯片定时器
+  // 幻灯片定时器（视频播放中暂停定时器，视频播完后通过 onVideoEnded 触发前进）
   useEffect(() => {
-    if (slideshow.enabled && viewMode === 'viewer') {
+    if (slideshow.enabled && viewMode === 'viewer' && !isVideoPlaying) {
       slideshowTimerRef.current = setInterval(() => {
-        if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-          handleNext()
-        } else {
-          handleNext()
-        }
+        handleNext()
       }, slideshow.interval * 1000)
     } else {
       if (slideshowTimerRef.current) {
         clearInterval(slideshowTimerRef.current)
+        slideshowTimerRef.current = null
       }
     }
 
@@ -335,7 +335,15 @@ function App() {
         clearInterval(slideshowTimerRef.current)
       }
     }
-  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext, currentLibraryId])
+  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext, currentLibraryId, isVideoPlaying])
+
+  // 视频播完回调（幻灯片模式下自动前进）
+  const handleVideoEnded = useCallback(() => {
+    setIsVideoPlaying(false)
+    if (slideshow.enabled && viewMode === 'viewer') {
+      handleNext()
+    }
+  }, [slideshow.enabled, viewMode, handleNext])
 
   // 切换收藏状态
   const handleToggleFavorite = useCallback(async () => {
@@ -525,24 +533,19 @@ function App() {
   }
 
   // 加载当前图片/媒体的 URL
-  // 图片使用 data: URL，视频/音频使用 luuk-file:// 流式 URL
+  // 图片使用 data: URL，视频/音频使用 media:// 自定义协议
   useEffect(() => {
     let cancelled = false
 
-    const loadMedia = async (filePath: string, mediaType: string) => {
+    const loadMedia = async (filePath: string) => {
       if (!filePath || cancelled) return
       try {
         let url: string
-        // 通过文件扩展名兜底检测媒体类型（比数据库字段更可靠）
-        const ext = filePath.split('.').pop()?.toLowerCase()
-        const videoExts = new Set(['mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v'])
-        const audioExts = new Set(['mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a'])
-        const detectedType = videoExts.has(ext || '') ? 'video' : audioExts.has(ext || '') ? 'audio' : mediaType
+        // 通过文件扩展名判断媒体类型（比数据库字段更可靠）
+        const detectedType = getMediaTypeFromPath(filePath)
         if (detectedType === 'video' || detectedType === 'audio') {
-          // 视频/音频使用自定义协议流式加载
           url = await (window as any).electronAPI.getMediaUrl(filePath)
         } else {
-          // 图片使用 data URL
           url = await (window as any).electronAPI.loadFullImage(filePath)
         }
         if (!cancelled) setCurrentImageSrc(url)
@@ -553,26 +556,20 @@ function App() {
     }
 
     if (currentImage && currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
-      const mediaType = (currentImage as any).mediaType || (currentImage as any).media_type || 'image'
-      console.log('[App] loadMedia: non-favorite, mediaType=', mediaType, 'image=', currentImage)
-      getCurrentImagePath().then((filePath) => loadMedia(filePath, mediaType)).catch(err => {
+      getCurrentImagePath().then((filePath) => loadMedia(filePath)).catch(err => {
         console.error('获取图片路径失败:', err)
         if (!cancelled) setCurrentImageSrc('')
       })
     } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
-      // 收藏库中的图片需要从原库获取路径
       const fav = currentImage as any
       const imagePath = fav.relative_path || fav.image_path || fav.imagePath
       const libraryId = fav.library_id || fav.libraryId
-      const mediaType = fav.mediaType || fav.media_type || 'image'
-      console.log('[App] loadMedia: favorite, mediaType=', mediaType, 'imagePath=', imagePath, 'libraryId=', libraryId, 'fav=', fav)
       if (libraryId && imagePath) {
-        getFavoriteImagePath(libraryId, imagePath).then((filePath) => loadMedia(filePath, mediaType)).catch(err => {
+        getFavoriteImagePath(libraryId, imagePath).then((filePath) => loadMedia(filePath)).catch(err => {
           console.error('获取收藏图片路径失败:', err)
           if (!cancelled) setCurrentImageSrc('')
         })
       } else {
-        console.warn('[App] 收藏库图片缺少 libraryId 或 imagePath', fav)
         if (!cancelled) setCurrentImageSrc('')
       }
     } else {
@@ -759,8 +756,8 @@ function App() {
             {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
           </button>
 
-          {/* 显示音频开关 */}
-          {viewMode === 'grid' && currentLibraryId && (
+          {/* 显示音频开关（库中有音频文件时自动显示） */}
+          {viewMode === 'grid' && currentLibraryId && hasAudio && (
             <button
               onClick={() => setShowAudio(!showAudio)}
               className={`header-action-btn ${showAudio ? 'active' : ''}`}
@@ -931,6 +928,8 @@ function App() {
                 slideshowSettings={slideshow}
                 onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
                 mediaType={(currentImage as any).mediaType || (currentImage as any).media_type || 'image'}
+                onVideoEnded={handleVideoEnded}
+                onVideoPlayStateChange={setIsVideoPlaying}
               />
             </div>
           ) : null}

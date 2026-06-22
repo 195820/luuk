@@ -47,6 +47,8 @@ export interface ElectronAPI {
   // 初始化服务
   initImageService: () => Promise<void>
   // 媒体相关
+  loadFullImage: (filePath: string) => Promise<string>
+  getMediaUrl: (filePath: string) => Promise<string>
   getMediaPath: (libraryId: number, imageId: number) => Promise<string>
   extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) => Promise<{ duration: number; codec: string; width: number; height: number }>
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
@@ -113,9 +115,24 @@ export type MediaType = 'image' | 'video' | 'audio'
 // 支持的文件扩展名按媒体类型分类
 export const MEDIA_EXTENSIONS = {
   image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'],
-  video: ['.mp4', '.webm', '.mov', '.avi', '.mkv'],
+  video: ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'],
   audio: ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'],
 } as const
+
+// 扩展名到 MIME 类型的映射（统一定义，消除各文件重复）
+export const MIME_TYPES: Record<string, string> = {
+  // 图片
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+  '.tiff': 'image/tiff', '.tif': 'image/tiff', '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml', '.avif': 'image/avif',
+  // 视频
+  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska', '.m4v': 'video/mp4',
+  // 音频
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
+  '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+}
 
 // 图片类型 (数据库记录)
 export interface Image {

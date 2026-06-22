@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { getMediaTypeFromPath } from '../utils/media';
 import {
   MasterDB,
   ThumbnailsDB,
@@ -214,7 +215,7 @@ export class ImageService {
 
     // 附加库信息 + 字段名映射（蛇形转驼峰）+ 使用扩展名修正媒体类型
     return images.map(img => {
-      const correctMediaType = this.getMediaTypeFromPath(img.relative_path);
+      const correctMediaType = getMediaTypeFromPath(img.relative_path);
       return {
         ...img,
         library_id: libraryId,
@@ -260,7 +261,7 @@ export class ImageService {
 
     // 附加库信息 + 使用扩展名修正媒体类型
     return images.map(img => {
-      const correctMediaType = this.getMediaTypeFromPath(img.relative_path);
+      const correctMediaType = getMediaTypeFromPath(img.relative_path);
       return {
         ...img,
         library_id: libraryId,
@@ -582,7 +583,7 @@ export class ImageService {
         // 从原库获取图片详细信息
         const imageInfo = await this.getImageByRelativePath(fav.library_id, fav.image_path);
         // 使用文件扩展名判断媒体类型（数据库中的 media_type 可能不准确）
-        const correctMediaType = this.getMediaTypeFromPath(fav.image_path);
+        const correctMediaType = getMediaTypeFromPath(fav.image_path);
         return {
           id: imageInfo?.id || 0,
           library_id: fav.library_id,
@@ -601,7 +602,7 @@ export class ImageService {
         };
       } catch (err) {
         console.error(`获取收藏图片详情失败：${fav.library_id}/${fav.image_path}`, err);
-        const correctMediaType = this.getMediaTypeFromPath(fav.image_path);
+        const correctMediaType = getMediaTypeFromPath(fav.image_path);
         return {
           id: 0,
           library_id: fav.library_id,
@@ -625,17 +626,6 @@ export class ImageService {
     return result;
   }
 
-  /**
-   * 根据文件扩展名判断媒体类型（最可靠的方式）
-   */
-  private getMediaTypeFromPath(relativePath: string): 'image' | 'video' | 'audio' {
-    const ext = path.extname(relativePath).toLowerCase();
-    const videoExts = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v']);
-    const audioExts = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a']);
-    if (videoExts.has(ext)) return 'video';
-    if (audioExts.has(ext)) return 'audio';
-    return 'image';
-  }
 
   /**
    * 根据相对路径获取图片信息
@@ -687,7 +677,7 @@ export class ImageService {
           const img = db.getImageByRelativePath(fav.image_path);
           if (img) {
             // 使用文件扩展名判断媒体类型
-            const correctMediaType = this.getMediaTypeFromPath(fav.image_path);
+            const correctMediaType = getMediaTypeFromPath(fav.image_path);
             images.push({
               ...img,
               library_id: fav.library_id,
@@ -768,7 +758,7 @@ export class ImageService {
             const images = db.getImagesByFolder(fav.folder_path, { limit: options.limit, offset: 0 });
             allImages.push(...images.map(img => {
               // 使用文件扩展名判断媒体类型
-              const correctMediaType = this.getMediaTypeFromPath(img.relative_path);
+              const correctMediaType = getMediaTypeFromPath(img.relative_path);
               return {
                 ...img,
                 library_id: fav.library_id,

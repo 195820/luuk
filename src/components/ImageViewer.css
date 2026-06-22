@@ -597,3 +597,33 @@
   height: 24px;
   opacity: 0.6;
 }
+
+/* Audio placeholder in viewer */
+.viewer-audio-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  width: 100%;
+  height: 100%;
+  color: var(--text-muted);
+}
+
+.viewer-audio-placeholder .audio-icon {
+  opacity: 0.5;
+  color: var(--accent);
+}
+
+.viewer-audio-placeholder .audio-filename {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  max-width: 400px;
+  text-align: center;
+  word-break: break-all;
+}
+
+.viewer-audio-placeholder .audio-hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}

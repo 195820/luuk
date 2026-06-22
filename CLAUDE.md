@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 📦 项目概述
 
 一个专为**大量高清写真图片和多媒体文件**（视频/音频）设计的本地图片查看器，基于 Electron + React + TypeScript。
-支持通过 `luuk-file://` 自定义协议流式加载大媒体文件。
+支持通过 `media://` 自定义协议流式加载大媒体文件（令牌映射机制）。
 
 ## 🔧 开发命令
 
@@ -34,7 +34,7 @@ npm run preview        # 预览构建结果
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
-│  loadFullImage | getMediaUrl (data URL)          │
+│  loadFullImage (data URL) | getMediaUrl (media:// token) │
 ├─────────────────────────────────────────────────┤
 │           数据层                                  │
 │  MasterDB (master.db) - 库/收藏/标签/历史        │
@@ -48,7 +48,7 @@ npm run preview        # 预览构建结果
 ```
 D:\luuk\
 ├── electron/                   # Electron 主进程
-│   ├── main.ts                 # 主入口，窗口创建，IPC 注册，luuk-file:// 协议
+│   ├── main.ts                 # 主入口，窗口创建，IPC 注册，media:// 协议
 │   └── preload.ts              # 预加载脚本，暴露 electronAPI
 ├── src/
 │   ├── main/                   # 后端服务
@@ -103,8 +103,8 @@ D:\luuk\
 
 ### 多媒体支持
 - **图片加载**：`loadFullImage` IPC 返回 base64 data URL
-- **视频/音频加载**：`getMediaUrl` IPC 返回 base64 data URL（⚠️ 大文件会 OOM，计划改用 `file://` 协议）
-- **流式协议**：`luuk-file://` 已实现（支持 Range 请求）但**未被使用**（死代码，Chromium media pipeline 不支持自定义协议）
+- **视频/音频加载**：`getMediaUrl` IPC 返回 `media://TOKEN` URL（令牌映射，主进程缓存 `{token → filePath}`）
+- **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
 - **安全检查**：IPC 处理器限制访问范围在已注册库路径内
 - **数据库路径清理**：`mapLibrary` 中使用 `.trim().replace(/\r/g, '')` 清理库路径中的不可见字符
@@ -152,7 +152,7 @@ D:\luuk\
 4. **状态管理**: `imageStore.ts` 是实际的核心 store（上帝对象），`libraryStore`/`uiStore`/`favoriteStore`/`folderStore` 已定义但未被组件使用（死代码）。重构前不要在新代码中引用这些死 store
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
-7. **自定义协议**: `luuk-file://` 在 `app.whenReady()` 中注册，路径使用 base64url 编码
+7. **自定义协议**: `media://` 在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册。URL 中的路径编码采用令牌映射（`src/main/services/media-registry.ts`），避免浏览器对 URL authority 强制小写化破坏编码
 8. **Native 模块**: 使用 `electron-rebuild` 重建 better-sqlite3 和 sharp 等原生模块
 9. **媒体类型**: 优先使用文件扩展名判断（`getMediaTypeFromPath`），数据库中 `media_type` 可能不准确
 

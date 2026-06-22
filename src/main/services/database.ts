@@ -515,22 +515,6 @@ export class ThumbnailsDB {
         FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
       );
 
-      CREATE TABLE IF NOT EXISTS previews (
-        image_id INTEGER PRIMARY KEY,
-        data BLOB NOT NULL,
-        width INTEGER,
-        height INTEGER,
-        generated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS folders (
-        path TEXT PRIMARY KEY,
-        parent_path TEXT,
-        image_count INTEGER DEFAULT 0,
-        cover_image_path TEXT,
-        last_modified TEXT
-      );
     `);
 
     // 迁移：为已存在的 images 表添加多媒体字段

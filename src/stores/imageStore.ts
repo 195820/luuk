@@ -134,6 +134,10 @@ export interface ScanProgress {
 // 虚拟收藏库 ID
 export const FAVORITE_LIBRARY_ID = -1
 
+// 缩略图缓存上限，超出时淘汰最早的条目
+const THUMBNAIL_CACHE_MAX = 500
+const THUMBNAIL_CACHE_EVICT = 100 // 每次淘汰数量
+
 interface ImageState {
   // 库相关
   libraries: Library[]
@@ -481,10 +485,15 @@ export const useImageStore = create<ImageState>((set, get) => ({
       // @ts-ignore
       const thumbnail = await window.electronAPI.getThumbnail(currentLibraryId, imageId, size)
 
-      // 更新缓存
+      // 更新缓存（带 LRU 淘汰）
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
         newCache.set(imageId, thumbnail)
+        // 超出上限时淘汰最早的条目
+        if (newCache.size > THUMBNAIL_CACHE_MAX) {
+          const keysToDelete = Array.from(newCache.keys()).slice(0, THUMBNAIL_CACHE_EVICT)
+          keysToDelete.forEach(k => newCache.delete(k))
+        }
         return { thumbnailCache: newCache }
       })
 
@@ -504,11 +513,16 @@ export const useImageStore = create<ImageState>((set, get) => ({
       // @ts-ignore
       const thumbnails = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
 
-      // 更新缓存
+      // 更新缓存（带 LRU 淘汰）
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
         for (const [id, thumbnail] of thumbnails.entries()) {
           newCache.set(id, thumbnail)
+        }
+        // 超出上限时淘汰最早的条目
+        if (newCache.size > THUMBNAIL_CACHE_MAX) {
+          const keysToDelete = Array.from(newCache.keys()).slice(0, THUMBNAIL_CACHE_EVICT)
+          keysToDelete.forEach(k => newCache.delete(k))
         }
         return { thumbnailCache: newCache }
       })

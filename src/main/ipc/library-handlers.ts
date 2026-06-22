@@ -1,16 +1,9 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import path from 'path';
 import { getImageService } from '../services/image-service';
+import { getMimeTypeFromPath } from '../utils/media';
+import { registerMediaUrl } from '../services/media-registry';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
-
-/**
- * 将文件路径转换为 luuk-file:// URL
- * 使用 base64url 编码路径，避免特殊字符
- */
-function pathToMediaUrl(filePath: string): string {
-  const encoded = Buffer.from(path.resolve(filePath)).toString('base64url')
-  return `luuk-file://${encoded}`
-}
 
 /**
  * 注册库管理相关的 IPC 处理器
@@ -347,19 +340,13 @@ export function registerLibraryHandlers(): void {
       throw new Error('Access denied: path outside allowed library directory');
     }
     const buffer = await fs.promises.readFile(resolvedPath);
-    const ext = path.extname(resolvedPath).toLowerCase().slice(1);
-    // 映射扩展名到 MIME 类型
-    const mimeMap: Record<string, string> = {
-      jpg: 'jpeg', jpeg: 'jpeg', png: 'png', gif: 'gif', webp: 'webp',
-      bmp: 'bmp', tiff: 'tiff', tif: 'tiff', ico: 'ico', svg: 'svg+xml',
-      avif: 'avif', mp4: 'mp4', webm: 'webm', mov: 'quicktime',
-      mp3: 'mpeg', wav: 'wav', flac: 'flac', ogg: 'ogg',
-    };
-    const mime = mimeMap[ext] || 'octet-stream';
-    return `data:${mime.startsWith('video') || mime.startsWith('audio') ? `${mime}` : `image/${mime}`};base64,${buffer.toString('base64')}`;
+    const mimeType = getMimeTypeFromPath(resolvedPath);
+    const base64 = buffer.toString('base64');
+    return `data:${mimeType};base64,${base64}`;
   });
 
   // 获取媒体文件 URL（用于视频/音频流式播放）
+  // 返回 media:// 自定义协议 URL，避免全量读取大文件导致 OOM
   ipcMain.handle('getMediaUrl', async (
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
@@ -380,17 +367,9 @@ export function registerLibraryHandlers(): void {
     if (!fs.existsSync(resolvedPath)) {
       throw new Error('File not found');
     }
-    // 返回 data: URL（Chrome 媒体管道不支持自定义协议）
-    const ext = path.extname(resolvedPath).toLowerCase();
-    const mimeTypes: Record<string, string> = {
-      '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-      '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
-      '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
-    };
-    const mimeType = mimeTypes[ext] || 'application/octet-stream';
-    const buffer = await fs.promises.readFile(resolvedPath);
-    const base64 = buffer.toString('base64');
-    return `data:${mimeType};base64,${base64}`;
+    // 使用令牌注册表：生成随机 token 并缓存 {token → filePath}，
+    // 返回 media://TOKEN URL。浏览器对 authority 小写化不影响 token（纯小写 hex）。
+    return registerMediaUrl(resolvedPath);
   });
 
   // 更新扫描进度

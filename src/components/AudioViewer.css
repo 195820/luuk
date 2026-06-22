@@ -1,0 +1,131 @@
+/* AudioViewer 样式 */
+.audio-viewer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  gap: var(--space-6);
+  padding: var(--space-8);
+  box-sizing: border-box;
+}
+
+.audio-viewer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.audio-viewer-icon {
+  opacity: 0.6;
+  color: var(--accent);
+}
+
+.audio-viewer-filename {
+  font-size: var(--text-lg);
+  color: var(--text-secondary);
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 波形容器 */
+.audio-viewer-waveform {
+  width: 100%;
+  max-width: 800px;
+  min-height: 120px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+/* 进度条区域 */
+.audio-viewer-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 800px;
+}
+
+.audio-viewer-time {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: center;
+}
+
+.audio-viewer-seek {
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  background: var(--overlay-lighter);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.audio-viewer-seek::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* 控制栏 */
+.audio-viewer-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+}
+
+.audio-viewer-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: var(--overlay-lighter);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.audio-viewer-btn:hover:not(:disabled) {
+  background: var(--overlay-selected);
+}
+
+.audio-viewer-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.audio-viewer-volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.audio-viewer-volume-slider {
+  width: 80px;
+  height: 4px;
+  appearance: none;
+  background: var(--overlay-lighter);
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.audio-viewer-volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
