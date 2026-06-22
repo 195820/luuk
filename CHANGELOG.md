@@ -16,6 +16,19 @@
 - **多媒体支持**：视频/音频播放（`luuk-file://` 自定义协议，流式加载，支持 range 请求）
 - **IPC 接口**：`loadFullImage`（图片 data URL）、`getMediaUrl`（媒体流式 URL）
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名，比数据库 `media_type` 更可靠
+- **多媒体模块重构方案**：竞品调研（Immich/Hydrus/ImageGlass/nomacs）、开源库选型（YARL/wavesurfer.js）、4 阶段实施计划（docs/11-多媒体模块重构方案.md）
+
+### 已知问题（2026-06-22 深度审查发现）
+- **P0**: 视频 seek bar 不更新（`defaultValue` 未绑定 `currentTime`）
+- **P0**: 视频无 `onEnded` 回调，大文件 data URL 加载导致 OOM
+- **P0**: 音频在查看器中渲染为 `<img>` 标签，永久 loading
+- **P0**: GIF 暂停按钮状态未应用到 `<img>` 元素
+- **P1**: `getThumbnails` 返回 `Map` 对象，IPC 序列化后变空对象
+- **P1**: 4 个 store（libraryStore/uiStore/favoriteStore/folderStore）为死代码
+- **P1**: 主网格逐个 IPC 调用缩略图（50-80 个并发调用）
+- **P1**: `getFolderTree` 全量加载路径到内存
+- **P2**: 路径比较大小写不一致、无 CSP、IPC 无输入校验
+- **P3**: 媒体类型检测逻辑重复 5 处、`any` 类型泛滥
 
 ### 优化
 - ImageViewer 组件 SVG 图标系统

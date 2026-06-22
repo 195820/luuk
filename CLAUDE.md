@@ -10,12 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🔧 开发命令
 
 ```bash
-npm install          # 安装依赖
-npm run dev          # 开发模式（自动打开 DevTools）
-npm run build        # 构建前端 + Electron 打包
-npm run build:dir    # 仅构建前端（不打包）
-npm run preview      # 预览构建结果
+conda activate imageviewer  # 激活 Conda 环境（Node.js、Python 运行时依赖）
+npm install            # 安装依赖
+npm run dev            # 开发模式（自动打开 DevTools）
+npm run build          # 构建前端 + Electron 打包
+npm run build:dir      # 仅构建前端（不打包）
+npm run preview        # 预览构建结果
 ```
+
+> **注意**：所有 `npm` 命令执行前，必须先激活 `imageviewer` Conda 环境，否则 Node.js / Python 版本可能不匹配。
 
 ## 🏗️ 架构设计
 
@@ -99,11 +102,18 @@ D:\luuk\
 ## 🔑 关键设计
 
 ### 多媒体支持
-- **data: URL 加载**：视频/音频/图片统一通过 `getMediaUrl` IPC 返回 base64 data URL
+- **图片加载**：`loadFullImage` IPC 返回 base64 data URL
+- **视频/音频加载**：`getMediaUrl` IPC 返回 base64 data URL（⚠️ 大文件会 OOM，计划改用 `file://` 协议）
+- **流式协议**：`luuk-file://` 已实现（支持 Range 请求）但**未被使用**（死代码，Chromium media pipeline 不支持自定义协议）
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
-- **加载策略**：图片和视频/音频均返回 data URL（`loadFullImage` / `getMediaUrl`）
 - **安全检查**：IPC 处理器限制访问范围在已注册库路径内
 - **数据库路径清理**：`mapLibrary` 中使用 `.trim().replace(/\r/g, '')` 清理库路径中的不可见字符
+
+### ⚠️ 已知架构问题（2026-06-22 审查）
+- **死 store**：`libraryStore.ts`、`uiStore.ts`、`favoriteStore.ts`、`folderStore.ts` 已定义但从未被组件使用，`imageStore.ts` 是实际的上帝对象
+- **死数据库表**：`previews` 和 `folders` 表创建但从未读写
+- **ImageViewer 职责过重**：665 行组件同时处理图片/GIF/视频/音频，计划拆分为 MediaViewer 路由 + 三个专用组件
+- 详见 `docs/11-多媒体模块重构方案.md`
 
 ### 数据库架构
 - **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史
@@ -139,7 +149,7 @@ D:\luuk\
 1. **Electron 下载**: 使用镜像源（项目已配置 `.npmrc`）
 2. **路径处理**: 使用 `path.normalize()` 处理跨平台路径
 3. **IPC 通信**: 前端通过 `window.electronAPI` 调用后端功能
-4. **状态管理**: Zustand store 已拆分为多个独立 store（imageStore、libraryStore、favoriteStore、folderStore、uiStore），通过 `stores/index.ts` 统一导出。组件通过 hooks 访问
+4. **状态管理**: `imageStore.ts` 是实际的核心 store（上帝对象），`libraryStore`/`uiStore`/`favoriteStore`/`folderStore` 已定义但未被组件使用（死代码）。重构前不要在新代码中引用这些死 store
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
 7. **自定义协议**: `luuk-file://` 在 `app.whenReady()` 中注册，路径使用 base64url 编码
