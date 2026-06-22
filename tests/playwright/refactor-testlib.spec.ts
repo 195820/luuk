@@ -344,6 +344,67 @@ electronTest.describe('分类3: 音频播放升级', () => {
     expect(content).toContain('<AudioViewer');
     console.log('TC-AUD-03 音频类型渲染 AudioViewer 而非 img');
   });
+
+  electronTest('TC-AUD-04 音频进度条随播放更新', async ({ page }) => {
+    await goToTestLibrary(page);
+    // 打开任意项后，用方向键切到音频
+    const opened = await findAndOpenType(page, 'image');
+    if (!opened) { electronTest.skip(true, '无可打开项'); return; }
+
+    // 循环按 → 直到出现 audio-viewer（test 库只有 1 个 mp3，位置在 4 张图之后）
+    let found = false;
+    for (let i = 0; i < 10; i++) {
+      const isAudio = await page.evaluate(() => !!document.querySelector('.audio-viewer'));
+      if (isAudio) { found = true; break; }
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(2500);
+    }
+    if (!found) { electronTest.skip(true, '未切到音频'); return; }
+
+    // 等待波形就绪
+    await page.waitForSelector('.audio-viewer-seek:not([disabled])', { timeout: 15000 }).catch(() => {});
+
+    // 点击播放按钮
+    await page.locator('.audio-viewer-btn').click();
+    await page.waitForTimeout(2000);
+
+    const val = await page.evaluate(() => {
+      const s = document.querySelector('.audio-viewer-seek') as HTMLInputElement;
+      return s ? parseFloat(s.value || '0') : -1;
+    });
+    console.log(`TC-AUD-04 音频进度: ${val.toFixed(1)}s`);
+    expect(val).toBeGreaterThan(0);
+  });
+
+  electronTest('TC-AUD-05 音频音量调节', async ({ page }) => {
+    await goToTestLibrary(page);
+    const opened = await findAndOpenType(page, 'image');
+    if (!opened) { electronTest.skip(true, '无可打开项'); return; }
+
+    let found = false;
+    for (let i = 0; i < 10; i++) {
+      const isAudio = await page.evaluate(() => !!document.querySelector('.audio-viewer'));
+      if (isAudio) { found = true; break; }
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(2500);
+    }
+    if (!found) { electronTest.skip(true, '未切到音频'); return; }
+
+    const slider = page.locator('.audio-viewer-volume-slider');
+    const box = await slider.boundingBox();
+    if (!box || box.width === 0) { electronTest.skip(true, '音量滑块不可见'); return; }
+
+    // 点到最左端（音量 ≈ 0）
+    await page.mouse.click(box.x + box.width * 0.02, box.y + box.height / 2);
+    await page.waitForTimeout(500);
+
+    const vol = await page.evaluate(() => {
+      const s = document.querySelector('.audio-viewer-volume-slider') as HTMLInputElement;
+      return s ? parseFloat(s.value || '1') : -1;
+    });
+    console.log(`TC-AUD-05 音量: ${vol.toFixed(2)}`);
+    expect(vol).toBeLessThan(0.1);
+  });
 });
 
 // ============================================================
