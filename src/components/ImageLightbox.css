@@ -38,3 +38,8 @@
 }
 
 /* YARL 默认的 ImageSlide 会自动设置 maxWidth/maxHeight，无需额外约束 */
+
+/* 放大时使用浏览器默认插值（Chromium 下为双线性），比默认更清晰 */
+.image-lightbox-wrapper .yarl__slide_img {
+  image-rendering: auto;
+}

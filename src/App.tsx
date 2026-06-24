@@ -10,7 +10,6 @@ import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore } from './stores'
-import { getMediaTypeFromPath } from './utils/media'
 import type { Library } from './types'
 import './App.css'
 
@@ -533,21 +532,14 @@ function App() {
   }
 
   // 加载当前图片/媒体的 URL
-  // 图片使用 data: URL，视频/音频使用 media:// 自定义协议
+  // 统一使用 media:// 自定义协议流式加载，避免 base64 全量读取导致 OOM
   useEffect(() => {
     let cancelled = false
 
     const loadMedia = async (filePath: string) => {
       if (!filePath || cancelled) return
       try {
-        let url: string
-        // 通过文件扩展名判断媒体类型（比数据库字段更可靠）
-        const detectedType = getMediaTypeFromPath(filePath)
-        if (detectedType === 'video' || detectedType === 'audio') {
-          url = await (window as any).electronAPI.getMediaUrl(filePath)
-        } else {
-          url = await (window as any).electronAPI.loadFullImage(filePath)
-        }
+        const url = await (window as any).electronAPI.getMediaUrl(filePath)
         if (!cancelled) setCurrentImageSrc(url)
       } catch (err) {
         console.error('获取媒体 URL 失败:', err)

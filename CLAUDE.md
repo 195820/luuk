@@ -34,7 +34,7 @@ npm run preview        # 预览构建结果
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
-│  loadFullImage (data URL) | getMediaUrl (media:// token) │
+│  getMediaUrl (media:// token, 统一用于图片/视频/音频) │
 ├─────────────────────────────────────────────────┤
 │           数据层                                  │
 │  MasterDB (master.db) - 库/收藏/标签/历史        │
@@ -102,8 +102,8 @@ D:\luuk\
 ## 🔑 关键设计
 
 ### 多媒体支持
-- **图片加载**：`loadFullImage` IPC 返回 base64 data URL
-- **视频/音频加载**：`getMediaUrl` IPC 返回 `media://TOKEN` URL（令牌映射，主进程缓存 `{token → filePath}`）
+- **统一加载**：所有媒体类型（图片/视频/音频）统一使用 `getMediaUrl` IPC 返回 `media://TOKEN` URL，避免 base64 全量加载导致 OOM
+- **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
 - **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
 - **安全检查**：IPC 处理器限制访问范围在已注册库路径内
@@ -124,6 +124,7 @@ D:\luuk\
 ```
 内存 LRU 缓存 (200MB) → thumbs.db 数据库缓存 → 原图实时生成 (Sharp)
 ```
+扫描阶段预生成：`scanner.ts` 在扫描完成后自动批量生成缩略图并存入数据库，避免首次打开时实时生成的延迟
 缓存 Key 格式：`${libraryId}-${imageId}`，确保跨库隔离
 
 ### 文件夹树实现

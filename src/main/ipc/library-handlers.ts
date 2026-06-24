@@ -246,14 +246,20 @@ export function registerLibraryHandlers(): void {
     }
   });
 
-  // 批量获取缩略图
+  // 批量获取缩略图（返回普通对象，因为 Electron IPC 不保留 Map 类型）
   ipcMain.handle('getThumbnails', async (
     _event: Electron.IpcMainInvokeEvent,
     libraryId: number,
     imageIds: number[],
     size: ThumbnailSize = 'medium'
-  ): Promise<Map<number, string>> => {
-    return service.getThumbnails(libraryId, imageIds, size);
+  ): Promise<Record<number, string>> => {
+    console.log(`[IPC] getThumbnails request: lib=${libraryId} count=${imageIds.length} size=${size}`);
+    const map = await service.getThumbnails(libraryId, imageIds, size);
+    const result: Record<number, string> = {};
+    for (const [key, value] of map.entries()) {
+      result[key] = value;
+    }
+    return result;
   });
 
   // 切换收藏状态

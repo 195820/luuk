@@ -254,17 +254,14 @@ const ImageGridItem = function ImageGridItem({
     let cancelled = false
 
     const loadThumbnail = async () => {
-      // 等待获取真实 ID
       if (!hasLoadedImageInfo) return
 
-      // 音频文件不加载缩略图
       const mt = image.mediaType || (image as any).media_type
       if (mt === 'audio') {
         setIsLoading(false)
         return
       }
 
-      // 如果没有真实 ID，标记为错误
       if (realImageId === null && isFavoriteLibrary) {
         setError(true)
         setIsLoading(false)
@@ -272,7 +269,6 @@ const ImageGridItem = function ImageGridItem({
       }
 
       try {
-        // 收藏库使用图片实际的 libraryId 和真实 ID
         const thumbLibraryId = isFavoriteLibrary && image.libraryId ? image.libraryId : libraryId
         const thumbImageId = realImageId !== null ? realImageId : (typeof image.id === 'number' ? image.id : null)
 

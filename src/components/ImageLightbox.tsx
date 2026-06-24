@@ -19,11 +19,13 @@ export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 interface ImageLightboxProps {
   src: string
   alt: string
+  width?: number
+  height?: number
   onImageLoaded?: (width: number, height: number) => void
   onError?: () => void
 }
 
-export function ImageLightbox({ src, alt: _alt, onImageLoaded, onError }: ImageLightboxProps) {
+export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, onError }: ImageLightboxProps) {
   const [rotation, setRotation] = useState(0)
   const [flipH, setFlipH] = useState(false)
   const [flipV, setFlipV] = useState(false)
@@ -58,11 +60,16 @@ export function ImageLightbox({ src, alt: _alt, onImageLoaded, onError }: ImageL
     }
   }, [zoomRef])
 
-  // src 变化时重置变换状态
+  // src 变化时重置变换状态，并释放旧图片的解码位图
   useEffect(() => {
     setRotation(0)
     setFlipH(false)
     setFlipV(false)
+    // 提示浏览器释放旧 img 的解码资源
+    if (imgRef.current) {
+      imgRef.current.src = ''
+      imgRef.current = null
+    }
   }, [src])
 
   // 监听 YARL 渲染的图片，获取 naturalWidth/naturalHeight
@@ -122,7 +129,7 @@ export function ImageLightbox({ src, alt: _alt, onImageLoaded, onError }: ImageL
       {/* 旋转/翻转层：包裹 YARL 的 slide 区域 */}
       <div className="image-lightbox-transform-layer" style={transformStyle}>
         <Lightbox
-          slides={[{ src }]}
+          slides={[{ src, width, height }]}
           open={true}
           close={() => {}}
           plugins={[Inline, Zoom]}
@@ -143,7 +150,12 @@ export function ImageLightbox({ src, alt: _alt, onImageLoaded, onError }: ImageL
           }}
           controller={{ closeOnBackdropClick: false }}
           animation={{ fade: 0 }}
-          carousel={{ finite: true }}
+          carousel={{
+            finite: true,
+            imageProps: {
+              style: { imageRendering: 'auto' as any }
+            }
+          }}
           styles={{
             root: { width: '100%', height: '100%' },
             container: { width: '100%', height: '100%', background: 'transparent' },

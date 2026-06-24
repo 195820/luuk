@@ -377,6 +377,8 @@ export function ImageViewer({
           <ImageLightbox
             src={src}
             alt={alt || '图片'}
+            width={imageInfo?.width}
+            height={imageInfo?.height}
             onImageLoaded={handleImageLoaded}
             onError={() => setLoadingState({ loading: false, error: true, naturalWidth: 0, naturalHeight: 0 })}
           />

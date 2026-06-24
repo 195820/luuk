@@ -3,7 +3,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { BrowserWindow } from 'electron';
 import { ThumbnailsDB } from './database';
-import { getImageMetadata, getAudioMetadata } from './thumbnailer';
+import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
 
 /**
  * 扫描结果
@@ -92,6 +92,71 @@ export class LibraryScanner {
   }
 
   /**
+   * 发送缩略图预生成进度
+   */
+  private sendThumbnailProgress(processed: number, total: number): void {
+    const windows = BrowserWindow.getAllWindows();
+    if (windows.length > 0) {
+      windows[0].webContents.send('scan-progress', {
+        isScanning: true,
+        processedCount: processed,
+        totalCount: total,
+        currentFile: '正在生成缩略图...',
+        status: 'thumbnails'
+      });
+    }
+  }
+
+  /**
+   * 批量预生成缩略图
+   * 跳过已有缩略图的文件，分批并发处理避免占用过多资源
+   */
+  private async preGenerateThumbnails(
+    queue: Array<{ id: number; filePath: string; mediaType: string }>
+  ): Promise<void> {
+    // 过滤掉已有缩略图的文件
+    const needGenerate = queue.filter(item => {
+      if (item.mediaType === 'audio') return false;
+      return !this.db.getThumbnail(item.id, 'medium');
+    });
+
+    if (needGenerate.length === 0) return;
+
+    const BATCH_SIZE = 10;
+    let processed = 0;
+
+    for (let i = 0; i < needGenerate.length; i += BATCH_SIZE) {
+      const batch = needGenerate.slice(i, i + BATCH_SIZE);
+      const results = await Promise.allSettled(
+        batch.map(async item => {
+          try {
+            if (item.mediaType === 'video') {
+              const buffer = await generateVideoThumbnail(item.filePath);
+              this.db.saveThumbnail(item.id, 'large', buffer);
+            } else {
+              const buffer = await generateThumbnail(item.filePath, 'medium');
+              this.db.saveThumbnail(item.id, 'medium', buffer);
+            }
+          } catch (err) {
+            console.warn(`[Scanner] 缩略图生成失败：${item.filePath}`, err);
+          }
+        })
+      );
+
+      processed += batch.length;
+      this.sendThumbnailProgress(processed, needGenerate.length);
+
+      // 检查是否有失败的
+      const failed = results.filter(r => r.status === 'rejected').length;
+      if (failed > 0) {
+        console.warn(`[Scanner] 批次中有 ${failed} 个缩略图生成失败`);
+      }
+    }
+
+    console.log(`[Scanner] 缩略图预生成完成：${processed}/${needGenerate.length}`);
+  }
+
+  /**
    * 扫描库
    */
   async scan(): Promise<ScanResult> {
@@ -111,6 +176,9 @@ export class LibraryScanner {
     // 获取数据库中已有的路径
     const existingPaths = new Set(this.db.getAllPaths());
     const scannedPaths = new Set<string>();
+
+    // 收集需要预生成缩略图的文件
+    const thumbnailQueue: Array<{ id: number; filePath: string; mediaType: string }> = [];
 
     // 递归扫描所有图片文件
     const imageFiles = await this.scanDirectory(this.libraryPath);
@@ -162,6 +230,7 @@ export class LibraryScanner {
               duration: null,
               codec: null,
             });
+            thumbnailQueue.push({ id: existingImage!.id, filePath, mediaType });
           } else if (mediaType === 'video') {
             // 视频：延迟提取元数据，只更新基本信息
             const fileHash = await this.calculateFileHash(filePath);
@@ -170,6 +239,7 @@ export class LibraryScanner {
               file_size: stat.size,
               modified_time: modifiedTime,
             });
+            thumbnailQueue.push({ id: existingImage!.id, filePath, mediaType });
           } else if (mediaType === 'audio') {
             // 音频：扫描时提取时长
             try {
@@ -195,7 +265,7 @@ export class LibraryScanner {
             const metadata = await getImageMetadata(filePath);
             const fileHash = await this.calculateFileHash(filePath);
 
-            this.db.addImage({
+            const newId = this.db.addImage({
               relative_path: relativePath,
               file_hash: fileHash,
               width: metadata.width,
@@ -205,10 +275,11 @@ export class LibraryScanner {
               modified_time: modifiedTime,
               media_type: 'image',
             });
+            thumbnailQueue.push({ id: newId, filePath, mediaType });
           } else if (mediaType === 'video') {
             // 视频：首次扫描只记录基本信息
             const fileHash = await this.calculateFileHash(filePath);
-            this.db.addImage({
+            const newId = this.db.addImage({
               relative_path: relativePath,
               file_hash: fileHash,
               width: 0,
@@ -220,6 +291,7 @@ export class LibraryScanner {
               duration: null,
               codec: null,
             });
+            thumbnailQueue.push({ id: newId, filePath, mediaType });
           } else if (mediaType === 'audio') {
             // 音频：扫描时提取时长
             let duration = 0;
@@ -264,6 +336,9 @@ export class LibraryScanner {
     // 清理已删除的记录
     const cleaned = this.db.cleanupDeleted();
     result.deleted = cleaned;
+
+    // 预生成缩略图
+    await this.preGenerateThumbnails(thumbnailQueue);
 
     // 发送完成状态
     this.sendComplete();

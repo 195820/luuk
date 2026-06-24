@@ -476,9 +476,16 @@ export const useImageStore = create<ImageState>((set, get) => ({
       throw new Error('未选择库')
     }
 
-    // 检查缓存
+    // 检查缓存（命中时移到末尾，实现真正的 LRU）
     if (thumbnailCache.has(imageId)) {
-      return thumbnailCache.get(imageId)!
+      const cached = thumbnailCache.get(imageId)!
+      set((state) => {
+        const newCache = new Map(state.thumbnailCache)
+        newCache.delete(imageId)
+        newCache.set(imageId, cached)
+        return { thumbnailCache: newCache }
+      })
+      return cached
     }
 
     try {
@@ -511,13 +518,13 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
     try {
       // @ts-ignore
-      const thumbnails = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
+      const thumbnails: Record<number, string> = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
 
       // 更新缓存（带 LRU 淘汰）
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
-        for (const [id, thumbnail] of thumbnails.entries()) {
-          newCache.set(id, thumbnail)
+        for (const idStr in thumbnails) {
+          newCache.set(Number(idStr), thumbnails[idStr])
         }
         // 超出上限时淘汰最早的条目
         if (newCache.size > THUMBNAIL_CACHE_MAX) {
