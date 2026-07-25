@@ -168,6 +168,8 @@ export function ImageViewer({
       naturalWidth: 0,
       naturalHeight: 0,
     })
+    // 切换图片时重置 GIF 播放状态
+    setIsGifPlaying(true)
   }, [src])
 
   // 监听全局重置事件
@@ -381,6 +383,7 @@ export function ImageViewer({
             height={imageInfo?.height}
             onImageLoaded={handleImageLoaded}
             onError={() => setLoadingState({ loading: false, error: true, naturalWidth: 0, naturalHeight: 0 })}
+            paused={!isGifPlaying}
           />
         )}
       </div>

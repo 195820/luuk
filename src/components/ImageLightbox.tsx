@@ -23,15 +23,18 @@ interface ImageLightboxProps {
   height?: number
   onImageLoaded?: (width: number, height: number) => void
   onError?: () => void
+  /** GIF 暂停：为 true 时用 canvas 覆盖当前帧，冻结动画 */
+  paused?: boolean
 }
 
-export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, onError }: ImageLightboxProps) {
+export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, onError, paused = false }: ImageLightboxProps) {
   const [rotation, setRotation] = useState(0)
   const [flipH, setFlipH] = useState(false)
   const [flipV, setFlipV] = useState(false)
   const [zoomRef, setZoomRef] = useState<any>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
 
   // 暴露控制方法到父组件（通过自定义事件）
   useEffect(() => {
@@ -114,6 +117,85 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
 
     return () => observer.disconnect()
   }, [src, onImageLoaded, onError])
+
+  // GIF 暂停：用 canvas 快照覆盖当前帧
+  useEffect(() => {
+    const removeCanvas = () => {
+      if (canvasRef.current) {
+        canvasRef.current.remove()
+        canvasRef.current = null
+      }
+    }
+
+    const drawFrame = () => {
+      const img = imgRef.current
+      const canvas = canvasRef.current
+      if (!img || !canvas || img.naturalWidth === 0) return
+
+      // canvas 内部分辨率 = img 自然尺寸（保持 GIF 原始像素）
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+
+      // letterbox 绘制：保持 GIF 宽高比，与 img 的 object-fit:contain 对齐
+      const scale = Math.min(canvas.width / img.naturalWidth, canvas.height / img.naturalHeight)
+      const dw = img.naturalWidth * scale
+      const dh = img.naturalHeight * scale
+      const dx = (canvas.width - dw) / 2
+      const dy = (canvas.height - dh) / 2
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, dx, dy, dw, dh)
+    }
+
+    const tryCreateCanvas = () => {
+      const img = imgRef.current
+      if (!img) {
+        // MutationObserver 异步更新 imgRef，下一帧重试
+        return requestAnimationFrame(tryCreateCanvas)
+      }
+
+      // 创建 canvas 插入 img 的父节点（与 img 同处 YARL zoom 容器，继承 transform）
+      const canvas = document.createElement('canvas')
+      canvas.className = 'gif-paused-canvas'
+      canvas.style.cssText = [
+        'position: absolute',
+        'top: 0',
+        'left: 0',
+        'width: 100%',
+        'height: 100%',
+        'object-fit: contain',
+        'pointer-events: none',
+        'z-index: 1',
+      ].join(';')
+
+      // 复制 img 的 max 约束，确保与 img 视觉尺寸一致
+      const cs = window.getComputedStyle(img)
+      canvas.style.maxWidth = cs.maxWidth
+      canvas.style.maxHeight = cs.maxHeight
+
+      img.parentElement?.appendChild(canvas)
+      canvasRef.current = canvas
+
+      // 延迟绘制：确保 GIF 首帧已渲染到 img
+      if (img.complete && img.naturalWidth > 0) {
+        requestAnimationFrame(drawFrame)
+      } else {
+        img.addEventListener('load', () => requestAnimationFrame(drawFrame), { once: true })
+      }
+    }
+
+    if (paused) {
+      tryCreateCanvas()
+    } else {
+      removeCanvas()
+    }
+
+    return () => {
+      removeCanvas()
+    }
+  }, [paused, src])
 
   // 旋转/翻转变换样式（应用到 YARL 的 slide 容器）
   const transformStyle: React.CSSProperties = {
