@@ -28,9 +28,8 @@ npm run preview        # 预览构建结果
 │  FolderTree │ ImageGrid (虚拟滚动)              │
 │  ImageViewer (缩放/旋转/翻转/幻灯片/视频播放)   │
 ├─────────────────────────────────────────────────┤
-│         状态管理 (Zustand - 多 store 拆分)       │
-│  imageStore | libraryStore | favoriteStore      │
-│  folderStore | uiStore                          │
+│         状态管理 (Zustand)                       │
+│  imageStore (核心) | audioStore                 │
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
@@ -79,12 +78,9 @@ D:\luuk\
 │   │   └── hooks/
 │   │       ├── useAppLogic.ts   # 应用逻辑 hook
 │   │       └── useDebugLog.ts   # 调试日志 hook
-│   ├── stores/                 # Zustand 状态管理（已从单文件拆分为多 store）
+│   ├── stores/                 # Zustand 状态管理
 │   │   ├── imageStore.ts        # 图片数据 store（核心）
-│   │   ├── libraryStore.ts      # 库信息 store
-│   │   ├── favoriteStore.ts     # 收藏 store
-│   │   ├── folderStore.ts       # 文件夹 store
-│   │   ├── uiStore.ts           # UI 状态 store
+│   │   ├── audioStore.ts        # 音频播放 store
 │   │   └── index.ts             # 统一导出
 │   ├── utils/
 │   │   └── sort.ts              # 排序工具
@@ -104,16 +100,9 @@ D:\luuk\
 ### 多媒体支持
 - **统一加载**：所有媒体类型（图片/视频/音频）统一使用 `getMediaUrl` IPC 返回 `media://TOKEN` URL，避免 base64 全量加载导致 OOM
 - **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
-- **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
 - **安全检查**：IPC 处理器限制访问范围在已注册库路径内
 - **数据库路径清理**：`mapLibrary` 中使用 `.trim().replace(/\r/g, '')` 清理库路径中的不可见字符
-
-### ⚠️ 已知架构问题（2026-06-22 审查）
-- **死 store**：`libraryStore.ts`、`uiStore.ts`、`favoriteStore.ts`、`folderStore.ts` 已定义但从未被组件使用，`imageStore.ts` 是实际的上帝对象
-- **死数据库表**：`previews` 和 `folders` 表创建但从未读写
-- **ImageViewer 职责过重**：665 行组件同时处理图片/GIF/视频/音频，计划拆分为 MediaViewer 路由 + 三个专用组件
-- 详见 `docs/11-多媒体模块重构方案.md`
 
 ### 数据库架构
 - **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史
@@ -150,7 +139,7 @@ D:\luuk\
 1. **Electron 下载**: 使用镜像源（项目已配置 `.npmrc`）
 2. **路径处理**: 使用 `path.normalize()` 处理跨平台路径
 3. **IPC 通信**: 前端通过 `window.electronAPI` 调用后端功能
-4. **状态管理**: `imageStore.ts` 是实际的核心 store（上帝对象），`libraryStore`/`uiStore`/`favoriteStore`/`folderStore` 已定义但未被组件使用（死代码）。重构前不要在新代码中引用这些死 store
+4. **状态管理**: `imageStore.ts` 是核心 store，`audioStore.ts` 管理音频播放状态
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
 7. **自定义协议**: `media://` 在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册。URL 中的路径编码采用令牌映射（`src/main/services/media-registry.ts`），避免浏览器对 URL authority 强制小写化破坏编码
