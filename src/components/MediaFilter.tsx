@@ -1,5 +1,3 @@
-import styles from './MediaFilter.module.css'
-
 export type MediaFilterType = 'all' | 'image' | 'video'
 
 interface MediaFilterProps {
@@ -15,11 +13,13 @@ export function MediaFilter({ value, onChange }: MediaFilterProps) {
   ]
 
   return (
-    <div className={styles.container}>
+    <div className="flex items-center gap-2">
       {filters.map((f) => (
         <button
           key={f.key}
-          className={`${styles.btn} ${value === f.key ? styles.active : ''}`}
+          className={`px-3 py-1.5 border border-border rounded-full bg-transparent text-xs text-text-secondary cursor-pointer transition-colors duration-150 hover:border-border-hover hover:text-text-primary ${
+            value === f.key ? 'bg-overlay-selected border-border-hover text-text-primary' : ''
+          }`}
           onClick={() => onChange(f.key)}
         >
           {f.label}

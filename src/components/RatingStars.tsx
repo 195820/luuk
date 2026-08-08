@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react'
-import './RatingStars.css'
+import { motion } from 'motion/react'
+import { Star } from 'lucide-react'
+import { motionPresets } from '@/lib/motion-presets'
 
 interface RatingStarsProps {
   libraryId: number
@@ -20,7 +22,6 @@ export function RatingStars({
   const [rating, setRating] = useState(initialRating)
   const [loading, setLoading] = useState(false)
 
-  // 设置评分
   const handleRating = useCallback(async (newRating: number) => {
     setLoading(true)
     try {
@@ -37,8 +38,6 @@ export function RatingStars({
 
   const handleClick = useCallback((e: React.MouseEvent, starValue: number) => {
     e.stopPropagation()
-    
-    // 如果点击当前已选中的星星，取消评分
     const newRating = starValue === rating ? 0 : starValue
     handleRating(newRating)
   }, [rating, handleRating])
@@ -52,25 +51,32 @@ export function RatingStars({
   }, [])
 
   const displayRating = hoverRating || rating
+  const starSize = size === 'small' ? 14 : size === 'large' ? 20 : 16
+  const sizeClass = size === 'small' ? 'scale-75' : size === 'large' ? 'scale-125' : ''
 
   return (
     <div
-      className={`rating-stars rating-${size} ${loading ? 'loading' : ''}`}
+      className={`flex items-center gap-0.5 ${sizeClass} ${loading ? 'opacity-50 pointer-events-none' : ''}`}
       onMouseLeave={handleMouseLeave}
     >
       {[1, 2, 3, 4, 5].map((starValue) => (
-        <button
+        <motion.button
           key={starValue}
-          className={`rating-star ${starValue <= displayRating ? 'is-filled' : ''}`}
+          whileTap={{ scale: 0.9 }}
+          transition={motionPresets.micro}
+          className="bg-transparent border-none cursor-pointer p-0 transition-all duration-150 hover:scale-110"
           onClick={(e) => handleClick(e, starValue)}
           onMouseEnter={() => handleMouseEnter(starValue)}
           title={`${starValue} 星`}
           disabled={loading}
         >
-          <svg viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-          </svg>
-        </button>
+          <Star
+            size={starSize}
+            className={`transition-colors duration-150 ${
+              starValue <= displayRating ? 'fill-star text-star' : 'text-star-empty'
+            }`}
+          />
+        </motion.button>
       ))}
     </div>
   )
