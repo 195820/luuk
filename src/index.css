@@ -262,6 +262,59 @@ body {
   --sidebar-ring: rgba(255, 255, 255, 0.15);
 }
 
+/* 缩略图滑块自定义样式（伪元素无法原子化） */
+.thumbnail-slider {
+  width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  background: var(--color-canvas-tertiary);
+  border-radius: 9999px;
+  outline: none;
+  transition: background 150ms;
+}
+.thumbnail-slider:hover {
+  background: var(--color-canvas-raised);
+}
+.thumbnail-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--color-text-muted);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.thumbnail-slider::-webkit-slider-thumb:hover {
+  background: var(--color-text-primary);
+  transform: scale(1.15);
+}
+
+/* 加载旋转动画 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 水平滚动条（音频区域） */
+.audio-scroll-area::-webkit-scrollbar {
+  height: 6px;
+}
+.audio-scroll-area::-webkit-scrollbar-track {
+  background: var(--color-canvas-tertiary);
+  border-radius: 3px;
+}
+.audio-scroll-area::-webkit-scrollbar-thumb {
+  background: var(--color-border-hover);
+  border-radius: 3px;
+}
+
+/* 应用头部渐变文字（保留内联 style 方式，此处为备用） */
+@utility text-gradient {
+  background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
