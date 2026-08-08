@@ -26,9 +26,8 @@ export function AudioPlayer() {
     const audio = audioRef.current
     if (!audio || !currentAudio) return
 
-    const audioSrc = currentAudio.src.startsWith('file://')
-      ? currentAudio.src
-      : `file://${currentAudio.src.replace(/\\/g, '/')}`
+    // src 已经是 media:// 协议 URL，直接使用
+    const audioSrc = currentAudio.src
 
     if (audio.src !== audioSrc) {
       audio.src = audioSrc

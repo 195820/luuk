@@ -23,19 +23,14 @@ export function AudioCard({ libraryId, imageId, name, duration, src }: AudioCard
     let resolvedSrc = src
     if (!resolvedSrc) {
       try {
+        // 先获取文件路径，再通过 media:// 协议生成安全 URL
         const fullPath = await window.electronAPI!.getMediaPath(libraryId, imageId)
-        resolvedSrc = toFileUrl(fullPath)
+        resolvedSrc = await window.electronAPI!.getMediaUrl(fullPath)
       } catch {
         return
       }
     }
     play(libraryId, imageId, resolvedSrc, name)
-  }
-
-  const toFileUrl = (filePath: string): string => {
-    if (!filePath) return ''
-    const normalized = filePath.replace(/\\/g, '/')
-    return `file:///${normalized}`
   }
 
   return (

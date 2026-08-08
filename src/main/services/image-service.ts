@@ -383,7 +383,8 @@ export class ImageService {
     }
 
     // 生成缩略图（根据媒体类型选择不同的生成方式）
-    const mediaType = (image as any).media_type || 'image'
+    // 使用文件扩展名判断媒体类型（数据库中的 media_type 可能不准确，尤其是旧数据库迁移后）
+    const mediaType = getMediaTypeFromPath(image.relative_path)
 
     // 音频文件不生成缩略图
     if (mediaType === 'audio') {

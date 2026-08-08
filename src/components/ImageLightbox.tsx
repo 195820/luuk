@@ -12,7 +12,6 @@ import Lightbox from 'yet-another-react-lightbox'
 import Inline from 'yet-another-react-lightbox/plugins/inline'
 import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import 'yet-another-react-lightbox/styles.css'
-import type { FitMode } from '../types'
 import './ImageLightbox.css'
 
 interface ImageLightboxProps {
@@ -34,6 +33,16 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  // 使用 ref 存储回调，避免 effect 因回调变化而重新执行导致无限循环
+  const onImageLoadedRef = useRef(onImageLoaded)
+  const onErrorRef = useRef(onError)
+  // 记录已报告的 src，避免同一 src 重复触发 onImageLoaded
+  const reportedSrcRef = useRef<string | null>(null)
+  useEffect(() => {
+    onImageLoadedRef.current = onImageLoaded
+    onErrorRef.current = onError
+  }, [onImageLoaded, onError])
 
   // 暴露控制方法到父组件（通过自定义事件）
   useEffect(() => {
@@ -72,50 +81,72 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
       imgRef.current.src = ''
       imgRef.current = null
     }
+    // 重置已报告状态，允许新 src 触发 onImageLoaded
+    reportedSrcRef.current = null
   }, [src])
 
   // 监听 YARL 渲染的图片，获取 naturalWidth/naturalHeight
   useEffect(() => {
+    // src 为空时不执行，避免无限循环
+    if (!src) return
+
     const container = containerRef.current
     if (!container) return
 
-    const observer = new MutationObserver(() => {
-      const img = container.querySelector('.yarl__slide img') as HTMLImageElement | null
-      if (img && img !== imgRef.current) {
-        imgRef.current = img
-        // 如果图片已加载完成
-        if (img.naturalWidth > 0) {
-          onImageLoaded?.(img.naturalWidth, img.naturalHeight)
-        } else {
-          img.addEventListener('load', () => {
-            onImageLoaded?.(img.naturalWidth, img.naturalHeight)
-          }, { once: true })
-          img.addEventListener('error', () => {
-            onError?.()
-          }, { once: true })
+    // 标记当前 effect 是否仍在初始化阶段
+    let initialized = false
+
+    // 处理找到的图片：立即标记已报告，避免重复触发
+    const handleFoundImage = (img: HTMLImageElement) => {
+      // 如果已经为当前 src 报告过，跳过
+      if (reportedSrcRef.current === src) return
+
+      // 立即标记，防止 MutationObserver 重复触发
+      reportedSrcRef.current = src
+      imgRef.current = img
+
+      // 延迟调用回调，避免在 effect 执行期间触发父组件 setState
+      // 这样可以防止 "Maximum update depth exceeded" 错误
+      const report = () => {
+        if (reportedSrcRef.current === src) {
+          onImageLoadedRef.current?.(img.naturalWidth, img.naturalHeight)
         }
       }
-    })
-    observer.observe(container, { childList: true, subtree: true })
 
-    // 初始检查
-    const img = container.querySelector('.yarl__slide img') as HTMLImageElement | null
-    if (img) {
-      imgRef.current = img
       if (img.naturalWidth > 0) {
-        onImageLoaded?.(img.naturalWidth, img.naturalHeight)
+        // 使用 setTimeout 推迟到下一个事件循环，避免在 React 渲染周期内触发状态更新
+        setTimeout(report, 0)
       } else {
         img.addEventListener('load', () => {
-          onImageLoaded?.(img.naturalWidth, img.naturalHeight)
+          setTimeout(report, 0)
         }, { once: true })
         img.addEventListener('error', () => {
-          onError?.()
+          onErrorRef.current?.()
         }, { once: true })
       }
     }
 
+    const observer = new MutationObserver(() => {
+      // 忽略初始化阶段的 DOM 变化，只关注后续变化
+      if (!initialized) return
+      const img = container.querySelector('.yarl__slide img') as HTMLImageElement | null
+      if (img && img !== imgRef.current) {
+        handleFoundImage(img)
+      }
+    })
+    observer.observe(container, { childList: true, subtree: true })
+
+    // 标记初始化完成
+    initialized = true
+
+    // 初始检查
+    const img = container.querySelector('.yarl__slide img') as HTMLImageElement | null
+    if (img) {
+      handleFoundImage(img)
+    }
+
     return () => observer.disconnect()
-  }, [src, onImageLoaded, onError])
+  }, [src])
 
   // GIF 暂停：用 canvas 快照覆盖当前帧
   useEffect(() => {
@@ -203,6 +234,19 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
     transition: 'transform 0.2s ease',
     width: '100%',
     height: '100%',
+  }
+
+  // src 为空时不渲染 Lightbox，避免浏览器警告和无限循环
+  if (!src) {
+    return (
+      <div ref={containerRef} className="image-lightbox-wrapper">
+        <div className="image-lightbox-transform-layer" style={transformStyle}>
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span>加载中...</span>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

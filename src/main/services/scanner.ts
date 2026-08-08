@@ -143,7 +143,7 @@ export class LibraryScanner {
           try {
             if (item.mediaType === 'video') {
               const buffer = await generateVideoThumbnail(item.filePath);
-              this.db.saveThumbnail(item.id, 'large', buffer);
+              this.db.saveThumbnail(item.id, 'medium', buffer);
             } else {
               const buffer = await generateThumbnail(item.filePath, 'medium');
               this.db.saveThumbnail(item.id, 'medium', buffer);
@@ -240,6 +240,7 @@ export class LibraryScanner {
               modified_time: modifiedTime,
               duration: null,
               codec: null,
+              media_type: 'image',
             });
             thumbnailQueue.push({ id: existingImage!.id, filePath, mediaType });
           } else if (mediaType === 'video') {
@@ -249,6 +250,7 @@ export class LibraryScanner {
               file_hash: fileHash,
               file_size: stat.size,
               modified_time: modifiedTime,
+              media_type: 'video',
             });
             thumbnailQueue.push({ id: existingImage!.id, filePath, mediaType });
           } else if (mediaType === 'audio') {
@@ -260,11 +262,13 @@ export class LibraryScanner {
                 modified_time: modifiedTime,
                 duration: audioMeta.duration,
                 codec: audioMeta.codec,
+                media_type: 'audio',
               });
             } catch {
               this.db.updateImage(existingImage!.id, {
                 file_size: stat.size,
                 modified_time: modifiedTime,
+                media_type: 'audio',
               });
             }
           }

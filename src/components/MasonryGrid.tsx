@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
@@ -44,10 +44,10 @@ export function MasonryGrid({
   const scrollRestoreRef = useRef<boolean>(true)
 
   // 过滤掉音频文件（音频在底部独立区域显示）
-  const displayImages = images.filter((img) => {
+  const displayImages = useMemo(() => images.filter((img) => {
     const mt = img.mediaType || (img as any).media_type
     return mt !== 'audio'
-  })
+  }), [images])
 
   // 计算列数
   useEffect(() => {

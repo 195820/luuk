@@ -2,8 +2,8 @@
  * 主进程媒体类型检测工具函数
  * 统一使用 src/types/index.ts 中定义的常量和类型
  */
-import { MEDIA_EXTENSIONS, MIME_TYPES } from '../types'
-import type { MediaType } from '../types'
+import { MEDIA_EXTENSIONS, MIME_TYPES } from '../../types'
+import type { MediaType } from '../../types'
 
 // 预构建 Set 用于快速查找（带点前缀）
 const VIDEO_EXT_SET = new Set<string>(MEDIA_EXTENSIONS.video)

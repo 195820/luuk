@@ -600,6 +600,7 @@ export class ThumbnailsDB {
     modified_time: string;
     duration: number | null;
     codec: string | null;
+    media_type: string;
   }>): void {
     if (!this.db) return;
     const fields: string[] = [];
@@ -611,6 +612,7 @@ export class ThumbnailsDB {
     if (updates.modified_time) { fields.push('modified_time = ?'); values.push(updates.modified_time); }
     if (updates.duration !== undefined) { fields.push('duration = ?'); values.push(updates.duration); }
     if (updates.codec !== undefined) { fields.push('codec = ?'); values.push(updates.codec); }
+    if (updates.media_type) { fields.push('media_type = ?'); values.push(updates.media_type); }
     fields.push('indexed_time = ?');
     values.push(new Date().toISOString(), id);
     const stmt = this.db.prepare(`UPDATE images SET ${fields.join(', ')} WHERE id = ?`);

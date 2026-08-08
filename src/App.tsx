@@ -531,7 +531,7 @@ function App() {
     }
   }
 
-  const getCurrentImagePath = async () => {
+  const getCurrentImagePath = useCallback(async () => {
     if (!currentLibraryId || !currentImage || currentLibraryId === FAVORITE_LIBRARY_ID) return ''
     try {
       return await (window as any).electronAPI.getImagePath(currentLibraryId, currentImage.id)
@@ -539,16 +539,16 @@ function App() {
       console.error('获取图片路径失败:', error)
       return ''
     }
-  }
+  }, [currentLibraryId, currentImage])
 
-  const getFavoriteImagePath = async (libraryId: number, relativePath: string) => {
+  const getFavoriteImagePath = useCallback(async (libraryId: number, relativePath: string) => {
     try {
       return await (window as any).electronAPI.getImagePathByRelativePath(libraryId, relativePath)
     } catch (error) {
       console.error('获取收藏图片路径失败:', error)
       return ''
     }
-  }
+  }, [])
 
   // 加载当前图片/媒体的 URL
   // 统一使用 media:// 自定义协议流式加载，避免 base64 全量读取导致 OOM

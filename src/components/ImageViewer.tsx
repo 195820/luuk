@@ -3,7 +3,6 @@ import { isBrowserPlayableVideo } from '../utils/media'
 import { formatFileSize } from '../utils/format'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
-import type { FitMode } from '../types'
 import './ImageViewer.css'
 
 export interface SlideshowSettings {

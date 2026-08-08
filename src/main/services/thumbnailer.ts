@@ -95,7 +95,7 @@ export class ThumbnailerService {
       }
 
       // 使用 sharp 处理图片
-      const image = sharp(imagePath);
+      const image = sharp(imagePath, { failOn: 'none' });
 
       // 根据 EXIF 自动旋转
       let pipeline = image.rotate();
@@ -112,7 +112,7 @@ export class ThumbnailerService {
         .toBuffer();
 
       // 获取生成后的尺寸
-      const thumbMetadata = await sharp(thumbnailBuffer).metadata();
+      const thumbMetadata = await sharp(thumbnailBuffer, { failOn: 'none' }).metadata();
 
       return {
         data: thumbnailBuffer,
@@ -152,7 +152,7 @@ export class ThumbnailerService {
    */
   async generatePreview(imagePath: string, maxSize: number = 1200): Promise<ThumbnailResult> {
     try {
-      const pipeline = sharp(imagePath)
+      const pipeline = sharp(imagePath, { failOn: 'none' })
         .rotate()
         .resize(maxSize, maxSize, {
           fit: 'inside',
@@ -161,7 +161,7 @@ export class ThumbnailerService {
         .webp({ quality: 90 });
 
       const previewBuffer = await pipeline.toBuffer();
-      const metadata = await sharp(previewBuffer).metadata();
+      const metadata = await sharp(previewBuffer, { failOn: 'none' }).metadata();
 
       return {
         data: previewBuffer,
@@ -185,7 +185,7 @@ export class ThumbnailerService {
     size: number;
     orientation?: number;
   }> {
-    const sharpImage = sharp(imagePath);
+    const sharpImage = sharp(imagePath, { failOn: 'none' });
     const metadata = await sharpImage.metadata();
     const stat = fs.statSync(imagePath);
 
@@ -336,10 +336,11 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
 
     const args = [
       '-y',
-      '-ss', '00:00:01',
+      '-ss', '00:00:00',
       '-i', videoPath,
       '-vframes', '1',
       '-q:v', '2',
+      '-t', '2',
       tmpPath,
     ];
 
@@ -348,12 +349,20 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    // 超时保护：30 秒后强制终止 ffmpeg
+    const timeout = setTimeout(() => {
+      try { proc.kill('SIGKILL'); } catch {}
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      reject(new Error('ffmpeg 生成缩略图超时（30秒）'));
+    }, 30_000);
+
     let stderr = '';
     proc.stderr?.on('data', (chunk: Buffer) => {
       stderr += chunk.toString();
     });
 
     proc.on('close', async (code: number) => {
+      clearTimeout(timeout);
       if (code !== 0 && code !== null) {
         console.warn(`[Thumbnailer] ffmpeg exited with code ${code}: ${stderr.slice(0, 500)}`);
       }
@@ -368,7 +377,7 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
       }
 
       try {
-        const webpData = await sharp(tmpPath)
+        const webpData = await sharp(tmpPath, { failOn: 'none' })
           .resize(600, 600, { fit: 'inside', withoutEnlargement: true })
           .webp({ quality: 85 })
           .toBuffer();
@@ -385,6 +394,7 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
     });
 
     proc.on('error', (err: Error) => {
+      clearTimeout(timeout);
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
       reject(err);
     });
