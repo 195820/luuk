@@ -64,7 +64,7 @@ export function RatingStars({
           key={starValue}
           whileTap={{ scale: 0.9 }}
           transition={motionPresets.micro}
-          className="bg-transparent border-none cursor-pointer p-0 transition-all duration-150 hover:scale-110"
+          className="bg-transparent border-none cursor-pointer p-0 transition-all duration-150 hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           onClick={(e) => handleClick(e, starValue)}
           onMouseEnter={() => handleMouseEnter(starValue)}
           title={`${starValue} 星`}

@@ -39,7 +39,7 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
       <select
         value={sortBy}
         onChange={handleSortByChange}
-        className="bg-transparent border border-border rounded-md px-2 py-1 text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
+        className="bg-canvas-tertiary border border-border rounded-md px-2 py-1 text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
         title="选择排序字段"
       >
         {SORT_OPTIONS.map(option => (

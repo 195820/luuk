@@ -45,9 +45,14 @@
   /* ── 颜色：叠加层 ── */
   --color-overlay-dark:     rgba(0, 0, 0, 0.6);
   --color-overlay-darker:   rgba(0, 0, 0, 0.75);
+  --color-overlay-darkest:  rgba(0, 0, 0, 0.9);
   --color-overlay-light:    rgba(255, 255, 255, 0.03);
   --color-overlay-lighter:  rgba(255, 255, 255, 0.05);
   --color-overlay-selected: rgba(255, 255, 255, 0.08);
+
+  /* ── 颜色：对话框 ── */
+  --color-dialog:           #0a0a0a;
+  --color-glass-border:     rgba(255, 255, 255, 0.12);
 
   /* ── 圆角 ── */
   --radius-sm: 6px;
