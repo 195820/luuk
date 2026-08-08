@@ -6,6 +6,30 @@ import { registerMediaUrl } from '../services/media-registry';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 
 /**
+ * 验证文件路径是否在已注册库目录内
+ * 使用大小写不敏感比较（Windows 兼容性）
+ * @param filePath 要验证的文件路径
+ * @returns 解析后的绝对路径
+ * @throws Error 如果路径不在允许的库目录内
+ */
+function validateLibraryAccess(filePath: string): string {
+  const service = getImageService();
+  const resolvedPath = path.resolve(filePath);
+  const libraries = service.getLibraries();
+  const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
+  // 使用大小写不敏感的比较（Windows 兼容性）
+  const resolvedLower = resolvedPath.toLowerCase();
+  const isAllowed = allowedPaths.some(root => {
+    const rootLower = path.resolve(root).toLowerCase();
+    return resolvedLower.startsWith(rootLower + path.sep) || resolvedLower === rootLower;
+  });
+  if (!isAllowed) {
+    throw new Error('Access denied: path outside allowed library directory');
+  }
+  return resolvedPath;
+}
+
+/**
  * 注册库管理相关的 IPC 处理器
  */
 export function registerLibraryHandlers(): void {
@@ -300,14 +324,8 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<Buffer> => {
+    const resolvedPath = validateLibraryAccess(filePath);
     const fs = await import('fs');
-    const resolvedPath = path.resolve(filePath);
-    const libraries = service.getLibraries();
-    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
-    const isAllowed = allowedPaths.some(root => resolvedPath.startsWith(root + path.sep) || resolvedPath === root);
-    if (!isAllowed) {
-      throw new Error('Access denied: path outside allowed library directory');
-    }
     return fs.promises.readFile(resolvedPath);
   });
 
@@ -316,15 +334,13 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<boolean> => {
-    const fs = await import('fs');
-    const resolvedPath = path.resolve(filePath);
-    const libraries = service.getLibraries();
-    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
-    const isAllowed = allowedPaths.some(root => resolvedPath.startsWith(root + path.sep) || resolvedPath === root);
-    if (!isAllowed) {
+    try {
+      const resolvedPath = validateLibraryAccess(filePath);
+      const fs = await import('fs');
+      return fs.promises.access(resolvedPath).then(() => true).catch(() => false);
+    } catch {
       return false;
     }
-    return fs.promises.access(resolvedPath).then(() => true).catch(() => false);
   });
 
   // 加载完整图片文件为 data URL（限制在库目录内）
@@ -332,19 +348,8 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<string> => {
+    const resolvedPath = validateLibraryAccess(filePath);
     const fs = await import('fs');
-    const resolvedPath = path.resolve(filePath);
-    const libraries = service.getLibraries();
-    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
-    // 使用大小写不敏感的比较（Windows 兼容性）
-    const resolvedLower = resolvedPath.toLowerCase();
-    const isAllowed = allowedPaths.some(root => {
-      const rootLower = path.resolve(root).toLowerCase();
-      return resolvedLower.startsWith(rootLower + path.sep) || resolvedLower === rootLower;
-    });
-    if (!isAllowed) {
-      throw new Error('Access denied: path outside allowed library directory');
-    }
     const buffer = await fs.promises.readFile(resolvedPath);
     const mimeType = getMimeTypeFromPath(resolvedPath);
     const base64 = buffer.toString('base64');
@@ -357,18 +362,7 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     filePath: string
   ): Promise<string> => {
-    const resolvedPath = path.resolve(filePath);
-    const libraries = service.getLibraries();
-    const allowedPaths = libraries.map(lib => path.resolve(lib.rootPath));
-    // 使用大小写不敏感的比较（Windows 兼容性）
-    const resolvedLower = resolvedPath.toLowerCase();
-    const isAllowed = allowedPaths.some(root => {
-      const rootLower = path.resolve(root).toLowerCase();
-      return resolvedLower.startsWith(rootLower + path.sep) || resolvedLower === rootLower;
-    });
-    if (!isAllowed) {
-      throw new Error('Access denied: path outside allowed library directory');
-    }
+    const resolvedPath = validateLibraryAccess(filePath);
     const fs = await import('fs');
     if (!fs.existsSync(resolvedPath)) {
       throw new Error('File not found');

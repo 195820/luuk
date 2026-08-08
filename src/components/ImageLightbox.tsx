@@ -12,9 +12,8 @@ import Lightbox from 'yet-another-react-lightbox'
 import Inline from 'yet-another-react-lightbox/plugins/inline'
 import Zoom from 'yet-another-react-lightbox/plugins/zoom'
 import 'yet-another-react-lightbox/styles.css'
+import type { FitMode } from '../types'
 import './ImageLightbox.css'
-
-export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 
 interface ImageLightboxProps {
   src: string

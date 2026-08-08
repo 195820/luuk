@@ -6,23 +6,11 @@ import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/
 import { closeAllDatabases } from '../src/main/services/database'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken } from '../src/main/services/media-registry'
+import { MIME_TYPES } from '../src/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 let mainWindow: BrowserWindow | null = null
-
-/**
- * MIME 类型映射（按扩展名）
- */
-const MIME_TYPES: Record<string, string> = {
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
-  '.svg': 'image/svg+xml', '.avif': 'image/avif',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-  '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska', '.m4v': 'video/mp4',
-  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
-  '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
-}
 
 /**
  * 注册 media:// 自定义协议（必须在 app.whenReady 之前调用）

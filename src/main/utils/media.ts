@@ -1,36 +1,23 @@
 /**
  * 主进程媒体类型检测工具函数
- * 与 src/utils/media.ts 保持逻辑一致，但独立于前端代码
+ * 统一使用 src/types/index.ts 中定义的常量和类型
  */
+import { MEDIA_EXTENSIONS, MIME_TYPES } from '../types'
+import type { MediaType } from '../types'
 
-// 支持的媒体扩展名（带点前缀，小写）
-const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'])
-const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'])
-
-// 扩展名到 MIME 类型的映射
-export const MIME_TYPES: Record<string, string> = {
-  // 图片
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
-  '.tiff': 'image/tiff', '.tif': 'image/tiff', '.ico': 'image/x-icon',
-  '.svg': 'image/svg+xml', '.avif': 'image/avif',
-  // 视频
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
-  '.avi': 'video/x-msvideo', '.mkv': 'video/x-matroska', '.m4v': 'video/mp4',
-  // 音频
-  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.flac': 'audio/flac',
-  '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
-}
+// 预构建 Set 用于快速查找（带点前缀）
+const VIDEO_EXT_SET = new Set<string>(MEDIA_EXTENSIONS.video)
+const AUDIO_EXT_SET = new Set<string>(MEDIA_EXTENSIONS.audio)
 
 /**
  * 根据文件路径判断媒体类型
  */
-export function getMediaTypeFromPath(relativePath: string): 'image' | 'video' | 'audio' {
+export function getMediaTypeFromPath(relativePath: string): MediaType {
   const dotIndex = relativePath.lastIndexOf('.')
   if (dotIndex === -1) return 'image'
   const ext = relativePath.slice(dotIndex).toLowerCase()
-  if (VIDEO_EXTENSIONS.has(ext)) return 'video'
-  if (AUDIO_EXTENSIONS.has(ext)) return 'audio'
+  if (VIDEO_EXT_SET.has(ext)) return 'video'
+  if (AUDIO_EXT_SET.has(ext)) return 'audio'
   return 'image'
 }
 

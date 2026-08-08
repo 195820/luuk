@@ -40,9 +40,13 @@ export class MasterDB {
   private db: DatabaseType | null = null;
   private dbPath: string = '';
 
-  initialize(): void {
-    const userDataPath = app.getPath('userData');
-    const dataDir = path.join(userDataPath, 'data');
+  /**
+   * 初始化数据库
+   * @param userDataPath 可选的用户数据路径，如果不提供则使用 Electron 的 app.getPath('userData')
+   */
+  initialize(userDataPath?: string): void {
+    const resolvedUserDataPath = userDataPath || app.getPath('userData');
+    const dataDir = path.join(resolvedUserDataPath, 'data');
     
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
@@ -933,10 +937,10 @@ export class ThumbnailsDB {
 let masterDBInstance: MasterDB | null = null;
 const thumbnailsDBInstances = new Map<string, ThumbnailsDB>();
 
-export function getMasterDB(): MasterDB {
+export function getMasterDB(userDataPath?: string): MasterDB {
   if (!masterDBInstance) {
     masterDBInstance = new MasterDB();
-    masterDBInstance.initialize();
+    masterDBInstance.initialize(userDataPath);
   }
   return masterDBInstance;
 }

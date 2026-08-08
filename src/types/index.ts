@@ -112,6 +112,9 @@ export interface ImageQueryOptions {
 // 媒体类型
 export type MediaType = 'image' | 'video' | 'audio'
 
+// 图片适配模式
+export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
+
 // 支持的文件扩展名按媒体类型分类
 export const MEDIA_EXTENSIONS = {
   image: ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'],

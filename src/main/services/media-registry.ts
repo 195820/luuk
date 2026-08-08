@@ -7,6 +7,7 @@
  * 协议处理器用 token 查表解析到真实路径。
  */
 import path from 'path'
+import crypto from 'crypto'
 
 interface RegistryEntry {
   filePath: string
@@ -15,12 +16,22 @@ interface RegistryEntry {
 
 const registry = new Map<string, RegistryEntry>()
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1 小时过期
+const MAX_REGISTRY_SIZE = 10000 // 最大令牌数量，防止内存无限增长
 
 /** 清理过期 token */
 function cleanupExpiredTokens() {
   const now = Date.now()
   for (const [token, entry] of registry) {
     if (now - entry.createdAt > TOKEN_TTL_MS) {
+      registry.delete(token)
+    }
+  }
+  // 如果仍超出容量限制，淘汰最旧的条目
+  if (registry.size > MAX_REGISTRY_SIZE) {
+    const sorted = Array.from(registry.entries())
+      .sort((a, b) => a[1].createdAt - b[1].createdAt)
+    const toDelete = sorted.slice(0, registry.size - MAX_REGISTRY_SIZE)
+    for (const [token] of toDelete) {
       registry.delete(token)
     }
   }
@@ -32,7 +43,8 @@ setInterval(cleanupExpiredTokens, 10 * 60 * 1000) // 每 10 分钟清理一次
  * 生成的 URL 格式：media://TOKEN（纯小写 hex，不受浏览器小写化影响）
  */
 export function registerMediaUrl(filePath: string): string {
-  const token = Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2)
+  // 使用密码学安全的随机数生成器
+  const token = crypto.randomBytes(16).toString('hex')
   registry.set(token, { filePath: path.resolve(filePath), createdAt: Date.now() })
   return `media://${token}`
 }

@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { isBrowserPlayableVideo } from '../utils/media'
+import { formatFileSize } from '../utils/format'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
+import type { FitMode } from '../types'
 import './ImageViewer.css'
-
-export type FitMode = 'fit-window' | 'actual-size' | 'fit-width' | 'fit-height'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -173,12 +173,6 @@ export function ImageViewer({
   }, [src])
 
   // 监听全局重置事件
-  useEffect(() => {
-    const handleResetEvent = () => handleReset()
-    window.addEventListener('image-viewer-reset', handleResetEvent)
-    return () => window.removeEventListener('image-viewer-reset', handleResetEvent)
-  }, [handleReset])
-
   // 监听全局快捷键事件
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -222,15 +216,6 @@ export function ImageViewer({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleReset, handleFlipHorizontal, handleFlipVertical, onClose, onPrevious, onNext, mediaType, toggleVideoPlayback])
-
-  // 格式化文件大小
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B'
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-  }
 
   return (
     <div className="image-viewer">

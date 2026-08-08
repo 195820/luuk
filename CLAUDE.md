@@ -56,6 +56,7 @@ D:\luuk\
 │   │   │   ├── image-service.ts # 统一服务接口（单例）
 │   │   │   ├── scanner.ts       # 库扫描 + 增量更新
 │   │   │   ├── thumbnailer.ts   # 缩略图生成 (Sharp)
+│   │   │   ├── media-registry.ts # media:// 协议令牌注册表
 │   │   │   └── cache.ts         # LRU 内存缓存 (200MB)
 │   │   └── ipc/
 │   │       └── library-handlers.ts  # IPC 处理器
@@ -83,7 +84,9 @@ D:\luuk\
 │   │   ├── audioStore.ts        # 音频播放 store
 │   │   └── index.ts             # 统一导出
 │   ├── utils/
-│   │   └── sort.ts              # 排序工具
+│   │   ├── sort.ts              # 排序工具
+│   │   ├── media.ts             # 媒体类型检测工具
+│   │   └── format.ts            # 格式化工具函数（文件大小等）
 │   ├── types/
 │   │   └── index.ts             # TypeScript 类型定义
 │   ├── global.d.ts              # 全局类型声明

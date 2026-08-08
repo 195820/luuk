@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import type { ImageGridItem } from './ImageGrid'
+import { formatFileSize } from '../utils/format'
 import './MasonryGrid.css'
 
 export interface MasonryGridItem extends ImageGridItem {
@@ -142,15 +143,6 @@ export function MasonryGrid({
       return () => element.removeEventListener('scroll', handleScroll)
     }
   }, [handleScroll])
-
-  // 格式化文件大小
-  const formatFileSize = useCallback((bytes?: number): string => {
-    if (!bytes || bytes === 0) return ''
-    const k = 1024
-    const sizes = ['B', 'KB', 'MB', 'GB']
-    const i = Math.floor(Math.log(bytes) / Math.log(k))
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
-  }, [])
 
   return (
     <div

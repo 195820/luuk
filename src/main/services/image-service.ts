@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import { BrowserWindow } from 'electron';
 import { getMediaTypeFromPath } from '../utils/media';
 import {
   MasterDB,
@@ -10,7 +11,7 @@ import {
   closeAllDatabases
 } from './database';
 import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
-import { LibraryScanner, ScanResult } from './scanner';
+import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
 import type { Library, ThumbnailSize } from '../../types';
 
@@ -51,6 +52,18 @@ export class ImageService {
   }
 
   /**
+   * 创建扫描进度回调函数
+   */
+  private createScanProgressCallback(): ScanProgressCallback {
+    return (progress) => {
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length > 0) {
+        windows[0].webContents.send('scan-progress', progress);
+      }
+    };
+  }
+
+  /**
    * 初始化服务
    */
   async initialize(): Promise<void> {
@@ -86,7 +99,7 @@ export class ImageService {
     if (!this.thumbnailsDBs.has(library.rootPath)) {
       const db = getThumbnailsDB(library.rootPath)
       this.thumbnailsDBs.set(library.rootPath, db)
-      this.scanners.set(library.rootPath, new LibraryScanner(db, library.rootPath))
+      this.scanners.set(library.rootPath, new LibraryScanner(db, library.rootPath, undefined, this.createScanProgressCallback()))
     }
 
     return this.thumbnailsDBs.get(library.rootPath)!
@@ -192,7 +205,7 @@ export class ImageService {
     this.scanningLibraries.add(libraryId);
     try {
       const db = this.connectLibrary(libraryId);
-      const scanner = new LibraryScanner(db, library.rootPath);
+      const scanner = new LibraryScanner(db, library.rootPath, undefined, this.createScanProgressCallback());
       const result = await scanner.scan();
       this.masterDB.updateLibraryStatus(libraryId, 'online', result.total);
       return result;
@@ -622,7 +635,6 @@ export class ImageService {
       }
     }));
 
-    console.log(`[ImageService.getFavoriteImages] ${result.length} items, types:`, result.map(r => ({ path: r.relative_path, mediaType: r.mediaType, format: r.format })));
     return result;
   }
 

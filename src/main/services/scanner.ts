@@ -1,9 +1,21 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { BrowserWindow } from 'electron';
 import { ThumbnailsDB } from './database';
 import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
+
+/**
+ * 扫描进度回调类型
+ */
+export interface ScanProgressCallback {
+  (progress: {
+    isScanning: boolean;
+    processedCount: number;
+    totalCount: number;
+    currentFile: string;
+    status: 'scanning' | 'complete' | 'thumbnails';
+  }): void;
+}
 
 /**
  * 扫描结果
@@ -50,22 +62,23 @@ export class LibraryScanner {
   private db: ThumbnailsDB;
   private libraryPath: string;
   private extensions: string[];
+  private onProgress?: ScanProgressCallback;
 
-  constructor(db: ThumbnailsDB, libraryPath: string, options?: ScanOptions) {
+  constructor(db: ThumbnailsDB, libraryPath: string, options?: ScanOptions, onProgress?: ScanProgressCallback) {
     this.db = db;
     this.libraryPath = libraryPath;
     this.extensions = (options?.extensions || DEFAULT_EXTENSIONS).map(ext =>
       ext.toLowerCase()
     );
+    this.onProgress = onProgress;
   }
 
   /**
    * 发送进度更新到渲染进程
    */
   private sendProgress(processedCount: number, totalCount: number, currentFile: string): void {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].webContents.send('scan-progress', {
+    if (this.onProgress) {
+      this.onProgress({
         isScanning: true,
         processedCount,
         totalCount,
@@ -79,9 +92,8 @@ export class LibraryScanner {
    * 发送完成状态
    */
   private sendComplete(): void {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].webContents.send('scan-progress', {
+    if (this.onProgress) {
+      this.onProgress({
         isScanning: false,
         processedCount: 0,
         totalCount: 0,
@@ -95,9 +107,8 @@ export class LibraryScanner {
    * 发送缩略图预生成进度
    */
   private sendThumbnailProgress(processed: number, total: number): void {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].webContents.send('scan-progress', {
+    if (this.onProgress) {
+      this.onProgress({
         isScanning: true,
         processedCount: processed,
         totalCount: total,
