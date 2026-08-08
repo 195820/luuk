@@ -513,6 +513,100 @@ body {
   cursor: pointer;
 }
 
+/* 音频播放器/查看器范围输入滑块（伪元素无法原子化） */
+.audio-progress-bar {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-lighter);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition: height 150ms;
+}
+.audio-progress-bar:hover {
+  height: 6px;
+}
+.audio-progress-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: transform 150ms;
+}
+.audio-progress-bar::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.audio-volume-slider {
+  width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-lighter);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.audio-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
+/* 音频查看器范围输入滑块 */
+.audio-viewer-seek {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-lighter);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition: height 150ms;
+}
+.audio-viewer-seek:hover {
+  height: 6px;
+}
+.audio-viewer-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+.audio-viewer-seek:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.audio-viewer-volume-slider {
+  width: 80px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-lighter);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.audio-viewer-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
 /* 应用头部渐变文字（保留内联 style 方式，此处为备用） */
 @utility text-gradient {
   background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%);

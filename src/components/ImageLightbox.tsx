@@ -239,9 +239,9 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
   // src 为空时不渲染 Lightbox，避免浏览器警告和无限循环
   if (!src) {
     return (
-      <div ref={containerRef} className="image-lightbox-wrapper">
-        <div className="image-lightbox-transform-layer" style={transformStyle}>
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div ref={containerRef} className="w-full h-full relative overflow-hidden">
+        <div className="w-full h-full" style={transformStyle}>
+          <div className="w-full h-full flex items-center justify-center">
             <span>加载中...</span>
           </div>
         </div>
@@ -250,9 +250,9 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
   }
 
   return (
-    <div ref={containerRef} className="image-lightbox-wrapper">
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden">
       {/* 旋转/翻转层：包裹 YARL 的 slide 区域 */}
-      <div className="image-lightbox-transform-layer" style={transformStyle}>
+      <div className="w-full h-full" style={transformStyle}>
         <Lightbox
           slides={[{ src, width, height }]}
           open={true}

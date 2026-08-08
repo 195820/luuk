@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAudioStore } from '../stores/audioStore'
-import styles from './AudioPlayer.module.css'
+import { Play, Pause, Volume2, X } from 'lucide-react'
 
 export function AudioPlayer() {
   const {
@@ -89,7 +89,7 @@ export function AudioPlayer() {
   if (!currentAudio) return null
 
   return (
-    <div className={styles.container}>
+    <div className="glass-l2 fixed bottom-12 left-1/2 -translate-x-1/2 w-96 px-4 py-3 flex flex-col gap-2 z-50">
       <audio
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
@@ -97,77 +97,77 @@ export function AudioPlayer() {
         onEnded={handleEnded}
       />
 
-      {/* 封面：CSS 波形 */}
-      <div className={styles.cover}>
-        <div className={styles.waveform}>
-          {Array.from({ length: 12 }).map((_, i) => (
-            <div
-              key={i}
-              className={styles.waveBar}
-              style={{
-                height: `${30 + Math.sin(i * 0.8) * 40 + Math.random() * 20}%`,
-                animationDelay: `${i * 0.1}s`,
-              }}
-            />
-          ))}
+      <div className="flex items-center gap-3">
+        {/* 封面：CSS 波形 */}
+        <div className="w-9 h-9 rounded-md bg-overlay-lighter flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div className="flex items-center gap-[2px] h-[70%] w-[70%]">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <div
+                key={i}
+                className="w-0.5 rounded-sm bg-accent/50"
+                style={{
+                  height: `${30 + Math.sin(i * 0.8) * 40 + Math.random() * 20}%`,
+                }}
+              />
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* 文件名 */}
-      <div className={styles.info}>
-        <div className={styles.name}>{currentAudio.name}</div>
+        {/* 文件名 */}
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-text-primary truncate">{currentAudio.name}</div>
+        </div>
       </div>
 
       {/* 进度条 */}
-      <div className={styles.progressWrapper}>
-        <span className={styles.time}>{formatTime(currentTime)}</span>
-        <div className={styles.progress} ref={progressRef} onClick={handleProgressClick}>
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-muted tabular-nums w-9 flex-shrink-0">{formatTime(currentTime)}</span>
+        <div
+          className="flex-1 h-1.5 bg-overlay-lighter rounded-full cursor-pointer relative hover:h-2 transition-all"
+          ref={progressRef}
+          onClick={handleProgressClick}
+        >
           <div
-            className={styles.progressFill}
+            className="h-full bg-accent rounded-full transition-[width] duration-100"
             style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%' }}
           />
         </div>
-        <span className={styles.time}>{formatTime(duration)}</span>
+        <span className="text-xs text-text-muted tabular-nums w-9 flex-shrink-0">{formatTime(duration)}</span>
       </div>
 
-      {/* 控制按钮 */}
-      <div className={styles.controls}>
-        <button className={styles.btn} onClick={togglePlay} title={isPlaying ? '暂停' : '播放'}>
-          {isPlaying ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <rect x="2" y="1" width="4" height="14" rx="1" />
-              <rect x="10" y="1" width="4" height="14" rx="1" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <polygon points="3,1 14,8 3,15" />
-            </svg>
-          )}
+      {/* 控制按钮 + 音量 */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <button
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-transparent text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+            onClick={togglePlay}
+            title={isPlaying ? '暂停' : '播放'}
+          >
+            {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Volume2 size={14} className="text-text-muted" />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={(e) => setVolume(parseFloat(e.target.value))}
+            className="audio-volume-slider"
+          />
+        </div>
+
+        <button
+          className="w-7 h-7 flex items-center justify-center rounded-sm bg-transparent text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+          onClick={stop}
+          title="关闭播放器"
+        >
+          <X size={14} />
         </button>
       </div>
-
-      {/* 音量 */}
-      <div className={styles.volume}>
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.6 }}>
-          <path d="M6 2L2 6H0v4h2l4 4V2z" />
-        </svg>
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.01"
-          value={volume}
-          onChange={(e) => setVolume(parseFloat(e.target.value))}
-          className={styles.volumeSlider}
-        />
-      </div>
-
-      {/* 关闭 */}
-      <button className={styles.closeBtn} onClick={stop} title="关闭播放器">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4.22 4.22a1 1 0 011.42 0L8 6.59l2.36-2.37a1 1 0 111.42 1.42L9.41 8l2.37 2.36a1 1 0 01-1.42 1.42L8 9.41l-2.36 2.37a1 1 0 01-1.42-1.42L6.59 8 4.22 5.64a1 1 0 010-1.42z" />
-        </svg>
-      </button>
     </div>
   )
 }
