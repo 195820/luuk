@@ -104,7 +104,7 @@ export function AudioPlayer() {
             {Array.from({ length: 12 }).map((_, i) => (
               <div
                 key={i}
-                className="w-0.5 rounded-sm bg-accent/50"
+                className="w-0.5 rounded-sm bg-text-secondary"
                 style={{
                   height: `${30 + Math.sin(i * 0.8) * 40 + Math.random() * 20}%`,
                 }}
@@ -139,7 +139,7 @@ export function AudioPlayer() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1">
           <button
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-transparent text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-transparent text-text-primary cursor-pointer hover:bg-overlay-lighter transition-colors"
             onClick={togglePlay}
             title={isPlaying ? '暂停' : '播放'}
           >
@@ -148,7 +148,7 @@ export function AudioPlayer() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Volume2 size={14} className="text-text-muted" />
+          <Volume2 size={14} className="text-text-secondary" />
           <input
             type="range"
             min="0"
@@ -161,7 +161,7 @@ export function AudioPlayer() {
         </div>
 
         <button
-          className="w-7 h-7 flex items-center justify-center rounded-sm bg-transparent text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-sm bg-transparent text-text-primary cursor-pointer hover:bg-overlay-lighter transition-colors"
           onClick={stop}
           title="关闭播放器"
         >
