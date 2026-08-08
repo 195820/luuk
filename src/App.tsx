@@ -779,8 +779,8 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧文件夹边栏 */}
         {folderSidebarOpen && currentLibraryId && (
-          <aside className="w-60 min-w-[200px] max-w-80 bg-canvas-raised border-r border-border flex flex-col overflow-hidden transition-all duration-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-canvas-tertiary">
+          <aside className="w-60 min-w-[200px] max-w-80 glass-l1 flex flex-col overflow-hidden transition-all duration-200">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <span> {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}</span>
               <button onClick={toggleFolderSidebar} className="w-[18px] h-[18px] border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center transition-colors duration-150 hover:bg-overlay-lighter hover:text-text-primary">×</button>
             </div>
@@ -945,7 +945,7 @@ function App() {
 
       {showLibraryPanel && (
         <div className="absolute top-[50px] left-5 w-80 glass-l2 z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-canvas-tertiary">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <h3 className="text-body font-semibold m-0 tracking-[0.02em]">📁 库管理</h3>
             <button onClick={() => setShowLibraryPanel(false)} className="w-7 h-7 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center transition-colors duration-150 hover:bg-overlay-lighter hover:text-text-primary text-xl">×</button>
           </div>
@@ -1009,14 +1009,14 @@ function App() {
 
       {/* 收藏视图媒体筛选 */}
       {isFavoriteLibrary && viewMode === 'grid' && (
-        <div className="flex justify-center px-4 py-2 bg-canvas-raised border-b border-border">
+        <div className="flex justify-center px-4 py-2 glass-l1" style="border-radius: 0;">
           <MediaFilter value={mediaFilter} onChange={setMediaFilter} />
         </div>
       )}
 
       {/* 底部音频区域 */}
       {showAudio && viewMode === 'grid' && currentLibraryId && (
-        <div className="bg-canvas-raised border-t border-border p-3 px-4">
+        <div className="glass-l1 p-3 px-4" style="border-radius: 0;">
           <div className="flex items-center mb-3">
             <span className="text-sm text-text-secondary font-medium">🎵 音频文件 ({audioItems.length})</span>
           </div>
@@ -1039,7 +1039,7 @@ function App() {
         </div>
       )}
 
-      <footer className="h-8 px-5 flex items-center justify-center gap-6 bg-canvas-raised border-t border-border text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
+      <footer className="h-8 px-5 flex items-center justify-center gap-6 glass-l1 text-micro text-text-muted [-webkit-app-region:drag] tabular-nums" style="border-radius: 0;">
         <span className="[-webkit-app-region:no-drag]">←/→: 上一张/下一张</span>
         <span className="[-webkit-app-region:no-drag]">Home/End: 第一张/最后一张</span>
         <span className="[-webkit-app-region:no-drag]">0: 适应窗口</span>

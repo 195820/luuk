@@ -19,9 +19,9 @@
   --color-canvas-tertiary:  #0f0f0f;
 
   /* ── 颜色：玻璃材质（三级深度） ── */
-  --color-glass-l1:         rgba(20, 20, 20, 0.6);
-  --color-glass-l2:         rgba(30, 30, 30, 0.7);
-  --color-glass-l3:         rgba(40, 40, 40, 0.8);
+  --color-glass-l1:         rgba(30, 30, 30, 0.75);
+  --color-glass-l2:         rgba(40, 40, 40, 0.85);
+  --color-glass-l3:         rgba(50, 50, 50, 0.9);
 
   /* ── 颜色：文字 ── */
   --color-text-primary:     rgba(255, 255, 255, 0.95);
@@ -121,15 +121,15 @@
 @utility glass-l1 {
   background: var(--color-glass-l1);
   backdrop-filter: blur(var(--blur-l1)) saturate(180%);
-  border: 1px solid var(--color-border-glass);
-  box-shadow: var(--shadow-glass);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   border-radius: var(--radius-lg);
 }
 
 @utility glass-l2 {
   background: var(--color-glass-l2);
   backdrop-filter: blur(var(--blur-l2)) saturate(180%);
-  border: 1px solid var(--color-border-glass);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
 }
@@ -138,7 +138,7 @@
   background: var(--color-glass-l3);
   backdrop-filter: blur(var(--blur-l3)) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.15);
-  box-shadow: var(--shadow-glass-lg);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
 }
 
@@ -163,8 +163,9 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(ellipse at top, rgba(255,255,255,0.02) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom, rgba(255,255,255,0.01) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 0%, rgba(255,255,255,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(255,255,255,0.02) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.01) 0%, transparent 70%);
 }
 
 #root {
