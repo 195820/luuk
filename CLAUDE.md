@@ -25,6 +25,11 @@ npm run preview        # 预览构建结果
 ```
 ┌─────────────────────────────────────────────────┐
 │           UI 层 (React 19)                       │
+│  Tailwind CSS v4 + Liquid Glass                 │
+│  shadcn/ui (Radix UI) 组件                      │
+│  Motion (Framer Motion) 动画                     │
+│  Lucide React 图标                              │
+│  Geist Sans + Geist Mono 字体                   │
 │  FolderTree │ ImageGrid (虚拟滚动)              │
 │  ImageViewer (缩放/旋转/翻转/幻灯片/视频播放)   │
 ├─────────────────────────────────────────────────┤
@@ -90,15 +95,21 @@ D:\luuk\
 │   ├── types/
 │   │   └── index.ts             # TypeScript 类型定义
 │   ├── global.d.ts              # 全局类型声明
-│   ├── variables.module.css     # CSS 变量模块
-│   ├── App.module.css           # App 模块样式
-│   └── index.css                # 全局样式
+│   └── index.css                # 全局样式 (Tailwind v4 + Liquid Glass + shadcn/ui)
 ├── dist/                       # Vite 构建输出
 ├── dist-electron/              # Electron 构建输出
 └── release/                    # 安装包输出
 ```
 
 ## 🔑 关键设计
+
+### 前端技术栈
+- **样式方案**：Tailwind CSS v4 + Liquid Glass（`@theme` 统一管理设计 token，三级玻璃深度 `glass-l1/l2/l3`）
+- **组件库**：shadcn/ui (基于 Radix UI 的无头组件)
+- **动画库**：Motion (Framer Motion)，核心交互动画（FolderTree 展开/折叠、ImageViewer 信息面板、按钮微交互）
+- **图标库**：Lucide React（替换所有手写 SVG）
+- **字体**：Geist Sans + Geist Mono（通过 `@fontsource-variable` 引入可变字体）
+- **残留 CSS**：仅保留 `src/components/ImageLightbox.css`（YARL 查看器覆盖样式）和 `src/index.css`（Tailwind + 全局自定义样式）
 
 ### 多媒体支持
 - **统一加载**：所有媒体类型（图片/视频/音频）统一使用 `getMediaUrl` IPC 返回 `media://TOKEN` URL，避免 base64 全量加载导致 OOM
@@ -148,6 +159,7 @@ D:\luuk\
 7. **自定义协议**: `media://` 在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册。URL 中的路径编码采用令牌映射（`src/main/services/media-registry.ts`），避免浏览器对 URL authority 强制小写化破坏编码
 8. **Native 模块**: 使用 `electron-rebuild` 重建 better-sqlite3 和 sharp 等原生模块
 9. **媒体类型**: 优先使用文件扩展名判断（`getMediaTypeFromPath`），数据库中 `media_type` 可能不准确
+10. **样式开发**: 项目已全面迁移到 Tailwind CSS v4 + shadcn/ui，禁止新建 `.css` / `.module.css` 文件（ImageLightbox.css 除外）。设计 token 通过 `@theme` 块在 `src/index.css` 中统一定义
 
 ## ⌨️ 快捷键
 
