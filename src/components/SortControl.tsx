@@ -1,4 +1,4 @@
-import './SortControl.css'
+import { ArrowUp, ArrowDown } from 'lucide-react'
 
 export type SortBy = 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height'
 export type SortOrder = 'ASC' | 'DESC'
@@ -34,12 +34,12 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
   }
 
   return (
-    <div className="sort-control">
-      <span className="sort-label">排序:</span>
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-text-secondary">排序:</span>
       <select
         value={sortBy}
         onChange={handleSortByChange}
-        className="sort-select"
+        className="bg-canvas-tertiary border border-border rounded-md px-2 py-1 text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
         title="选择排序字段"
       >
         {SORT_OPTIONS.map(option => (
@@ -50,10 +50,10 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
       </select>
       <button
         onClick={handleSortOrderChange}
-        className="sort-order-btn"
+        className="w-7 h-7 flex items-center justify-center border border-border rounded-md bg-transparent text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-overlay-light hover:text-text-primary"
         title={sortOrder === 'ASC' ? '升序' : '降序'}
       >
-        {sortOrder === 'ASC' ? '↑' : '↓'}
+        {sortOrder === 'ASC' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
       </button>
     </div>
   )

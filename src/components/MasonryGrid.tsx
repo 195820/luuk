@@ -2,7 +2,6 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
-import './MasonryGrid.css'
 
 export interface MasonryGridItem extends ImageGridItem {
   aspectRatio?: number
@@ -56,7 +55,6 @@ export function MasonryGrid({
       return
     }
 
-    // 每列宽度 = thumbnailSize + 10px (3px 左边距 + 3px 右边距 + 4px 额外空间)
     const minColumnWidth = thumbnailSize + 10
     const calculatedColumns = Math.max(1, Math.floor(containerWidth / minColumnWidth))
     setColumnCount(calculatedColumns)
@@ -88,21 +86,17 @@ export function MasonryGrid({
     const tops: number[][] = Array.from({ length: columnCount }, () => [])
 
     displayImages.forEach((image) => {
-      // 找到当前最矮的列
       let minHeight = Math.min(...heights)
       let minIndex = heights.indexOf(minHeight)
 
-      // 计算图片的显示高度（基于宽高比）
       const aspectRatio = image.aspectRatio || (image.height && image.width ? image.height / image.width : 1)
       const itemWidth = thumbnailSize
-      const itemHeight = itemWidth * aspectRatio + 8 // 8px 是信息区域的高度
+      const itemHeight = itemWidth * aspectRatio + 8
 
-      // 记录该项的顶部位置
       tops[minIndex].push(heights[minIndex])
 
-      // 将图片添加到最矮的列
       newColumns[minIndex].push(image)
-      heights[minIndex] += itemHeight + 8 // 8px 是列内间距
+      heights[minIndex] += itemHeight + 8
     })
 
     setColumns(newColumns)
@@ -147,16 +141,13 @@ export function MasonryGrid({
   return (
     <div
       ref={parentRef}
-      className="masonry-grid"
-      style={{ height: '100%', overflow: 'auto' }}
+      className="w-full h-full overflow-auto bg-canvas"
     >
       <div
-        className="masonry-grid-inner"
+        className="relative w-full"
         style={{
           height: `${totalHeight}px`,
-          position: 'relative',
-          width: '100%',
-          padding: 'var(--space-4)',
+          padding: '1rem',
         }}
       >
         {columns.map((column, columnIndex) => {
@@ -165,7 +156,7 @@ export function MasonryGrid({
           return (
             <div
               key={`column-${columnIndex}`}
-              className="masonry-column"
+              className="absolute top-0 flex flex-col gap-2 box-border"
               style={{
                 left: `${columnIndex * (thumbnailSize + 7) + 3}px`,
                 width: `${thumbnailSize}px`,
@@ -179,7 +170,7 @@ export function MasonryGrid({
                 return (
                   <div
                     key={`${image.id}-${columnIndex}-${itemIndex}`}
-                    className="masonry-item"
+                    className="absolute left-0 w-full"
                     style={{
                       height: `${itemHeight}px`,
                       transform: `translateY(${top}px)`,

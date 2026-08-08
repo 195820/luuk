@@ -1,9 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { motionPresets } from '@/lib/motion-presets'
+import {
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  RotateCcw,
+  FlipHorizontal,
+  FlipVertical,
+  Info,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Play,
+  Pause,
+  Volume2,
+  VolumeX,
+} from 'lucide-react'
 import { isBrowserPlayableVideo } from '../utils/media'
 import { formatFileSize } from '../utils/format'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
-import './ImageViewer.css'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -171,7 +188,6 @@ export function ImageViewer({
     setIsGifPlaying(true)
   }, [src])
 
-  // 监听全局重置事件
   // 监听全局快捷键事件
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -216,123 +232,128 @@ export function ImageViewer({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleReset, handleFlipHorizontal, handleFlipVertical, onClose, onPrevious, onNext, mediaType, toggleVideoPlayback])
 
-  return (
-    <div className="image-viewer">
-      {/* 工具栏 */}
-      <div className="viewer-toolbar">
-        <div className="toolbar-group">
-          <button onClick={onClose} className="toolbar-btn" title="关闭 (Esc)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18"/>
-              <line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
+  // 工具栏按钮通用样式
+  const toolbarBtnClass = 'w-9 h-9 flex items-center justify-center rounded-md border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-overlay-light hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed'
+  const toolbarBtnActiveClass = 'bg-overlay-selected text-text-primary'
 
-        <div className="toolbar-group">
+  return (
+    <div className="relative w-full h-full flex flex-col overflow-hidden">
+      {/* 工具栏 */}
+      <motion.div
+        className="h-10 px-4 flex items-center gap-4 bg-canvas border-b border-border [-webkit-app-region:drag] flex-shrink-0"
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={motionPresets.fade}
+      >
+        <motion.div
+          className="flex items-center gap-1"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...motionPresets.fade, delay: 0.05 }}
+        >
+          <button onClick={onClose} className={toolbarBtnClass} title="关闭 (Esc)">
+            <X size={16} />
+          </button>
+        </motion.div>
+
+        <motion.div
+          className="flex items-center gap-1"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...motionPresets.fade, delay: 0.1 }}
+        >
           <button
             onClick={onPrevious}
             disabled={currentIndex <= 0}
-            className="toolbar-btn"
+            className={toolbarBtnClass}
             title="上一张 (←)"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
+            <ChevronLeft size={16} />
           </button>
           <button
             onClick={onNext}
             disabled={currentIndex >= totalImages - 1}
-            className="toolbar-btn"
+            className={toolbarBtnClass}
             title="下一张 (→)"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
+            <ChevronRight size={16} />
           </button>
-        </div>
+        </motion.div>
 
-        <div className="toolbar-group">
-          <span className="toolbar-info">
+        <motion.div
+          className="flex items-center gap-1"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...motionPresets.fade, delay: 0.15 }}
+        >
+          <span className="text-text-secondary text-sm px-2 min-w-[80px] text-center tabular-nums">
             {currentIndex + 1} / {totalImages}
           </span>
-        </div>
+        </motion.div>
 
         {/* 图片操作按钮（仅图片类型显示） */}
         {mediaType === 'image' && (
           <>
-            <div className="toolbar-group">
-              <button onClick={handleRotate} className="toolbar-btn" title="旋转 90°">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="23 4 23 10 17 10"/>
-                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-                </svg>
+            <motion.div
+              className="flex items-center gap-1"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...motionPresets.fade, delay: 0.2 }}
+            >
+              <button onClick={handleRotate} className={toolbarBtnClass} title="旋转 90°">
+                <RotateCw size={16} />
               </button>
-              <button onClick={handleFlipHorizontal} className="toolbar-btn" title="水平翻转 (H)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 3v18"/>
-                  <path d="M8 8l-4 4 4 4"/>
-                  <path d="M16 16l4-4-4-4"/>
-                </svg>
+              <button onClick={handleFlipHorizontal} className={toolbarBtnClass} title="水平翻转 (H)">
+                <FlipHorizontal size={16} />
               </button>
-              <button onClick={handleFlipVertical} className="toolbar-btn" title="垂直翻转 (V)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 12h18"/>
-                  <path d="M8 16l4 4 4-4"/>
-                  <path d="M16 8l-4-4-4 4"/>
-                </svg>
+              <button onClick={handleFlipVertical} className={toolbarBtnClass} title="垂直翻转 (V)">
+                <FlipVertical size={16} />
               </button>
-            </div>
+            </motion.div>
 
-            <div className="toolbar-group">
-              <button onClick={handleZoomIn} className="toolbar-btn" title="放大">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                  <line x1="11" y1="8" x2="11" y2="14"/>
-                  <line x1="8" y1="11" x2="14" y2="11"/>
-                </svg>
+            <motion.div
+              className="flex items-center gap-1"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ ...motionPresets.fade, delay: 0.25 }}
+            >
+              <button onClick={handleZoomIn} className={toolbarBtnClass} title="放大">
+                <ZoomIn size={16} />
               </button>
-              <button onClick={handleZoomOut} className="toolbar-btn" title="缩小">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="8"/>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                  <line x1="8" y1="11" x2="14" y2="11"/>
-                </svg>
+              <button onClick={handleZoomOut} className={toolbarBtnClass} title="缩小">
+                <ZoomOut size={16} />
               </button>
-              <button onClick={handleReset} className="toolbar-btn" title="重置 (R)">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="1 4 1 10 7 10"/>
-                  <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-                </svg>
+              <button onClick={handleReset} className={toolbarBtnClass} title="重置 (R)">
+                <RotateCcw size={16} />
               </button>
-            </div>
+            </motion.div>
           </>
         )}
 
-        <div className="toolbar-group">
+        <motion.div
+          className="flex items-center gap-1"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ ...motionPresets.fade, delay: 0.3 }}
+        >
           <button
             onClick={() => setShowInfo(!showInfo)}
-            className={`toolbar-btn ${showInfo ? 'active' : ''}`}
+            className={`${toolbarBtnClass} ${showInfo ? toolbarBtnActiveClass : ''}`}
             title="图片信息 (I)"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="16" x2="12" y2="12"/>
-              <line x1="12" y1="8" x2="12.01" y2="8"/>
-            </svg>
+            <Info size={16} />
           </button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* 媒体查看区域 */}
-      <div ref={wrapperRef} className="viewer-canvas">
+      <div ref={wrapperRef} className="flex-1 relative overflow-hidden">
         {mediaType === 'video' ? (
           isBrowserPlayableVideo(alt || '') ? (
             <video
               ref={videoRef}
               src={src}
-              className="viewer-video"
+              className="w-full h-full max-w-full max-h-full object-contain select-none bg-black"
               onLoadedMetadata={handleVideoLoaded}
               onError={handleVideoError}
               onTimeUpdate={handleVideoTimeUpdate}
@@ -343,17 +364,17 @@ export function ImageViewer({
               draggable={false}
             />
           ) : (
-            <div className="viewer-unsupported-placeholder">
-              <svg className="unsupported-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <div className="flex flex-col items-center justify-center gap-3 w-full h-full text-text-muted">
+              <svg className="w-16 h-16 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <rect x="2" y="2" width="20" height="20" rx="2"/>
                 <polygon points="10,8 16,12 10,16"/>
                 <line x1="18" y1="6" x2="6" y2="18" stroke="rgba(255,70,70,0.6)"/>
               </svg>
-              <span className="unsupported-label">不支持的格式: {imageInfo?.format?.toUpperCase()}</span>
-              <span className="unsupported-hint">浏览器无法直接播放此格式</span>
-              {alt && <span className="unsupported-filename">{alt}</span>}
+              <span className="text-lg text-text-secondary">不支持的格式: {imageInfo?.format?.toUpperCase()}</span>
+              <span className="text-sm text-text-muted">浏览器无法直接播放此格式</span>
+              {alt && <span className="text-base text-text-secondary max-w-[400px] text-center break-all">{alt}</span>}
               {imageInfo?.width && (imageInfo?.height ?? 0) > 0 && (
-                <span className="unsupported-dims">{imageInfo.width} x {imageInfo.height}</span>
+                <span className="text-sm text-text-muted">{imageInfo.width} x {imageInfo.height}</span>
               )}
             </div>
           )
@@ -374,8 +395,8 @@ export function ImageViewer({
 
       {/* 加载状态 */}
       {loadingState.loading && (
-        <div className="image-loading">
-          <svg className="loading-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-text-secondary">
+          <svg className="w-10 h-10 text-text-muted animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
             <circle cx="12" cy="12" r="10" strokeWidth="2" strokeDasharray="32" strokeLinecap="round"/>
           </svg>
           <span>{mediaType === 'video' ? '正在加载视频...' : mediaType === 'audio' ? '正在加载音频...' : '正在加载图片...'}</span>
@@ -384,76 +405,81 @@ export function ImageViewer({
 
       {/* 错误状态 */}
       {loadingState.error && (
-        <div className="image-error">
-          <svg className="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-text-secondary">
+          <svg className="w-10 h-10 text-error opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10"/>
             <line x1="15" y1="9" x2="9" y2="15"/>
             <line x1="9" y1="9" x2="15" y2="15"/>
           </svg>
           <span>{mediaType === 'video' ? '视频加载失败' : mediaType === 'audio' ? '音频加载失败' : '图片加载失败'}</span>
-          <button onClick={() => setLoadingState(prev => ({ ...prev, loading: true, error: false }))} className="retry-btn">
+          <button
+            onClick={() => setLoadingState(prev => ({ ...prev, loading: true, error: false }))}
+            className="px-4 py-2 bg-canvas-tertiary border border-border rounded-md text-text-secondary text-sm cursor-pointer transition-colors duration-150 hover:bg-canvas-raised hover:border-border-hover hover:text-text-primary hover:-translate-y-px active:translate-y-0"
+          >
             重试
           </button>
         </div>
       )}
 
       {/* 图片信息面板 */}
-      {showInfo && !loadingState.loading && !loadingState.error && (
-        <div className="image-info-panel">
-          <div className="info-header">
-            <span>图片信息</span>
-            <button onClick={() => setShowInfo(false)} className="close-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18"/>
-                <line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          </div>
-          <div className="info-content">
-            <div className="info-row">
-              <span className="info-label">文件名:</span>
-              <span className="info-value">{alt}</span>
+      <AnimatePresence>
+        {showInfo && !loadingState.loading && !loadingState.error && (
+          <motion.div
+            className="glass-l3 absolute top-4 right-4 w-72 p-0 overflow-hidden z-[100]"
+            initial={{ opacity: 0, scale: 0.95, y: -8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            transition={motionPresets.panel}
+            style={{ transformOrigin: 'top right' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border font-semibold text-text-primary">
+              <span>图片信息</span>
+              <button
+                onClick={() => setShowInfo(false)}
+                className="w-7 h-7 flex items-center justify-center bg-transparent border-none rounded-sm text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-canvas-tertiary hover:text-text-primary"
+              >
+                <X size={14} />
+              </button>
             </div>
-            <div className="info-row">
-              <span className="info-label">尺寸:</span>
-              <span className="info-value">
-                {loadingState.naturalWidth || imageInfo?.width} × {loadingState.naturalHeight || imageInfo?.height} px
-              </span>
+            <div className="p-3">
+              <div className="flex justify-between py-2 border-b border-border">
+                <span className="text-text-secondary text-sm">文件名:</span>
+                <span className="text-text-primary text-sm text-right break-all">{alt}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-border">
+                <span className="text-text-secondary text-sm">尺寸:</span>
+                <span className="text-text-primary text-sm text-right">
+                  {loadingState.naturalWidth || imageInfo?.width} × {loadingState.naturalHeight || imageInfo?.height} px
+                </span>
+              </div>
+              {imageInfo?.fileSize && (
+                <div className="flex justify-between py-2 border-b border-border">
+                  <span className="text-text-secondary text-sm">大小:</span>
+                  <span className="text-text-primary text-sm">{formatFileSize(imageInfo.fileSize)}</span>
+                </div>
+              )}
+              {imageInfo?.format && (
+                <div className="flex justify-between py-2">
+                  <span className="text-text-secondary text-sm">格式:</span>
+                  <span className="text-text-primary text-sm">{imageInfo.format.toUpperCase()}</span>
+                </div>
+              )}
             </div>
-            {imageInfo?.fileSize && (
-              <div className="info-row">
-                <span className="info-label">大小:</span>
-                <span className="info-value">{formatFileSize(imageInfo.fileSize)}</span>
-              </div>
-            )}
-            {imageInfo?.format && (
-              <div className="info-row">
-                <span className="info-label">格式:</span>
-                <span className="info-value">{imageInfo.format.toUpperCase()}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Video controls bar */}
       {mediaType === 'video' && isBrowserPlayableVideo(alt || '') && !loadingState.loading && !loadingState.error && (
-        <div className="video-controls-bar">
+        <div className="absolute bottom-0 left-0 right-0 h-12 px-3 flex items-center gap-2 z-[200]"
+          style={{ background: 'linear-gradient(transparent, rgba(0, 0, 0, 0.8))' }}
+        >
           <button
             onClick={toggleVideoPlayback}
-            className="video-ctrl-btn"
+            className="w-8 h-8 flex items-center justify-center bg-transparent border-none rounded-sm text-text-primary cursor-pointer transition-colors duration-150 hover:bg-overlay-selected flex-shrink-0 p-0"
             title={isVideoPlaying ? '暂停 (Space)' : '播放 (Space)'}
           >
-            {isVideoPlaying ? (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="2" y="1" width="4" height="14" rx="1"/>
-                <rect x="10" y="1" width="4" height="14" rx="1"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-                <polygon points="3,1 14,8 3,15"/>
-              </svg>
-            )}
+            {isVideoPlaying ? <Pause size={14} /> : <Play size={14} />}
           </button>
           <span className="video-time">{formatTime(videoCurrentTime)}</span>
           <input
@@ -466,10 +492,8 @@ export function ImageViewer({
             className="video-progress-bar"
           />
           <span className="video-time">{formatTime(videoDuration)}</span>
-          <div className="video-volume-group">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ opacity: 0.6 }}>
-              <path d="M6 2L2 6H0v4h2l4 4V2z"/>
-            </svg>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {videoVolume === 0 ? <VolumeX size={14} className="opacity-60" /> : <Volume2 size={14} className="opacity-60" />}
             <input
               type="range"
               min="0"
@@ -485,24 +509,15 @@ export function ImageViewer({
 
       {/* GIF controls */}
       {imageInfo?.format?.toLowerCase() === 'gif' && !loadingState.loading && !loadingState.error && (
-        <div className="gif-controls">
+        <div className="absolute bottom-3 left-3 flex items-center gap-2 bg-overlay-darker border border-border rounded-md px-2 py-1 backdrop-blur-[8px] z-[200]">
           <button
             onClick={() => setIsGifPlaying(prev => !prev)}
-            className="gif-ctrl-btn"
+            className="w-6 h-6 flex items-center justify-center bg-transparent border-none rounded-sm text-text-primary cursor-pointer transition-colors duration-150 hover:bg-overlay-selected flex-shrink-0 p-0"
             title={isGifPlaying ? '暂停动画' : '播放动画'}
           >
-            {isGifPlaying ? (
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="2" y="1" width="4" height="14" rx="1"/>
-                <rect x="10" y="1" width="4" height="14" rx="1"/>
-              </svg>
-            ) : (
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <polygon points="3,1 14,8 3,15"/>
-              </svg>
-            )}
+            {isGifPlaying ? <Pause size={12} /> : <Play size={12} />}
           </button>
-          <span className="gif-label">GIF</span>
+          <span className="text-xs font-bold text-accent tracking-[1px]">GIF</span>
         </div>
       )}
     </div>
