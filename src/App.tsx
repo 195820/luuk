@@ -1009,14 +1009,14 @@ function App() {
 
       {/* 收藏视图媒体筛选 */}
       {isFavoriteLibrary && viewMode === 'grid' && (
-        <div className="flex justify-center px-4 py-2 glass-l1" style="border-radius: 0;">
+        <div className="flex justify-center px-4 py-2 glass-l1 rounded-none">
           <MediaFilter value={mediaFilter} onChange={setMediaFilter} />
         </div>
       )}
 
       {/* 底部音频区域 */}
       {showAudio && viewMode === 'grid' && currentLibraryId && (
-        <div className="glass-l1 p-3 px-4" style="border-radius: 0;">
+        <div className="glass-l1 p-3 px-4 rounded-none">
           <div className="flex items-center mb-3">
             <span className="text-sm text-text-secondary font-medium">🎵 音频文件 ({audioItems.length})</span>
           </div>
@@ -1039,7 +1039,7 @@ function App() {
         </div>
       )}
 
-      <footer className="h-8 px-5 flex items-center justify-center gap-6 glass-l1 text-micro text-text-muted [-webkit-app-region:drag] tabular-nums" style="border-radius: 0;">
+      <footer className="h-8 px-5 flex items-center justify-center gap-6 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
         <span className="[-webkit-app-region:no-drag]">←/→: 上一张/下一张</span>
         <span className="[-webkit-app-region:no-drag]">Home/End: 第一张/最后一张</span>
         <span className="[-webkit-app-region:no-drag]">0: 适应窗口</span>
