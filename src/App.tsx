@@ -663,21 +663,17 @@ function App() {
   return (
     <div className="w-full h-full flex flex-col">
       <header className="h-[50px] px-5 flex items-center justify-between glass-l1 [-webkit-app-region:drag]">
-        {currentAudio ? (
-          <AudioPlayer />
-        ) : (
-          <h1
-            className="text-title font-semibold tracking-[0.02em]"
-            style={{
-              background: 'linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
-            图片查看器
-          </h1>
-        )}
+        <h1
+          className="text-title font-semibold tracking-[0.02em]"
+          style={{
+            background: 'linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          图片查看器
+        </h1>
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
           <button onClick={toggleFolderSidebar} className="w-9 h-9 border border-border rounded-md text-text-secondary cursor-pointer transition-colors duration-150 flex items-center justify-center hover:border-border-hover hover:text-text-primary hover:bg-overlay-light" title="切换文件夹面板 (F6)">
             📁
@@ -1053,6 +1049,9 @@ function App() {
         <span className="[-webkit-app-region:no-drag]">F5: 切换视图</span>
         <span className="[-webkit-app-region:no-drag]">F6: 文件夹面板</span>
       </footer>
+
+      {/* 音频播放器 — 必须在 backdrop-filter 容器外部渲染，否则 fixed 定位失效 */}
+      <AudioPlayer />
 
       {/* 扫描进度条 */}
       <ScanProgress />
