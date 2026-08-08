@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
-import { ChevronRight, ChevronDown, Folder, FolderHeart, Trash2, Heart } from 'lucide-react'
+import { ChevronRight, Folder, Trash2, Heart } from 'lucide-react'
 import { useImageStore } from '../stores/imageStore'
 
 export interface FolderTreeNode {
@@ -100,7 +100,7 @@ export function FolderTree({
         /* 普通库模式 - 显示文件夹树 */
         <>
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-sm cursor-pointer user-select-none transition-all duration-150 border border-border font-medium bg-canvas-tertiary text-text-primary hover:bg-canvas-elevated hover:border-border-hover ${selectedFolder === null ? 'bg-overlay-selected border-border-hover' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-sm cursor-pointer select-none transition-all duration-150 border border-border font-medium bg-canvas-tertiary text-text-primary hover:bg-canvas-raised hover:border-border-hover ${selectedFolder === null ? 'bg-overlay-selected border-border-hover' : ''}`}
             onClick={() => onFolderSelect?.(null)}
           >
             <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted" />
@@ -174,7 +174,7 @@ function FolderTreeItem({
   return (
     <div className="flex flex-col">
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 rounded-sm cursor-pointer user-select-none transition-all duration-150 border border-transparent hover:bg-overlay-light hover:border-border ${isSelected ? 'bg-overlay-selected border-border-hover' : ''}`}
+        className={`flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 rounded-sm cursor-pointer select-none transition-all duration-150 border border-transparent hover:bg-overlay-light hover:border-border ${isSelected ? 'bg-overlay-selected border-border-hover' : ''}`}
         style={{ paddingLeft: `${node.depth * 16 + 8}px` }}
         onClick={handleClick}
       >
