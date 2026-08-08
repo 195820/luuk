@@ -51,7 +51,6 @@ export function ImageGridItemComponent({
       fetchRealImageId()
     } else if (isFavoriteLibrary && image.id && typeof image.id === 'string' && image.id.includes('-')) {
       // 处理收藏文件夹中的图片，ID 格式为 "libraryId-relativePath-index"
-      // 直接从 image 对象中获取 libraryId 和相对路径
       if (image.libraryId && image.imagePath) {
         const fetchRealImageId = async () => {
           try {
@@ -80,10 +79,8 @@ export function ImageGridItemComponent({
     let cancelled = false
 
     const loadThumbnail = async () => {
-      // 等待获取真实 ID
       if (!hasLoadedImageInfo) return
 
-      // 如果没有真实 ID，标记为错误
       if (realImageId === null && isFavoriteLibrary) {
         setError(true)
         setIsLoading(false)
@@ -91,7 +88,6 @@ export function ImageGridItemComponent({
       }
 
       try {
-        // 收藏库使用图片实际的 libraryId 和真实 ID
         const thumbLibraryId = isFavoriteLibrary && image.libraryId ? image.libraryId : libraryId
         const thumbImageId = realImageId !== null ? realImageId : (typeof image.id === 'number' ? image.id : null)
 
@@ -146,20 +142,26 @@ export function ImageGridItemComponent({
 
   return (
     <div
-      className={`image-grid-item ${isSelected ? 'selected' : ''}`}
+      className={`grid-card group${isSelected ? ' selected' : ''}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       style={{
         width: isMasonry ? '100%' : thumbnailSize,
         flexShrink: 0,
         height: isMasonry ? '100%' : 'auto',
-        display: 'flex',
-        flexDirection: 'column',
       }}
     >
-      <div className="image-grid-thumbnail" style={{ height: isMasonry ? '100%' : undefined }}>
+      {/* 缩略图区域 */}
+      <div
+        className="grid-thumb"
+        style={{
+          aspectRatio: isMasonry ? undefined : '1 / 1',
+          height: isMasonry ? '100%' : undefined,
+        }}
+      >
+        {/* 收藏按钮 */}
         <button
-          className="image-grid-favorite-btn"
+          className="grid-fav-btn"
           onClick={handleFavoriteClick}
           title={image.isFavorite ? '取消收藏' : '收藏'}
         >
@@ -167,12 +169,14 @@ export function ImageGridItemComponent({
             <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
           </svg>
         </button>
-        {isLoading && <div className="image-grid-loading">加载中...</div>}
+
+        {isLoading && <div className="grid-loading">加载中...</div>}
         {error && (
-          <div className="image-grid-error">
+          <div className="grid-error">
             <span>加载失败</span>
           </div>
         )}
+
         {thumbnailSrc ? (
           <img
             src={thumbnailSrc}
@@ -185,23 +189,22 @@ export function ImageGridItemComponent({
             }}
             style={{
               display: isLoading || error ? 'none' : 'block',
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
             }}
           />
         ) : (
-          <div style={{ width: '100%', height: '100%', background: 'var(--bg-tertiary)' }}>加载中</div>
+          <div className="w-full h-full bg-canvas-tertiary text-text-muted text-micro flex items-center justify-center">加载中</div>
         )}
+
         {/* 视频时长 badge */}
         {image.mediaType === 'video' && (
-          <span className="video-duration-badge">
+          <span className="video-badge">
             {image.duration ? formatDuration(image.duration) : 'VIDEO'}
           </span>
         )}
+
         {/* 不支持的格式 overlay */}
         {image.mediaType === 'video' && (['avi', 'mkv'].includes(image.format?.toLowerCase() || '')) && (
-          <div className="unsupported-format-overlay">
+          <div className="unsupported-overlay">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/>
               <line x1="12" y1="8" x2="12" y2="12"/>
@@ -211,18 +214,25 @@ export function ImageGridItemComponent({
           </div>
         )}
       </div>
-      <div className="image-grid-info">
-        <span className="image-grid-name" title={image.alt}>
+
+      {/* 信息覆盖层 */}
+      <div
+        className="absolute inset-x-0 bottom-0 px-2 pt-1 pb-2 pointer-events-none text-white opacity-0 translate-y-2 transition-all duration-200 group-hover:opacity-100 group-hover:translate-y-0"
+        style={{
+          background: 'linear-gradient(to top, var(--color-overlay-darkest) 0%, var(--color-overlay-darker) 60%, transparent 100%)',
+        }}
+      >
+        <span className="text-micro font-medium text-text-secondary truncate block group-hover:text-text-primary transition-colors duration-150" title={image.alt}>
           {image.alt}
         </span>
-        <div className="image-grid-meta">
+        <div className="flex items-center gap-2 text-micro text-text-muted font-mono text-[11px] group-hover:text-white/70">
           {image.width && image.height ? (
             <span>{image.width}×{image.height}</span>
           ) : (
             <span>1920×1080</span>
           )}
           {image.fileSize && (
-            <span className="file-size">{formatFileSize(image.fileSize)}</span>
+            <span className="opacity-80">{formatFileSize(image.fileSize)}</span>
           )}
         </div>
       </div>

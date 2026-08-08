@@ -262,6 +262,157 @@ body {
   --sidebar-ring: rgba(255, 255, 255, 0.15);
 }
 
+/* ═══════════════════════════════════════════════════════
+   网格卡片组件样式（复杂嵌套 hover 无法纯 Tailwind 实现）
+   ═══════════════════════════════════════════════════════ */
+
+/* 卡片基础 */
+.grid-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-canvas-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 150ms;
+  overflow: hidden;
+}
+.grid-card:hover {
+  border-color: var(--color-border-hover);
+  background: var(--color-glass-l1);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+.grid-card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.grid-card.selected {
+  border-color: var(--color-border-hover);
+  background: var(--color-canvas-tertiary);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* 缩略图容器 */
+.grid-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-canvas-tertiary);
+  overflow: hidden;
+  position: relative;
+  transition: all 150ms;
+}
+.grid-card:hover .grid-thumb {
+  background: var(--color-glass-l1);
+}
+
+/* 缩略图 */
+.grid-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 300ms;
+}
+.grid-card:hover .grid-thumb img {
+  transform: scale(1.02);
+}
+
+/* 收藏按钮 */
+.grid-fav-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: var(--color-overlay-darker);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border: 1px solid var(--color-border);
+  cursor: pointer;
+  padding: 0;
+  transition: all 200ms;
+  opacity: 0;
+  transform: scale(0.9);
+}
+.grid-card:hover .grid-fav-btn {
+  opacity: 1;
+  transform: scale(1);
+}
+.grid-fav-btn:hover {
+  background: var(--color-overlay-darkest);
+  border-color: var(--color-border-hover);
+  transform: scale(1.05);
+}
+.grid-fav-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  opacity: 1;
+}
+.grid-fav-btn svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-star-empty);
+  transition: all 150ms;
+}
+.grid-fav-btn:hover svg {
+  color: var(--color-favorite);
+}
+.grid-fav-btn svg[fill="currentColor"] {
+  color: var(--color-favorite);
+  filter: drop-shadow(0 2px 4px rgba(255, 71, 87, 0.3));
+}
+
+/* 加载/错误状态居中 */
+.grid-loading,
+.grid-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--text-micro);
+}
+.grid-error {
+  color: var(--color-error);
+}
+
+/* 视频时长 badge */
+.video-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--color-overlay-darkest);
+  color: var(--color-text-primary);
+  font-size: var(--text-micro);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+/* 不支持格式 overlay */
+.unsupported-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--color-overlay-darker);
+  color: var(--color-text-secondary);
+  font-size: var(--text-micro);
+  pointer-events: none;
+}
+
 /* 缩略图滑块自定义样式（伪元素无法原子化） */
 .thumbnail-slider {
   width: 80px;
