@@ -307,6 +307,61 @@ body {
   border-radius: 3px;
 }
 
+/* 视频进度条/音量滑块（伪元素无法原子化） */
+.video-progress-bar {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-selected);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+  transition: height 150ms;
+}
+.video-progress-bar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: transform 150ms;
+}
+.video-progress-bar::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.video-progress-bar:hover {
+  height: 6px;
+}
+
+.video-time {
+  font-size: var(--text-micro);
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+.video-volume-slider {
+  width: 60px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-overlay-selected);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.video-volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  cursor: pointer;
+}
+
 /* 应用头部渐变文字（保留内联 style 方式，此处为备用） */
 @utility text-gradient {
   background: linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%);
