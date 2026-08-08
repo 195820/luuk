@@ -89,7 +89,7 @@ export function AudioPlayer() {
   if (!currentAudio) return null
 
   return (
-    <div className="glass-l2 fixed bottom-12 left-1/2 -translate-x-1/2 w-96 px-4 py-3 flex flex-col gap-2 z-50">
+    <div className="glass-l2 fixed bottom-12 left-4 w-80 px-4 py-3 flex flex-col gap-2 z-50">
       <audio
         ref={audioRef}
         onTimeUpdate={handleTimeUpdate}
