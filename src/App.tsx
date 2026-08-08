@@ -823,10 +823,10 @@ function App() {
         )}
 
         {/* 主内容区域 */}
-        <main className={`flex-1 overflow-hidden relative bg-canvas h-full ${folderSidebarOpen ? '' : ''}`}>
+        <main className="flex-1 overflow-hidden relative bg-canvas h-full">
           {isLoading && !currentImage && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
-              <div className="w-10 h-10 border-2 border-border border-t-text-muted rounded-full animate-spin" style={{ animation: 'spin 1s linear infinite' }}></div>
+              <div className="w-10 h-10 border-2 border-border border-t-text-muted rounded-full animate-spin"></div>
               <span>加载中...</span>
             </div>
           )}
@@ -965,7 +965,7 @@ function App() {
                   }`}>
                     <div className="flex-1 flex flex-col gap-1">
                       <strong className="text-body text-text-primary font-medium">{lib.name}</strong>
-                      <span className="text-xs text-text-muted word-break-all font-mono">{lib.root_path}</span>
+                      <span className="text-xs text-text-muted break-all font-mono">{lib.root_path}</span>
                       <span className="text-xs text-text-dim mt-1">
                         状态：{lib.status === 'online' ? '🟢 在线' : '🔴 离线'} | {lib.image_count} 张
                       </span>
@@ -1009,14 +1009,14 @@ function App() {
 
       {/* 收藏视图媒体筛选 */}
       {isFavoriteLibrary && viewMode === 'grid' && (
-        <div className="flex justify-center px-4 py-2 bg-canvas-secondary border-b border-border">
+        <div className="flex justify-center px-4 py-2 bg-canvas-raised border-b border-border">
           <MediaFilter value={mediaFilter} onChange={setMediaFilter} />
         </div>
       )}
 
       {/* 底部音频区域 */}
       {showAudio && viewMode === 'grid' && currentLibraryId && (
-        <div className="bg-canvas-secondary border-t border-border p-3 px-4">
+        <div className="bg-canvas-raised border-t border-border p-3 px-4">
           <div className="flex items-center mb-3">
             <span className="text-sm text-text-secondary font-medium">🎵 音频文件 ({audioItems.length})</span>
           </div>
