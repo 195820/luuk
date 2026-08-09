@@ -13,13 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('addLibrary', name, rootPath, autoScan),
   removeLibrary: (id: number) => ipcRenderer.invoke('removeLibrary', id),
   scanLibrary: (id: number) => ipcRenderer.invoke('scanLibrary', id),
-  selectFolder: () => {
-    return ipcRenderer.invoke('selectFolder').then(result => {
-      return result
-    }).catch(err => {
-      throw err
-    })
-  },
+  selectFolder: () => ipcRenderer.invoke('selectFolder'),
 
   // 文件夹
   getFolderTree: (libraryId: number) => ipcRenderer.invoke('getFolderTree', libraryId),
@@ -108,4 +102,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('library-scan-started', subscription)
     return () => ipcRenderer.removeListener('library-scan-started', subscription)
   },
+
+  // 窗口控制
+  windowMinimize: () => ipcRenderer.send('window-minimize'),
+  windowMaximize: () => ipcRenderer.send('window-maximize'),
+  windowClose: () => ipcRenderer.send('window-close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window-is-maximized'),
 } as ElectronAPI)

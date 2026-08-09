@@ -58,7 +58,7 @@ export function AppHeader({
             <option value="" disabled>──────────</option>
             {libraries.map(lib => (
               <option key={lib.id} value={lib.id}>
-                {lib.name} ({lib.status === 'online' ? '🟢 在线' : '🔴 离线'}) - {lib.image_count} 张
+                {lib.name} ({lib.status === 'online' ? '🟢 在线' : '🔴 离线'}) - {lib.imageCount} 张
               </option>
             ))}
           </select>

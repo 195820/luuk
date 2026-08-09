@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import type { Library, ThumbnailSize } from '../../types';
+import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time'] as const;
 const ALLOWED_ORDER = ['ASC', 'DESC'] as const;
@@ -133,14 +134,10 @@ export class MasterDB {
       id: row.id,
       name: (row.name || '').trim(),
       rootPath: cleanPath,
-      root_path: cleanPath,
       status: row.status,
       lastScan: row.last_scan,
-      last_scan: row.last_scan,
       imageCount: row.image_count,
-      image_count: row.image_count,
       createdAt: row.created_at,
-      created_at: row.created_at,
     };
   }
 
@@ -461,27 +458,6 @@ export class ThumbnailsDB {
     this.dbPath = path.join(libDir, 'thumbs.db');
     this.db = new Database(this.dbPath);
     this.createTables();
-    this.migrateSchema();
-  }
-
-  /**
-   * 迁移旧表结构（添加缺失的媒体相关列）
-   */
-  private migrateSchema(): void {
-    if (!this.db) return;
-
-    // 检查是否已有 media_type 列
-    const columns = this.db.pragma('table_info(images)') as Array<{ name: string }>;
-    const hasMediaType = columns.some(c => c.name === 'media_type');
-
-    if (!hasMediaType) {
-      console.log('[Database] Migrating images table: adding media_type, duration, codec columns');
-      this.db.exec(`
-        ALTER TABLE images ADD COLUMN media_type TEXT DEFAULT 'image';
-        ALTER TABLE images ADD COLUMN duration REAL;
-        ALTER TABLE images ADD COLUMN codec TEXT;
-      `);
-    }
   }
 
   private createTables(): void {
@@ -543,7 +519,7 @@ export class ThumbnailsDB {
         this.db.exec('ALTER TABLE images ADD COLUMN codec TEXT DEFAULT NULL');
       }
     } catch (e) {
-      console.error('[ThumbnailsDB] 迁移多媒体字段失败:', e);
+      logger.error('ThumbnailsDB', '迁移多媒体字段失败', e);
     }
   }
 

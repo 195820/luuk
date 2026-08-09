@@ -96,10 +96,26 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
     // 标记当前 effect 是否仍在初始化阶段
     let initialized = false
 
+    // 跟踪待处理的定时器，用于 cleanup
+    const pendingTimers = new Set<ReturnType<typeof setTimeout>>()
+
+    // 包装 setTimeout，自动跟踪定时器
+    const safeSetTimeout = (fn: () => void, delay: number) => {
+      const timer = setTimeout(() => {
+        pendingTimers.delete(timer)
+        fn()
+      }, delay)
+      pendingTimers.add(timer)
+      return timer
+    }
+
     // 处理找到的图片：立即标记已报告，避免重复触发
     const handleFoundImage = (img: HTMLImageElement) => {
       // 如果已经为当前 src 报告过，跳过
       if (reportedSrcRef.current === src) return
+
+      // 跳过没有有效 src 的 img 元素（YARL 过渡期间可能产生的空 img）
+      if (!img.src || img.src.trim() === '' || img.src === window.location.href) return
 
       // 立即标记，防止 MutationObserver 重复触发
       reportedSrcRef.current = src
@@ -115,13 +131,28 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
 
       if (img.naturalWidth > 0) {
         // 使用 setTimeout 推迟到下一个事件循环，避免在 React 渲染周期内触发状态更新
-        setTimeout(report, 0)
+        safeSetTimeout(report, 0)
       } else {
+        let errorTimer: ReturnType<typeof setTimeout> | null = null
+
         img.addEventListener('load', () => {
-          setTimeout(report, 0)
+          // 加载成功时取消待处理的错误报告
+          if (errorTimer !== null) {
+            clearTimeout(errorTimer)
+            errorTimer = null
+          }
+          safeSetTimeout(report, 0)
         }, { once: true })
+
         img.addEventListener('error', () => {
-          onErrorRef.current?.()
+          // 延迟报告错误，给 load 事件一个机会
+          // 如果 load 先到达，会清除这个 timer
+          errorTimer = safeSetTimeout(() => {
+            errorTimer = null
+            if (reportedSrcRef.current === src) {
+              onErrorRef.current?.()
+            }
+          }, 100)
         }, { once: true })
       }
     }
@@ -145,7 +176,11 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
       handleFoundImage(img)
     }
 
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      pendingTimers.forEach(t => clearTimeout(t))
+      pendingTimers.clear()
+    }
   }, [src])
 
   // GIF 暂停：用 canvas 快照覆盖当前帧

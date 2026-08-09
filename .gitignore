@@ -21,6 +21,19 @@ release
 .env.local
 .env.*.local
 
+# Credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+.env.production
+.env.development
+.env.staging
+secrets.json
+credentials.json
+service-account*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

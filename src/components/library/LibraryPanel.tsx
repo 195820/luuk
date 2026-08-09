@@ -1,3 +1,4 @@
+import { Database, RefreshCw, Trash2 } from 'lucide-react'
 import type { Library } from '../../types'
 
 interface LibraryPanelProps {
@@ -18,11 +19,14 @@ export function LibraryPanel({
   return (
     <div className="library-panel">
       <div className="library-panel-header">
-        <h3>📁 库管理</h3>
-        <button onClick={onClose} className="close-btn">×</button>
+        <h3 className="flex items-center gap-2">
+          <Database size={16} />
+          库管理
+        </h3>
+        <button onClick={onClose} className="btn-icon-sm">×</button>
       </div>
       <div className="library-panel-content">
-        <button onClick={onAddLibrary} className="add-library-btn">
+        <button onClick={onAddLibrary} className="btn-text primary w-full">
           + 添加库
         </button>
         {libraries.length === 0 ? (
@@ -33,17 +37,21 @@ export function LibraryPanel({
               <li key={lib.id} className="library-item">
                 <div className="library-item-info">
                   <strong>{lib.name}</strong>
-                  <span className="library-path">{lib.root_path}</span>
+                  <span className="library-path">{lib.rootPath}</span>
                   <span className="library-status">
-                    状态：{lib.status === 'online' ? '🟢 在线' : '🔴 离线'} | {lib.image_count} 张
+                    状态：
+                    <span className={lib.status === 'online' ? 'text-success' : 'text-error'}>
+                      {lib.status === 'online' ? '● 在线' : '● 离线'}
+                    </span>
+                    {' | '}{lib.imageCount} 张
                   </span>
                 </div>
                 <div className="library-item-actions">
-                  <button onClick={() => onScanLibrary(lib.id)} className="scan-btn">
-                    🔄 扫描
+                  <button onClick={() => onScanLibrary(lib.id)} className="btn-icon-sm hover:text-success" title="扫描">
+                    <RefreshCw size={12} />
                   </button>
-                  <button onClick={() => onRemoveLibrary(lib)} className="remove-btn">
-                    🗑 删除
+                  <button onClick={() => onRemoveLibrary(lib)} className="btn-icon-sm hover:text-error" title="删除">
+                    <Trash2 size={12} />
                   </button>
                 </div>
               </li>

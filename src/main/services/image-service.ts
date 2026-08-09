@@ -1,7 +1,8 @@
 import path from 'path';
 import fs from 'fs';
-import { BrowserWindow } from 'electron';
+import { sendToRenderer } from '../utils/ipc';
 import { getMediaTypeFromPath } from '../utils/media';
+import { logger } from '../../utils/logger';
 import {
   MasterDB,
   ThumbnailsDB,
@@ -52,14 +53,26 @@ export class ImageService {
   }
 
   /**
+   * 将 DB 行映射为前端响应：去除 snake_case media_type，添加 camelCase mediaType 和库信息
+   */
+  private mapImageWithLibraryInfo(img: any, libraryId: number, libraryName: string): Record<string, any> {
+    const { media_type: _, ...rest } = img;
+    return {
+      ...rest,
+      library_id: libraryId,
+      library_name: libraryName,
+      mediaType: getMediaTypeFromPath(img.relative_path),
+      duration: img.duration ?? null,
+      codec: img.codec ?? null,
+    };
+  }
+
+  /**
    * 创建扫描进度回调函数
    */
   private createScanProgressCallback(): ScanProgressCallback {
     return (progress) => {
-      const windows = BrowserWindow.getAllWindows();
-      if (windows.length > 0) {
-        windows[0].webContents.send('scan-progress', progress);
-      }
+      sendToRenderer('scan-progress', progress);
     };
   }
 
@@ -153,7 +166,7 @@ export class ImageService {
         .then((result) => {
           this.masterDB.updateLibraryStatus(library.id, 'online', result.total);
         })
-        .catch(console.error);
+        .catch((err) => logger.error('ImageService', 'autoScan 失败', err));
     }
 
     return library;
@@ -226,19 +239,8 @@ export class ImageService {
     const db = this.connectLibrary(libraryId);
     const images = db.getImages(options);
 
-    // 附加库信息 + 字段名映射（蛇形转驼峰）+ 使用扩展名修正媒体类型
-    return images.map(img => {
-      const correctMediaType = getMediaTypeFromPath(img.relative_path);
-      return {
-        ...img,
-        library_id: libraryId,
-        library_name: library.name,
-        mediaType: correctMediaType,
-        media_type: correctMediaType,
-        duration: (img as any).duration ?? null,
-        codec: (img as any).codec ?? null,
-      };
-    });
+    // 附加库信息 + 修正媒体类型（用扩展名判断），去除 DB 的 snake_case media_type
+    return images.map(img => this.mapImageWithLibraryInfo(img, libraryId, library.name));
   }
 
   /**
@@ -274,14 +276,13 @@ export class ImageService {
 
     // 附加库信息 + 使用扩展名修正媒体类型
     return images.map(img => {
-      const correctMediaType = getMediaTypeFromPath(img.relative_path);
+      const { media_type: _, ...rest } = img;
       return {
-        ...img,
+        ...rest,
         library_id: libraryId,
         library_name: library.name,
-        mediaType: correctMediaType,
-        media_type: correctMediaType,
-        duration: (img as any).duration ?? null,
+        mediaType: getMediaTypeFromPath(img.relative_path),
+        duration: img.duration ?? null,
         codec: (img as any).codec ?? null,
       };
     });
@@ -370,7 +371,7 @@ export class ImageService {
     const image = db.getImage(imageId);
     if (!image) {
       // 图片元数据不存在，返回空字符串而不是抛出错误
-      console.warn(`[ImageService] 图片元数据不存在：${imageId}`);
+      logger.warn('ImageService', '图片元数据不存在', `imageId=${imageId}`);
       return '';
     }
 
@@ -378,7 +379,7 @@ export class ImageService {
 
     if (!fs.existsSync(fullPath)) {
       // 图片文件不存在，返回空字符串而不是抛出错误
-      console.warn(`[ImageService] 图片文件不存在：${fullPath}`);
+      logger.warn('ImageService', '图片文件不存在', fullPath);
       return '';
     }
 
@@ -464,7 +465,7 @@ export class ImageService {
           const thumbnail = await this.getThumbnail(libraryId, id, size);
           result.set(id, thumbnail);
         } catch (error) {
-          console.error(`[ImageService] 加载缩略图失败：${id}`, error);
+          logger.error('ImageService', '加载缩略图失败', `id=${id}`, error);
         }
       });
       await Promise.all(promises);
@@ -608,14 +609,13 @@ export class ImageService {
           file_size: imageInfo?.file_size || 0,
           format: imageInfo?.format || path.extname(fav.image_path).slice(1),
           mediaType: correctMediaType,
-          media_type: correctMediaType,
           duration: imageInfo?.duration,
           codec: imageInfo?.codec,
           is_favorite: true,
           favorited_at: fav.created_at,
         };
       } catch (err) {
-        console.error(`获取收藏图片详情失败：${fav.library_id}/${fav.image_path}`, err);
+        logger.error('ImageService', '获取收藏图片详情失败', `${fav.library_id}/${fav.image_path}`, err);
         const correctMediaType = getMediaTypeFromPath(fav.image_path);
         return {
           id: 0,
@@ -627,7 +627,6 @@ export class ImageService {
           file_size: 0,
           format: path.extname(fav.image_path).slice(1),
           mediaType: correctMediaType,
-          media_type: correctMediaType,
           duration: null,
           codec: null,
           is_favorite: true,
@@ -689,22 +688,22 @@ export class ImageService {
           const db = this.connectLibrary(fav.library_id);
           const img = db.getImageByRelativePath(fav.image_path);
           if (img) {
-            // 使用文件扩展名判断媒体类型
+            // 使用文件扩展名判断媒体类型，解构去除 DB 的 snake_case media_type
+            const { media_type: _mt, ...rest } = img;
             const correctMediaType = getMediaTypeFromPath(fav.image_path);
             images.push({
-              ...img,
+              ...rest,
               library_id: fav.library_id,
               library_name: fav.library_name,
               relative_path: fav.image_path,
               mediaType: correctMediaType,
-              media_type: correctMediaType,
               is_favorite: true,
               favorited_at: fav.created_at,
             });
           }
         }
       } catch (err) {
-        console.error(`获取单图收藏详情失败：${fav.library_id}/${fav.image_path}`, err);
+        logger.error('ImageService', '获取单图收藏详情失败', `${fav.library_id}/${fav.image_path}`, err);
       }
     }
 
@@ -769,20 +768,10 @@ export class ImageService {
           if (library && library.status === 'online') {
             const db = this.connectLibrary(fav.library_id);
             const images = db.getImagesByFolder(fav.folder_path, { limit: options.limit, offset: 0 });
-            allImages.push(...images.map(img => {
-              // 使用文件扩展名判断媒体类型
-              const correctMediaType = getMediaTypeFromPath(img.relative_path);
-              return {
-                ...img,
-                library_id: fav.library_id,
-                library_name: fav.library_name,
-                mediaType: correctMediaType,
-                media_type: correctMediaType,
-              };
-            }));
+            allImages.push(...images.map(img => this.mapImageWithLibraryInfo(img, fav.library_id, fav.library_name)));
           }
         } catch (err) {
-          console.error(`获取收藏文件夹图片失败：${fav.library_id}/${fav.folder_path}`, err);
+          logger.error('ImageService', '获取收藏文件夹图片失败', `${fav.library_id}/${fav.folder_path}`, err);
         }
       }
     }
@@ -807,7 +796,7 @@ export class ImageService {
             count += db.getImagesCountByFolder(fav.folder_path);
           }
         } catch (err) {
-          console.error(`获取收藏文件夹图片数量失败：${fav.library_id}/${fav.folder_path}`, err);
+          logger.error('ImageService', '获取收藏文件夹图片数量失败', `${fav.library_id}/${fav.folder_path}`, err);
         }
       }
     }

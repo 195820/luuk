@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useAudioStore } from '../stores/audioStore'
 import { Play, Pause, Volume2, X } from 'lucide-react'
+import { logger } from '../utils/logger'
 
 export function AudioPlayer() {
   const {
@@ -36,7 +37,9 @@ export function AudioPlayer() {
 
     audio.volume = volume
     if (isPlaying) {
-      audio.play().catch(() => {})
+      audio.play().catch((err) => {
+        if (err.name !== 'AbortError') logger.warn('AudioPlayer', '播放失败', err.message)
+      })
     } else {
       audio.pause()
     }
@@ -45,7 +48,11 @@ export function AudioPlayer() {
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
-    isPlaying ? audio.play().catch(() => {}) : audio.pause()
+    isPlaying
+      ? audio.play().catch((err) => {
+          if (err.name !== 'AbortError') logger.warn('AudioPlayer', '播放失败', err.message)
+        })
+      : audio.pause()
   }, [isPlaying])
 
   useEffect(() => {

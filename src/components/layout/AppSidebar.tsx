@@ -1,3 +1,4 @@
+import { FolderOpen } from 'lucide-react'
 import { FolderTree } from '../FolderTree'
 import type { FolderTreeNode } from '../../types'
 
@@ -33,7 +34,10 @@ export function AppSidebar({
   return (
     <aside className="folder-sidebar">
       <div className="folder-sidebar-header">
-        <span>📂 {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}</span>
+        <span className="flex items-center gap-2">
+          <FolderOpen size={16} />
+          {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}
+        </span>
         <button onClick={onToggleSidebar} className="close-sidebar-btn">×</button>
       </div>
       <div className="folder-sidebar-content">

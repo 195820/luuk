@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
+import { logger } from '../../utils/logger';
 import { spawn } from 'child_process';
 import type { ThumbnailSize } from '../../types';
 
@@ -121,7 +122,7 @@ export class ThumbnailerService {
         format: 'webp'
       };
     } catch (error) {
-      console.error(`[Thumbnailer] 生成缩略图失败：${imagePath}`, error);
+      logger.error('Thumbnailer', '生成缩略图失败', imagePath, error);
       throw error;
     }
   }
@@ -140,7 +141,7 @@ export class ThumbnailerService {
         const result = await this.generateThumbnail(imagePath, size);
         results.set(size, result);
       } catch (error) {
-        console.warn(`[Thumbnailer] 生成 ${size} 缩略图失败:`, error);
+        logger.warn('Thumbnailer', `生成 ${size} 缩略图失败`, error);
       }
     }
 
@@ -170,7 +171,7 @@ export class ThumbnailerService {
         format: 'webp'
       };
     } catch (error) {
-      console.error(`[Thumbnailer] 生成预览图失败：${imagePath}`, error);
+      logger.error('Thumbnailer', '生成预览图失败', imagePath, error);
       throw error;
     }
   }
@@ -331,8 +332,20 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'luuk-thumb-'));
     const tmpPath = path.join(tmpDir, 'frame.png');
 
-    // 使用系统 ffmpeg 命令（如果可用），否则用 ffmpeg-static
-    const ffmpegPath = process.env.FFMPEG_PATH || FFMPEG_STATIC;
+    // 优先使用环境变量指定的 ffmpeg，验证路径合法性后回退到 ffmpeg-static
+    const rawFfmpegPath = process.env.FFMPEG_PATH
+    let ffmpegPath: string
+    if (rawFfmpegPath) {
+      const resolved = path.resolve(rawFfmpegPath)
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+        ffmpegPath = resolved
+      } else {
+        logger.warn('Thumbnailer', `FFMPEG_PATH 无效（${rawFfmpegPath}），回退到 ffmpeg-static`)
+        ffmpegPath = FFMPEG_STATIC
+      }
+    } else {
+      ffmpegPath = FFMPEG_STATIC
+    }
 
     const args = [
       '-y',
@@ -364,7 +377,7 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
     proc.on('close', async (code: number) => {
       clearTimeout(timeout);
       if (code !== 0 && code !== null) {
-        console.warn(`[Thumbnailer] ffmpeg exited with code ${code}: ${stderr.slice(0, 500)}`);
+        logger.warn('Thumbnailer', `ffmpeg exited with code ${code}`, stderr.slice(0, 500));
       }
 
       // 等待文件句柄释放

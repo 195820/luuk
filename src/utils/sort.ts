@@ -137,10 +137,10 @@ export function sortImages<T extends { relative_path?: string; file_size?: numbe
  * @param order 排序顺序
  * @returns 排序后的数组
  */
-export function sortFavoriteImages(
-  images: any[],
+export function sortFavoriteImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number }>(
+  images: T[],
   sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
   order: 'ASC' | 'DESC'
-): any[] {
+): T[] {
   return sortImages(images, sortBy, order)
 }

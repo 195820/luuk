@@ -39,7 +39,7 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
       <select
         value={sortBy}
         onChange={handleSortByChange}
-        className="bg-canvas-tertiary border border-border rounded-md px-2 py-1 text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
+        className="h-8 pl-2 pr-6 bg-glass-l1 border border-border rounded-md text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
         title="选择排序字段"
       >
         {SORT_OPTIONS.map(option => (
@@ -50,7 +50,7 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
       </select>
       <button
         onClick={handleSortOrderChange}
-        className="w-7 h-7 flex items-center justify-center border border-border rounded-md bg-transparent text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-overlay-light hover:text-text-primary"
+        className="btn-icon-sm"
         title={sortOrder === 'ASC' ? '升序' : '降序'}
       >
         {sortOrder === 'ASC' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}

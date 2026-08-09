@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { isBrowserPlayableVideo } from '../utils/media'
 import { formatFileSize } from '../utils/format'
+import { logger } from '../utils/logger'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
 
@@ -82,6 +83,12 @@ export function ImageViewer({
   const [showInfo, setShowInfo] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const pendingErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 延迟显示 spinner：快速加载时不显示，消除闪烁
+  const [showSpinner, setShowSpinner] = useState(false)
+  const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // 图片切换过渡：scale + opacity 进入效果
+  const [imageTransition, setImageTransition] = useState<'idle' | 'entering'>('idle')
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
   const [videoDuration, setVideoDuration] = useState(0)
@@ -101,7 +108,9 @@ export function ImageViewer({
     if (isVideoPlaying) {
       video.pause()
     } else {
-      video.play().catch(() => {})
+      video.play().catch((err) => {
+        if (err.name !== 'AbortError') logger.warn('ImageViewer', '视频播放失败', err.message)
+      })
     }
     setIsVideoPlaying(!isVideoPlaying)
   }, [isVideoPlaying])
@@ -122,6 +131,11 @@ export function ImageViewer({
   const handleVideoLoaded = useCallback(() => {
     const video = videoRef.current
     if (video) {
+      if (spinnerTimerRef.current) {
+        clearTimeout(spinnerTimerRef.current)
+        spinnerTimerRef.current = null
+      }
+      setShowSpinner(false)
       setLoadingState({
         loading: false,
         error: false,
@@ -133,6 +147,11 @@ export function ImageViewer({
   }, [])
 
   const handleVideoError = useCallback(() => {
+    if (spinnerTimerRef.current) {
+      clearTimeout(spinnerTimerRef.current)
+      spinnerTimerRef.current = null
+    }
+    setShowSpinner(false)
     setLoadingState({
       loading: false,
       error: true,
@@ -166,11 +185,29 @@ export function ImageViewer({
   // 图片加载完成
   const handleImageLoaded = useCallback(
     (width: number, height: number) => {
+      // 取消任何待处理的错误报告
+      if (pendingErrorTimerRef.current) {
+        clearTimeout(pendingErrorTimerRef.current)
+        pendingErrorTimerRef.current = null
+      }
+      // 取消 spinner 延迟显示
+      if (spinnerTimerRef.current) {
+        clearTimeout(spinnerTimerRef.current)
+        spinnerTimerRef.current = null
+      }
+      setShowSpinner(false)
       setLoadingState({
         loading: false,
         error: false,
         naturalWidth: width,
         naturalHeight: height,
+      })
+      // 新图片进入：从模糊中淡入
+      setImageTransition('entering')
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setImageTransition('idle')
+        })
       })
     },
     []
@@ -178,6 +215,18 @@ export function ImageViewer({
 
   // 重置状态当 src 变化
   useEffect(() => {
+    // 切换 src 时清理任何待处理的错误 timer
+    if (pendingErrorTimerRef.current) {
+      clearTimeout(pendingErrorTimerRef.current)
+      pendingErrorTimerRef.current = null
+    }
+    // 清理上一次的 spinner timer
+    if (spinnerTimerRef.current) {
+      clearTimeout(spinnerTimerRef.current)
+      spinnerTimerRef.current = null
+    }
+    setShowSpinner(false)
+    // 保持旧图片可见，等新图片加载完成后再触发进入效果
     setLoadingState({
       loading: true,
       error: false,
@@ -186,6 +235,18 @@ export function ImageViewer({
     })
     // 切换图片时重置 GIF 播放状态
     setIsGifPlaying(true)
+    // 延迟显示 spinner：200ms 内加载完成则不显示，避免闪烁
+    spinnerTimerRef.current = setTimeout(() => {
+      spinnerTimerRef.current = null
+      setShowSpinner(true)
+    }, 200)
+
+    return () => {
+      if (spinnerTimerRef.current) {
+        clearTimeout(spinnerTimerRef.current)
+        spinnerTimerRef.current = null
+      }
+    }
   }, [src])
 
   // 监听全局快捷键事件
@@ -233,20 +294,20 @@ export function ImageViewer({
   }, [handleReset, handleFlipHorizontal, handleFlipVertical, onClose, onPrevious, onNext, mediaType, toggleVideoPlayback])
 
   // 工具栏按钮通用样式
-  const toolbarBtnClass = 'w-9 h-9 flex items-center justify-center rounded-md border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-overlay-light hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed'
+  const toolbarBtnClass = 'btn-icon'
   const toolbarBtnActiveClass = 'bg-overlay-selected text-text-primary'
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden">
       {/* 工具栏 */}
       <motion.div
-        className="h-10 px-4 flex items-center gap-4 bg-canvas border-b border-border [-webkit-app-region:drag] flex-shrink-0"
+        className="relative z-10 h-10 px-4 flex items-center gap-4 bg-canvas [-webkit-app-region:drag] flex-shrink-0"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={motionPresets.fade}
       >
         <motion.div
-          className="flex items-center gap-1"
+          className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...motionPresets.fade, delay: 0.05 }}
@@ -257,7 +318,7 @@ export function ImageViewer({
         </motion.div>
 
         <motion.div
-          className="flex items-center gap-1"
+          className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...motionPresets.fade, delay: 0.1 }}
@@ -281,7 +342,7 @@ export function ImageViewer({
         </motion.div>
 
         <motion.div
-          className="flex items-center gap-1"
+          className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...motionPresets.fade, delay: 0.15 }}
@@ -295,7 +356,7 @@ export function ImageViewer({
         {mediaType === 'image' && (
           <>
             <motion.div
-              className="flex items-center gap-1"
+              className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...motionPresets.fade, delay: 0.2 }}
@@ -312,7 +373,7 @@ export function ImageViewer({
             </motion.div>
 
             <motion.div
-              className="flex items-center gap-1"
+              className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ ...motionPresets.fade, delay: 0.25 }}
@@ -331,7 +392,7 @@ export function ImageViewer({
         )}
 
         <motion.div
-          className="flex items-center gap-1"
+          className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ ...motionPresets.fade, delay: 0.3 }}
@@ -381,25 +442,61 @@ export function ImageViewer({
         ) : mediaType === 'audio' ? (
           <AudioViewer src={src} filename={alt || ''} />
         ) : (
-          <ImageLightbox
-            src={src}
-            alt={alt || '图片'}
-            width={imageInfo?.width}
-            height={imageInfo?.height}
-            onImageLoaded={handleImageLoaded}
-            onError={() => setLoadingState({ loading: false, error: true, naturalWidth: 0, naturalHeight: 0 })}
-            paused={!isGifPlaying}
-          />
+          <div
+            className="w-full h-full transition-opacity transition-transform duration-250 ease-out"
+            style={{
+              opacity: imageTransition === 'entering' ? 0 : 1,
+              transform: imageTransition === 'entering' ? 'scale(0.9)' : 'scale(1)',
+            }}
+          >
+            <ImageLightbox
+              src={src}
+              alt={alt || '图片'}
+              width={imageInfo?.width}
+              height={imageInfo?.height}
+              onImageLoaded={handleImageLoaded}
+              onError={() => {
+                // 取消 spinner 延迟显示
+                if (spinnerTimerRef.current) {
+                  clearTimeout(spinnerTimerRef.current)
+                  spinnerTimerRef.current = null
+                }
+                setShowSpinner(false)
+                setImageTransition('idle')
+                // 延迟报告错误，避免瞬时加载成功导致的错误闪烁
+                if (pendingErrorTimerRef.current) {
+                  clearTimeout(pendingErrorTimerRef.current)
+                }
+                pendingErrorTimerRef.current = setTimeout(() => {
+                  pendingErrorTimerRef.current = null
+                  setLoadingState({ loading: false, error: true, naturalWidth: 0, naturalHeight: 0 })
+                }, 100)
+              }}
+              paused={!isGifPlaying}
+            />
+          </div>
         )}
       </div>
 
-      {/* 加载状态 */}
-      {loadingState.loading && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-text-secondary">
-          <svg className="w-10 h-10 text-text-muted animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <circle cx="12" cy="12" r="10" strokeWidth="2" strokeDasharray="32" strokeLinecap="round"/>
-          </svg>
-          <span>{mediaType === 'video' ? '正在加载视频...' : mediaType === 'audio' ? '正在加载音频...' : '正在加载图片...'}</span>
+      {/* 加载状态 — 延迟 200ms 显示，快速切换时不闪烁 */}
+      {showSpinner && loadingState.loading && (
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3 text-text-secondary"
+          style={{
+            animation: 'fadeIn 300ms cubic-bezier(0.4, 0, 0.2, 1)',
+          }}
+        >
+          <div className="relative w-10 h-10">
+            {/* 背景圆环 - 提供视觉锚点 */}
+            <svg className="absolute inset-0 w-full h-full text-text-muted/20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+            </svg>
+            {/* 前景旋转圆环 - 双层创造深度 */}
+            <svg className="absolute inset-0 w-full h-full animate-spinner text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10" strokeWidth="2" strokeDasharray="32 32" strokeLinecap="round"/>
+            </svg>
+          </div>
+          <span className="text-sm">{mediaType === 'video' ? '正在加载视频...' : mediaType === 'audio' ? '正在加载音频...' : '正在加载图片...'}</span>
         </div>
       )}
 
@@ -436,7 +533,7 @@ export function ImageViewer({
               <span>图片信息</span>
               <button
                 onClick={() => setShowInfo(false)}
-                className="w-7 h-7 flex items-center justify-center bg-transparent border-none rounded-sm text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-canvas-tertiary hover:text-text-primary"
+                className="btn-icon-sm"
               >
                 <X size={14} />
               </button>
@@ -476,7 +573,7 @@ export function ImageViewer({
         >
           <button
             onClick={toggleVideoPlayback}
-            className="w-8 h-8 flex items-center justify-center bg-transparent border-none rounded-sm text-text-primary cursor-pointer transition-colors duration-150 hover:bg-overlay-selected flex-shrink-0 p-0"
+            className="btn-icon-sm text-text-primary"
             title={isVideoPlaying ? '暂停 (Space)' : '播放 (Space)'}
           >
             {isVideoPlaying ? <Pause size={14} /> : <Play size={14} />}
@@ -512,7 +609,7 @@ export function ImageViewer({
         <div className="absolute bottom-3 left-3 flex items-center gap-2 bg-overlay-darker border border-border rounded-md px-2 py-1 backdrop-blur-[8px] z-[200]">
           <button
             onClick={() => setIsGifPlaying(prev => !prev)}
-            className="w-6 h-6 flex items-center justify-center bg-transparent border-none rounded-sm text-text-primary cursor-pointer transition-colors duration-150 hover:bg-overlay-selected flex-shrink-0 p-0"
+            className="btn-icon-sm text-text-primary"
             title={isGifPlaying ? '暂停动画' : '播放动画'}
           >
             {isGifPlaying ? <Pause size={12} /> : <Play size={12} />}

@@ -20,6 +20,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
+    /* Vite 客户端类型 */
+    "types": ["vite/client"],
+
     /* Path alias */
     "baseUrl": ".",
     "paths": {

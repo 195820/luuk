@@ -1,4 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { motion, AnimatePresence } from 'motion/react'
+import { motionPresets } from '@/lib/motion-presets'
+import {
+  Folder, FolderOpen, Heart, Music, Pause, X,
+  RefreshCw, Trash2, AlertTriangle, Plus,
+  LayoutGrid, Columns3, Image as ImageIcon, Maximize2,
+  Database, MonitorPlay,
+} from 'lucide-react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { ImageGrid } from './components/ImageGrid'
 import { MasonryGrid } from './components/MasonryGrid'
@@ -11,6 +19,7 @@ import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore } from './stores'
 import type { Library } from './types'
+import { logger } from './utils/logger'
 
 const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 
@@ -64,8 +73,10 @@ function App() {
     imageSortOrder,
     setSortBy,
     setSortOrder,
+    applySort,
     gridLayoutMode,
     setGridLayoutMode,
+    setError,
   } = useImageStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
@@ -74,10 +85,6 @@ function App() {
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
 
   const [currentImageSrc, setCurrentImageSrc] = useState<string>('')
-
-  const {
-    currentAudio,
-  } = useAudioStore()
 
   // 初始化服务
   useEffect(() => {
@@ -113,7 +120,7 @@ function App() {
   }, [currentLibraryId, favoriteViewMode])
 
   // 将数据库图片转换为 Grid 需要的格式
-  const gridImages: ImageGridItem[] = images.map((img: any) => ({
+  const gridImages: ImageGridItem[] = images.map((img) => ({
     id: img.id,
     src: '', // 缩略图在 ImageGridItem 内部加载
     alt: img.relative_path.split('/').pop() || img.relative_path,
@@ -122,12 +129,12 @@ function App() {
     fileSize: img.file_size,
     format: img.format.toLowerCase(),
     isFavorite: isFavorite(currentLibraryId || 0, img.relative_path),
-    mediaType: img.mediaType || img.media_type || 'image',
+    mediaType: img.mediaType || 'image',
     duration: img.duration,
   }))
 
   // 当前文件夹的音频文件
-  const audioItems = images.filter((img: any) => (img.mediaType || img.media_type) === 'audio')
+  const audioItems = images.filter((img) => img.mediaType === 'audio')
   const hasAudio = audioItems.length > 0
 
   // 音频区域显示时用筛选后的收藏图片
@@ -136,7 +143,7 @@ function App() {
   const filterFavoritesByMediaType = (items: any[]) => {
     if (mediaFilter === 'all') return items
     return items.filter((item: any) => {
-      const mt = item.mediaType || item.media_type
+      const mt = item.mediaType
       if (mediaFilter === 'image') return !mt || mt === 'image'
       if (mediaFilter === 'video') return mt === 'video'
       return true
@@ -158,7 +165,7 @@ function App() {
     isFavorite: favoriteViewMode === 'single' ? true : isFavorite(fav.library_id, fav.relative_path),
     libraryId: fav.library_id,
     imagePath: fav.relative_path, // 使用 relative_path 字段
-    mediaType: fav.mediaType || fav.media_type || 'image',
+    mediaType: fav.mediaType || 'image',
     duration: fav.duration,
   }))
 
@@ -366,7 +373,7 @@ function App() {
           }
         }
       } catch (error) {
-        console.error('[App] 切换收藏失败:', error)
+        logger.error('App', '切换收藏失败', error)
       }
       return
     }
@@ -385,7 +392,7 @@ function App() {
         await loadFavoriteImages()
       }
     } catch (error) {
-      console.error('[App] 切换收藏失败:', error)
+      logger.error('App', '切换收藏失败', error)
     }
   }, [currentLibraryId, images, currentIndex, favoriteImages, favoriteImageIndex, toggleFavorite, loadFavoriteImages])
 
@@ -404,17 +411,17 @@ function App() {
         await loadSingleFavoriteImages()
       }
     } catch (error) {
-      console.error('[App] 切换收藏失败:', error)
+      logger.error('App', '切换收藏失败', error)
     }
   }, [currentLibraryId, favoriteViewMode, toggleFavorite, loadSingleFavoriteImages])
 
   // 添加库
   const handleAddLibrary = async () => {
     try {
-      if (!(window as any).electronAPI?.selectFolder) {
+      if (!window.electronAPI?.selectFolder) {
         throw new Error('electronAPI.selectFolder 不可用')
       }
-      const folderPath = await (window as any).electronAPI.selectFolder()
+      const folderPath = await window.electronAPI.selectFolder()
       if (!folderPath) return
 
       const folderName = folderPath.split(/[/\\]/).pop() || '未命名库'
@@ -423,76 +430,70 @@ function App() {
 
       setCurrentLibrary(library.id)
 
-      const checkScanComplete = async () => {
-        let attempts = 0
-        const maxAttempts = 60
-        let delay = 500 // 初始延迟 500ms
+      // 事件驱动：监听扫描进度事件，等待扫描完成（替代 setTimeout 轮询）
+      const scanComplete = new Promise<void>((resolve) => {
+        const unsubscribe = window.electronAPI.onScanProgress((progress: any) => {
+          if (progress?.status === 'complete' || progress?.isScanning === false) {
+            unsubscribe()
+            // 延迟一帧确保主进程已完成 DB 写入
+            setTimeout(resolve, 200)
+          }
+        })
+        // 安全超时：60 秒后自动解除
+        setTimeout(() => { unsubscribe(); resolve() }, 60_000)
+      })
 
-        while (attempts < maxAttempts) {
-          attempts++
-          await new Promise(resolve => setTimeout(resolve, delay))
+      await scanComplete
 
-          // 指数退避：每次延迟增加 1.5 倍，最大 3000ms
-          delay = Math.min(delay * 1.5, 3000)
+      // 扫描完成后加载数据
+      try {
+        const currentLibs = useImageStore.getState().libraries
+        const updatedLib = currentLibs.find(l => l.id === library.id)
+
+        if (updatedLib && updatedLib.imageCount > 0) {
+          const state = useImageStore.getState()
+          if (state.currentLibraryId !== library.id) {
+            setCurrentLibrary(library.id)
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+
+          const currentState = useImageStore.getState()
+          if (!currentState.currentLibraryId) {
+            setCurrentLibrary(library.id)
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+
+          await loadFolderTree()
+          const treeState = useImageStore.getState().folderTree
+
+          await loadImages()
+          const imagesState = useImageStore.getState().images
+
+          if (imagesState.length === 0 && treeState.length === 0) {
+            setCurrentLibrary(null)
+            await new Promise(resolve => setTimeout(resolve, 100))
+            setCurrentLibrary(library.id)
+            await new Promise(resolve => setTimeout(resolve, 300))
+            await loadFolderTree()
+            await loadImages()
+          }
 
           await loadLibraries()
-
-          const currentLibs = useImageStore.getState().libraries
-          const updatedLib = currentLibs.find(l => l.id === library.id)
-
-          if (updatedLib && updatedLib.image_count > 0) {
-            const state = useImageStore.getState()
-            if (state.currentLibraryId !== library.id) {
-              setCurrentLibrary(library.id)
-              await new Promise(resolve => setTimeout(resolve, 300))
-            }
-
-            try {
-              const currentState = useImageStore.getState()
-
-              if (!currentState.currentLibraryId) {
-                setCurrentLibrary(library.id)
-                await new Promise(resolve => setTimeout(resolve, 300))
-              }
-
-              await loadFolderTree()
-              const treeState = useImageStore.getState().folderTree
-
-              await loadImages()
-              const imagesState = useImageStore.getState().images
-
-              if (imagesState.length === 0 && treeState.length === 0) {
-                setCurrentLibrary(null)
-                await new Promise(resolve => setTimeout(resolve, 100))
-                setCurrentLibrary(library.id)
-                await new Promise(resolve => setTimeout(resolve, 300))
-                await loadFolderTree()
-                await loadImages()
-              }
-
-              await loadLibraries()
-
-            } catch (err) {
-              console.error('[App] 加载数据失败:', err)
-            }
-
-            break
-          }
         }
+      } catch (err) {
+        logger.error('App', '加载数据失败', err)
       }
 
-      checkScanComplete()
-
-    } catch (error: any) {
-      if (error?.message?.includes('UNIQUE constraint failed') || error?.message?.includes('库已存在')) {
-        alert('该文件夹已经被添加过了，无需重复添加！')
-      } else if (error?.message?.includes('子文件夹')) {
-        alert(error.message)
-      } else if (error?.message?.includes('包含已存在的库')) {
-        alert(error.message)
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE constraint failed') || err?.message?.includes('库已存在')) {
+        setError('该文件夹已经被添加过了，无需重复添加')
+      } else if (err?.message?.includes('子文件夹')) {
+        setError('不能添加库的子文件夹作为独立库')
+      } else if (err?.message?.includes('包含已存在的库')) {
+        setError('所选路径已包含在现有库中')
       } else {
-        console.error('添加库失败:', error)
-        alert('添加库失败：' + (error?.message || '未知错误'))
+        logger.error('App', '添加库失败', err)
+        setError('添加库失败，请检查路径是否正确')
       }
     }
   }
@@ -511,12 +512,11 @@ function App() {
       await scanLibrary(libId)
       // 扫描成功后刷新库列表
       await loadLibraries()
-    } catch (error: any) {
-      console.error('扫描库失败:', error)
-      // 即使是错误，也刷新库列表（因为状态可能已更新为离线）
+    } catch (err: any) {
+      logger.error('App', '扫描库失败', err)
+      // 即使失败也刷新库列表（状态可能已更新为离线）
       await loadLibraries()
-      // 显示错误提示
-      alert(`扫描失败：${error.message}`)
+      setError('扫描失败，请检查库路径是否可访问')
     }
   }
 
@@ -533,18 +533,18 @@ function App() {
   const getCurrentImagePath = useCallback(async () => {
     if (!currentLibraryId || !currentImage || currentLibraryId === FAVORITE_LIBRARY_ID) return ''
     try {
-      return await (window as any).electronAPI.getImagePath(currentLibraryId, currentImage.id)
+      return await window.electronAPI.getImagePath(currentLibraryId, currentImage.id)
     } catch (error) {
-      console.error('获取图片路径失败:', error)
+      logger.error('App', '获取图片路径失败', error)
       return ''
     }
   }, [currentLibraryId, currentImage])
 
   const getFavoriteImagePath = useCallback(async (libraryId: number, relativePath: string) => {
     try {
-      return await (window as any).electronAPI.getImagePathByRelativePath(libraryId, relativePath)
+      return await window.electronAPI.getImagePathByRelativePath(libraryId, relativePath)
     } catch (error) {
-      console.error('获取收藏图片路径失败:', error)
+      logger.error('App', '获取收藏图片路径失败', error)
       return ''
     }
   }, [])
@@ -557,34 +557,33 @@ function App() {
     const loadMedia = async (filePath: string) => {
       if (!filePath || cancelled) return
       try {
-        const url = await (window as any).electronAPI.getMediaUrl(filePath)
+        const url = await window.electronAPI.getMediaUrl(filePath)
         if (!cancelled) setCurrentImageSrc(url)
       } catch (err) {
-        console.error('获取媒体 URL 失败:', err)
+        logger.error('App', '获取媒体 URL 失败', err)
         if (!cancelled) setCurrentImageSrc('')
       }
     }
 
-    if (currentImage && currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
-      getCurrentImagePath().then((filePath) => loadMedia(filePath)).catch(err => {
-        console.error('获取图片路径失败:', err)
-        if (!cancelled) setCurrentImageSrc('')
-      })
-    } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
-      const fav = currentImage as any
-      const imagePath = fav.relative_path || fav.image_path || fav.imagePath
-      const libraryId = fav.library_id || fav.libraryId
-      if (libraryId && imagePath) {
-        getFavoriteImagePath(libraryId, imagePath).then((filePath) => loadMedia(filePath)).catch(err => {
-          console.error('获取收藏图片路径失败:', err)
+    const run = async () => {
+      if (currentImage && currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID) {
+        const filePath = await getCurrentImagePath()
+        await loadMedia(filePath)
+      } else if (currentImage && currentLibraryId === FAVORITE_LIBRARY_ID) {
+        const fav = currentImage as any
+        const imagePath = fav.relative_path || fav.image_path || fav.imagePath
+        const libraryId = fav.library_id || fav.libraryId
+        if (libraryId && imagePath) {
+          const filePath = await getFavoriteImagePath(libraryId, imagePath)
+          await loadMedia(filePath)
+        } else {
           if (!cancelled) setCurrentImageSrc('')
-        })
+        }
       } else {
         if (!cancelled) setCurrentImageSrc('')
       }
-    } else {
-      if (!cancelled) setCurrentImageSrc('')
     }
+    run()
     return () => { cancelled = true }
   }, [currentImage, currentLibraryId])
 
@@ -656,15 +655,11 @@ function App() {
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
 
-  // 通用按钮样式
-  const btnClass = 'px-3 py-2 bg-transparent border border-border rounded-md text-text-secondary text-caption cursor-pointer transition-colors duration-150 flex items-center justify-center whitespace-nowrap hover:border-border-hover hover:text-text-primary hover:bg-overlay-light disabled:opacity-30 disabled:cursor-not-allowed'
-  const btnActiveClass = `${btnClass} bg-overlay-lighter text-text-primary`
-
   return (
     <div className="w-full h-full flex flex-col">
-      <header className="h-[50px] px-5 flex items-center justify-between glass-l1 [-webkit-app-region:drag]">
+      <header className="h-14 px-5 flex items-center justify-between glass-l1 [-webkit-app-region:drag]">
         <h1
-          className="text-title font-semibold tracking-[0.02em]"
+          className="text-heading font-semibold tracking-tight"
           style={{
             background: 'linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%)',
             WebkitBackgroundClip: 'text',
@@ -675,10 +670,11 @@ function App() {
           图片查看器
         </h1>
         <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
-          <button onClick={toggleFolderSidebar} className="w-9 h-9 border border-border rounded-md text-text-secondary cursor-pointer transition-colors duration-150 flex items-center justify-center hover:border-border-hover hover:text-text-primary hover:bg-overlay-light" title="切换文件夹面板 (F6)">
-            📁
-          </button>
+          {/* 组 1: 文件夹 + 库选择 */}
           <div className="flex items-center gap-2">
+            <button onClick={toggleFolderSidebar} className="btn-icon" title="切换文件夹面板 (F6)">
+              <FolderOpen size={18} />
+            </button>
             <select
               value={currentLibraryId ?? ''}
               onChange={(e) => {
@@ -690,22 +686,32 @@ function App() {
                   setCurrentLibrary(value ? Number(value) : null)
                 }
               }}
-              className="px-3 py-2 rounded-md border border-border bg-canvas-tertiary text-text-primary text-body cursor-pointer outline-none transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="h-9 pl-3 pr-8 rounded-md border border-border bg-glass-l1 text-text-primary text-body cursor-pointer outline-none transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
             >
-              <option value="favorites">❤️ 收藏夹 ({favoriteCount})</option>
+              <option value="favorites">♡ 收藏夹 ({favoriteCount})</option>
               <option value="" disabled>──────────</option>
               {libraries.map(lib => (
                 <option key={lib.id} value={lib.id}>
-                  {lib.name} ({lib.status === 'online' ? '在线' : '离线'}) - {lib.image_count} 张
+                  {lib.name} ({lib.status === 'online' ? '在线' : '离线'}) - {lib.imageCount} 张
                 </option>
               ))}
             </select>
-            <button onClick={() => setShowLibraryPanel(!showLibraryPanel)} className={btnClass}>
-               管理
+            <button onClick={() => setShowLibraryPanel(!showLibraryPanel)} className="btn-text">
+              <Database size={14} />
+              管理
             </button>
           </div>
 
-          <span className="text-micro text-text-muted bg-canvas-tertiary px-3 py-1 rounded-full border border-border tabular-nums transition-colors duration-150 hover:border-border-hover hover:bg-canvas-raised">
+          <span
+            className="text-micro text-text-muted bg-canvas-tertiary px-3 py-1 rounded-full border border-border tabular-nums whitespace-nowrap truncate max-w-[200px] transition-colors duration-150 hover:border-border-hover hover:bg-canvas-raised"
+            title={
+              isFavoriteLibrary
+                ? `${favoriteCount} 张收藏图片`
+                : currentLibraryId
+                  ? `${totalImages} 张图片`
+                  : '请先选择或添加库'
+            }
+          >
             {isFavoriteLibrary
               ? `${favoriteCount} 张收藏图片`
               : currentLibraryId
@@ -714,6 +720,9 @@ function App() {
             }
           </span>
 
+          <div className="w-px h-6 bg-border" />
+
+          {/* 组 2: 视图控制 */}
           {!isFavoriteLibrary && viewMode === 'grid' && currentLibraryId && (
             <div className="flex items-center gap-2 text-caption text-text-secondary">
               <label htmlFor="thumbnail-size">缩略图:</label>
@@ -735,40 +744,58 @@ function App() {
             <SortControl
               sortBy={imageSortBy}
               sortOrder={imageSortOrder}
-              onSortByChange={setSortBy}
-              onSortOrderChange={setSortOrder}
+              onSortByChange={(v) => { setSortBy(v); applySort() }}
+              onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
             />
           )}
 
           {viewMode === 'grid' && currentLibraryId && (
             <button
               onClick={() => setGridLayoutMode(gridLayoutMode === 'grid' ? 'masonry' : 'grid')}
-              className={btnClass}
+              className="btn-text"
               title={gridLayoutMode === 'grid' ? '切换到瀑布流视图' : '切换到网格视图'}
             >
-              {gridLayoutMode === 'grid' ? '▦ 网格' : '≣ 瀑布流'}
+              {gridLayoutMode === 'grid' ? <Columns3 size={14} /> : <LayoutGrid size={14} />}
+              {gridLayoutMode === 'grid' ? '网格' : '瀑布流'}
             </button>
           )}
 
+          <div className="w-px h-6 bg-border" />
+
+          {/* 组 3: 操作 */}
           <button
             onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
-            className={`${btnClass} bg-overlay-selected border-border-hover text-text-primary`}
+            className={`btn-text primary`}
             disabled={isFavoriteLibrary ? favoriteCount === 0 : !currentLibraryId || images.length === 0}
             title={viewMode === 'grid' ? '进入查看器 (F5)' : '返回网格视图 (F5)'}
           >
-            {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
+            {viewMode === 'grid' ? <Maximize2 size={14} /> : <LayoutGrid size={14} />}
+            {viewMode === 'grid' ? '查看' : '网格'}
           </button>
 
-          {/* 显示音频开关（库中有音频文件时自动显示） */}
           {viewMode === 'grid' && currentLibraryId && hasAudio && (
             <button
               onClick={() => setShowAudio(!showAudio)}
-              className={showAudio ? btnActiveClass : btnClass}
+              className={`btn-text ${showAudio ? 'primary' : ''}`}
               title={showAudio ? '隐藏音频' : '显示音频'}
             >
-              🎵 音频
+              <Music size={14} />
+              音频
             </button>
           )}
+        </div>
+
+        {/* 窗口控制按钮 */}
+        <div className="flex items-center gap-0.5 ml-2 [-webkit-app-region:no-drag]">
+          <button onClick={() => window.electronAPI?.windowMinimize()} className="window-ctrl-btn" title="最小化">
+            <svg width="10" height="1" viewBox="0 0 10 1"><line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" strokeWidth="1"/></svg>
+          </button>
+          <button onClick={() => window.electronAPI?.windowMaximize()} className="window-ctrl-btn" title="最大化/还原">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+          </button>
+          <button onClick={() => window.electronAPI?.windowClose()} className="window-ctrl-btn window-ctrl-close" title="关闭">
+            <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.2"><line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/></svg>
+          </button>
         </div>
       </header>
 
@@ -776,9 +803,14 @@ function App() {
         {/* 左侧文件夹边栏 */}
         {folderSidebarOpen && currentLibraryId && (
           <aside className="w-60 min-w-[200px] max-w-80 glass-l1 flex flex-col overflow-hidden transition-all duration-200">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-              <span> {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}</span>
-              <button onClick={toggleFolderSidebar} className="w-[18px] h-[18px] border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center transition-colors duration-150 hover:bg-overlay-lighter hover:text-text-primary">×</button>
+            <div className="flex items-center justify-between px-4 py-3">
+              <span className="flex items-center gap-2 text-text-primary text-body font-medium">
+                <Folder size={16} className="text-text-muted" />
+                {isFavoriteLibrary ? '收藏的文件夹' : '文件夹'}
+              </span>
+              <button onClick={toggleFolderSidebar} className="btn-icon-sm" title="关闭 (F6)">
+                <X size={14} />
+              </button>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {isFavoriteLibrary ? (
@@ -829,30 +861,38 @@ function App() {
 
           {error && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
-              <span className="text-3xl text-error opacity-80">⚠</span>
+              <AlertTriangle size={32} className="text-error opacity-80" />
               <span>{error}</span>
             </div>
           )}
 
           {isFavoriteLibrary && favoriteCount === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-text-secondary">
-              <h2 className="text-xl m-0 text-text-primary font-medium tracking-[0.02em]">❤️ 还没有收藏</h2>
+              <h2 className="text-xl m-0 text-text-primary font-medium tracking-tight">
+                <Heart size={20} className="inline-block mr-2 text-favorite" />还没有收藏
+              </h2>
               <p className="text-body m-0 text-text-muted">浏览图片时按 <kbd className="px-1.5 py-0.5 bg-canvas-tertiary border border-border rounded text-xs font-mono">F</kbd> 键或点击心形图标收藏喜欢的图片</p>
             </div>
           ) : !currentLibraryId ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-text-secondary">
-              <h2 className="text-xl m-0 text-text-primary font-medium tracking-[0.02em]">📁 请先添加或选择一个图片库</h2>
-              <p className="text-body m-0 text-text-muted">点击左上角的"管理"按钮添加包含图片的文件夹</p>
-              <button onClick={handleAddLibrary} className="px-6 py-3 bg-overlay-selected border border-border-hover rounded-lg text-text-primary text-body cursor-pointer transition-colors duration-150 mt-4 tracking-[0.02em] hover:bg-overlay-lighter hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2">
-                + 添加库
+              <h2 className="text-xl m-0 text-text-primary font-medium tracking-tight">
+                <Folder size={20} className="inline-block mr-2 text-text-muted" />请先添加或选择一个图片库
+              </h2>
+              <p className="text-body m-0 text-text-muted">点击"管理"按钮添加包含图片的文件夹</p>
+              <button onClick={handleAddLibrary} className="btn-text primary mt-4">
+                <Plus size={14} />
+                添加库
               </button>
             </div>
           ) : images.length === 0 && !isLoading && !isFavoriteLibrary ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-text-secondary">
-              <h2 className="text-xl m-0 text-text-primary font-medium tracking-[0.02em]">{selectedFolder ? `📷 "${selectedFolder.split('/').pop()}"` : '📷 这个库'}还没有图片</h2>
+              <h2 className="text-xl m-0 text-text-primary font-medium tracking-tight">
+                <ImageIcon size={20} className="inline-block mr-2 text-text-muted" />{selectedFolder ? `"${selectedFolder.split('/').pop()}"` : '这个库'}还没有图片
+              </h2>
               <p className="text-body m-0 text-text-muted">点击"扫描"按钮来索引图片文件夹</p>
-              <button onClick={() => currentLibraryId && handleScanLibrary(currentLibraryId)} className="px-6 py-3 bg-overlay-selected border border-border-hover rounded-lg text-text-primary text-body cursor-pointer transition-colors duration-150 mt-4 tracking-[0.02em] hover:bg-overlay-lighter hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2">
-                🔄 扫描图片
+              <button onClick={() => currentLibraryId && handleScanLibrary(currentLibraryId)} className="btn-text primary mt-4">
+                <RefreshCw size={14} />
+                扫描图片
               </button>
             </div>
           ) : viewMode === 'grid' ? (
@@ -930,7 +970,7 @@ function App() {
                 imageInfo={getCurrentImageInfo() || undefined}
                 slideshowSettings={slideshow}
                 onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
-                mediaType={(currentImage as any).mediaType || (currentImage as any).media_type || 'image'}
+                mediaType={(currentImage as any).mediaType || 'image'}
                 onVideoEnded={handleVideoEnded}
                 onVideoPlayStateChange={setIsVideoPlaying}
               />
@@ -939,65 +979,86 @@ function App() {
         </main>
       </div>
 
-      {showLibraryPanel && (
-        <div className="absolute top-[50px] left-5 w-80 glass-l2 z-50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-            <h3 className="text-body font-semibold m-0 tracking-[0.02em]">📁 库管理</h3>
-            <button onClick={() => setShowLibraryPanel(false)} className="w-7 h-7 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center transition-colors duration-150 hover:bg-overlay-lighter hover:text-text-primary text-xl">×</button>
-          </div>
-          <div className="p-3 max-h-80 overflow-y-auto">
-            <button onClick={handleAddLibrary} className="w-full px-4 py-3 bg-overlay-selected border border-border-hover rounded-md text-text-primary text-body cursor-pointer transition-colors duration-150 tracking-[0.02em] hover:bg-overlay-lighter hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2">
-              + 添加库
-            </button>
-            {libraries.length === 0 ? (
-              <p className="text-center text-text-secondary text-body py-5">暂无库，点击"添加库"选择图片文件夹</p>
-            ) : (
-              <ul className="list-none p-0 m-3 mt-0">
-                {libraries.map(lib => (
-                  <li key={lib.id} className={`flex items-start justify-between p-3 rounded-md mb-2 bg-canvas-tertiary border border-transparent transition-all duration-150 hover:bg-canvas-raised hover:border-border focus-visible:outline-2 focus-visible:outline-offset-2 ${
-                    lib.id === currentLibraryId
-                      ? 'border-border-hover bg-overlay-accent'
-                      : ''
-                  }`}>
-                    <div className="flex-1 flex flex-col gap-1">
-                      <strong className="text-body text-text-primary font-medium">{lib.name}</strong>
-                      <span className="text-xs text-text-muted break-all font-mono">{lib.root_path}</span>
-                      <span className="text-xs text-text-dim mt-1">
-                        状态：{lib.status === 'online' ? '🟢 在线' : '🔴 离线'} | {lib.image_count} 张
-                      </span>
-                    </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button onClick={() => handleScanLibrary(lib.id)} className="px-2 py-1 border-none rounded-sm text-xs cursor-pointer transition-colors duration-150 bg-transparent text-text-secondary hover:bg-overlay-lighter hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 hover:text-success">
-                        🔄 扫描
-                      </button>
-                      <button onClick={() => handleRemoveLibrary(lib)} className="px-2 py-1 border-none rounded-sm text-xs cursor-pointer transition-colors duration-150 bg-transparent text-text-secondary hover:bg-overlay-lighter hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2 hover:text-error hover:bg-[rgba(244,67,54,0.1)]">
-                        🗑 删除
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showLibraryPanel && (
+          <motion.div
+            className="absolute top-14 left-5 w-80 glass-l2 z-50 overflow-hidden"
+            initial={{ opacity: 0, y: -8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.97 }}
+            transition={motionPresets.fade}
+            style={{ transformOrigin: 'top left' }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+              <h3 className="text-body font-semibold m-0 tracking-tight flex items-center gap-2">
+                <Database size={16} />
+                库管理
+              </h3>
+              <button onClick={() => setShowLibraryPanel(false)} className="btn-icon-sm text-xl">×</button>
+            </div>
+            <div className="p-3 max-h-80 overflow-y-auto">
+              <button onClick={handleAddLibrary} className="btn-text primary w-full py-3">
+                <Plus size={14} />
+                添加库
+              </button>
+              {libraries.length === 0 ? (
+                <p className="text-center text-text-secondary text-body py-5">暂无库，点击"添加库"选择图片文件夹</p>
+              ) : (
+                <ul className="list-none p-0 m-3 mt-0">
+                  {libraries.map(lib => (
+                    <li key={lib.id} className={`flex items-start justify-between p-3 rounded-md mb-2 bg-canvas-tertiary border border-transparent transition-all duration-150 hover:bg-canvas-raised hover:border-border focus-visible:outline-2 focus-visible:outline-offset-2 ${
+                      lib.id === currentLibraryId
+                        ? 'border-border-hover bg-overlay-accent'
+                        : ''
+                    }`}>
+                      <div className="flex-1 flex flex-col gap-1">
+                        <strong className="text-body text-text-primary font-medium">{lib.name}</strong>
+                        <span className="text-xs text-text-muted break-all font-mono">{lib.rootPath}</span>
+                        <span className="text-xs text-text-dim mt-1">
+                          状态：
+                          <span className={lib.status === 'online' ? 'text-success' : 'text-error'}>
+                            {lib.status === 'online' ? '● 在线' : '● 离线'}
+                          </span>
+                          {' | '}{lib.imageCount} 张
+                        </span>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => handleScanLibrary(lib.id)} className="btn-icon-sm hover:text-success" title="扫描">
+                          <RefreshCw size={12} />
+                        </button>
+                        <button onClick={() => handleRemoveLibrary(lib)} className="btn-icon-sm hover:text-error hover:bg-[rgba(255,69,58,0.1)]" title="删除">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {viewMode === 'viewer' && slideshow.enabled && (
         <div className="h-11 px-5 flex items-center justify-between bg-[rgba(255,255,255,0.08)] border-b border-border text-text-primary text-sm [-webkit-app-region:drag]">
-          <span>🎬 幻灯片播放中</span>
+          <span className="flex items-center gap-2">
+            <MonitorPlay size={16} />
+            幻灯片播放中
+          </span>
           <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
             <span>间隔:</span>
             <select
               value={selectedInterval}
               onChange={(e) => changeSlideshowInterval(Number(e.target.value))}
-              className="px-2 py-1 rounded-sm border border-border bg-canvas-tertiary text-text-primary text-sm cursor-pointer transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="h-8 pl-2 pr-4 bg-glass-l1 border border-border rounded-md text-sm text-text-secondary cursor-pointer transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               {SLIDESHOW_INTERVALS.map(interval => (
                 <option key={interval} value={interval}>{interval}秒</option>
               ))}
             </select>
-            <button onClick={toggleSlideshow} className="px-3 py-1 bg-transparent border border-border rounded-full text-text-secondary text-sm cursor-pointer transition-colors duration-150 hover:border-text-muted hover:text-text-primary focus-visible:outline-2 focus-visible:outline-offset-2">
-              ⏸ 暂停
+            <button onClick={toggleSlideshow} className="btn-pill">
+              <Pause size={14} />
+              暂停
             </button>
           </div>
         </div>
@@ -1014,7 +1075,10 @@ function App() {
       {showAudio && viewMode === 'grid' && currentLibraryId && (
         <div className="glass-l1 p-3 px-4 rounded-none">
           <div className="flex items-center mb-3">
-            <span className="text-sm text-text-secondary font-medium">🎵 音频文件 ({audioItems.length})</span>
+            <span className="text-sm text-text-secondary font-medium flex items-center gap-2">
+              <Music size={14} />
+              音频文件 ({audioItems.length})
+            </span>
           </div>
           <div className="audio-scroll-area flex gap-3 overflow-x-auto pb-2">
             {audioItems.length === 0 ? (
@@ -1035,19 +1099,38 @@ function App() {
         </div>
       )}
 
-      <footer className="h-8 px-5 flex items-center justify-center gap-6 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
-        <span className="[-webkit-app-region:no-drag]">←/→: 上一张/下一张</span>
-        <span className="[-webkit-app-region:no-drag]">Home/End: 第一张/最后一张</span>
-        <span className="[-webkit-app-region:no-drag]">0: 适应窗口</span>
-        <span className="[-webkit-app-region:no-drag]">1: 实际大小</span>
-        <span className="[-webkit-app-region:no-drag]">R: 重置</span>
-        <span className="[-webkit-app-region:no-drag]">H/V: 翻转</span>
-        <span className="[-webkit-app-region:no-drag]">I: 信息</span>
-        <span className="[-webkit-app-region:no-drag]">F: 收藏</span>
-        <span className="[-webkit-app-region:no-drag]">Space: 幻灯片</span>
-        <span className="[-webkit-app-region:no-drag]">Esc: 关闭</span>
-        <span className="[-webkit-app-region:no-drag]">F5: 切换视图</span>
-        <span className="[-webkit-app-region:no-drag]">F6: 文件夹面板</span>
+      <footer className="h-8 px-5 flex items-center justify-center gap-4 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">←→</kbd> 翻页
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">H/V</kbd> 翻转
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">I</kbd> 信息
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F</kbd> 收藏
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Space</kbd> 幻灯片
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F5</kbd> 视图
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F6</kbd> 面板
+        </span>
+        <span className="text-border">|</span>
+        <span className="[-webkit-app-region:no-drag]">
+          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Esc</kbd> 关闭
+        </span>
       </footer>
 
       {/* 音频播放器 — 必须在 backdrop-filter 容器外部渲染，否则 fixed 定位失效 */}

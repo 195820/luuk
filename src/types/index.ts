@@ -34,7 +34,7 @@ export interface ElectronAPI {
   getFavoriteFolderImageCount: (folderPath: string) => Promise<number>
   // 缩略图
   getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => Promise<string>
-  getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => Promise<Map<number, string>>
+  getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => Promise<Record<number, string>>
   // 收藏
   toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) => Promise<boolean>
   getFavorites: () => Promise<Favorite[]>
@@ -55,6 +55,11 @@ export interface ElectronAPI {
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
+  // 窗口控制
+  windowMinimize: () => void
+  windowMaximize: () => void
+  windowClose: () => void
+  windowIsMaximized: () => Promise<boolean>
 }
 
 // 收藏文件夹
@@ -152,7 +157,7 @@ export interface Image {
   indexed_time: string
   is_deleted: number
   // 多媒体字段
-  media_type: MediaType
+  mediaType: MediaType
   duration: number | null  // 时长（秒），仅视频/音频
   codec: string | null     // 编码格式
   // 附加字段 (非数据库)
@@ -195,14 +200,10 @@ export interface Library {
   id: number
   name: string
   rootPath: string
-  root_path: string  // 数据库字段兼容
   status: 'online' | 'offline'
   lastScan?: string
-  last_scan?: string  // 数据库字段兼容
   imageCount: number
-  image_count: number  // 数据库字段兼容
   createdAt: string
-  created_at: string  // 数据库字段兼容
 }
 
 // 收藏信息

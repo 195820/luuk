@@ -1,126 +1,7 @@
 import { create } from 'zustand'
 import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode, FavoriteImage, FavoriteFolder } from '../types'
-
-// 从文件名中提取文本和数字部分用于排序（只提取文件名，不包含路径）
-// 返回 { text: 文本部分，number: 数字部分（忽略前导零）}
-function extractTextAndNumber(str: string): { text: string; number: number } {
-  // 先提取文件名（去掉路径）
-  const fileName = str.replace(/^.*[\\/]/, '')
-  
-  // 移除扩展名
-  const withoutExt = fileName.replace(/\.[^.]+$/, '')
-
-  // 提取括号中的数字，如 "屏幕截图 (10).jpg" → 10
-  const bracketMatch = withoutExt.match(/\((\d+)\)/)
-  if (bracketMatch) {
-    const text = withoutExt.replace(/\s*\(\d+\)/g, '').replace(/\d+/g, '')
-    const num = parseInt(bracketMatch[1], 10)
-    return { text, number: num }
-  }
-
-  // 提取最后一个数字序列及其前面的文本
-  const lastNumberMatch = withoutExt.match(/^(.*?)(\d+)([^\d]*)$/)
-  if (lastNumberMatch) {
-    const [, prefix, numStr] = lastNumberMatch
-    // 移除前缀中的数字，得到纯文本
-    const text = prefix.replace(/\d+/g, '')
-    const num = parseInt(numStr, 10)
-    return { text, number: num }
-  }
-
-  // 没有数字，全部作为文本
-  const text = withoutExt.replace(/\d+/g, '')
-  return { text, number: 0 }
-}
-
-// 从文件名中提取纯文本部分（用于排序的第一关键字）
-function extractText(str: string): string {
-  return extractTextAndNumber(str).text
-}
-
-// 从文件名中提取纯数字部分（用于排序的第二关键字，忽略前导零）
-function extractNumber(str: string): number {
-  return extractTextAndNumber(str).number
-}
-
-// 通用排序辅助函数：比较两个字符串（文本 + 数字自然排序）
-function comparePathStrings(aPath: string, bPath: string, order: 'ASC' | 'DESC'): number {
-  const aVal = aPath || ''
-  const bVal = bPath || ''
-
-  if (order === 'ASC') {
-    // 升序：先按文本部分排序，再按数字排序
-    const aText = extractText(aVal)
-    const bText = extractText(bVal)
-    const textCompare = aText.localeCompare(bText, 'zh-CN', { sensitivity: 'base' })
-    if (textCompare !== 0) return textCompare
-
-    // 文本相同，按数字排序
-    const aNum = extractNumber(aVal)
-    const bNum = extractNumber(bVal)
-    return aNum - bNum
-  } else {
-    // 降序：先按文本部分排序，再按数字排序
-    const aText = extractText(aVal)
-    const bText = extractText(bVal)
-    const textCompare = aText.localeCompare(bText, 'zh-CN', { sensitivity: 'base' })
-    if (textCompare !== 0) return bText.localeCompare(aText, 'zh-CN', { sensitivity: 'base' })
-
-    // 文本相同，按数字降序排序
-    const aNum = extractNumber(aVal)
-    const bNum = extractNumber(bVal)
-    return bNum - aNum
-  }
-}
-
-// 排序辅助函数：对图片进行排序（支持 Image 和 FavoriteImage）
-function sortImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number }>(
-  images: T[],
-  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
-  order: 'ASC' | 'DESC'
-): T[] {
-  return [...images].sort((a, b) => {
-    let aVal: any
-    let bVal: any
-
-    switch (sortBy) {
-      case 'relative_path':
-        aVal = a.relative_path || ''
-        bVal = b.relative_path || ''
-        break
-      case 'file_size':
-        aVal = a.file_size || 0
-        bVal = b.file_size || 0
-        break
-      case 'width':
-        aVal = a.width || 0
-        bVal = b.width || 0
-        break
-      case 'height':
-        aVal = a.height || 0
-        bVal = b.height || 0
-        break
-      default:
-        aVal = 0
-        bVal = 0
-    }
-
-    if (typeof aVal === 'string') {
-      return comparePathStrings(aVal, bVal, order)
-    } else {
-      return order === 'ASC' ? aVal - bVal : bVal - aVal
-    }
-  })
-}
-
-// 排序辅助函数：对收藏图片进行排序（保持向后兼容）
-function sortFavoriteImages(
-  images: FavoriteImage[],
-  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
-  order: 'ASC' | 'DESC'
-): FavoriteImage[] {
-  return sortImages(images, sortBy, order)
-}
+import { sortImages, sortFavoriteImages } from '../utils/sort'
+import { logger } from '../utils/logger'
 
 // 扫描进度信息
 export interface ScanProgress {
@@ -145,7 +26,7 @@ interface ImageState {
   isInitialized: boolean
 
   // 图片相关
-  images: any[]
+  images: Image[]
   totalImages: number
   currentImage: Image | null
   favorites: Favorite[]
@@ -237,10 +118,19 @@ interface ImageState {
   setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => void
   setSortOrder: (order: 'ASC' | 'DESC') => void
   setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => void
+  applySort: () => void
 
   // 收藏文件夹选中状态
   selectedFavoriteFolder: string | null
   setSelectedFavoriteFolder: (folderPath: string | null) => void
+}
+
+// LRU 缓存淘汰：超出上限时删除最早插入的条目
+function evictLRU<K, V>(cache: Map<K, V>, max: number, evictCount: number): void {
+  if (cache.size > max) {
+    const keysToDelete = Array.from(cache.keys()).slice(0, evictCount)
+    keysToDelete.forEach(k => cache.delete(k))
+  }
 }
 
 export const useImageStore = create<ImageState>((set, get) => ({
@@ -284,11 +174,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
     if (get().isInitialized) return
 
     try {
-      // @ts-ignore - window.electronAPI 在运行时存在
       await window.electronAPI.initImageService()
       set({ isInitialized: true })
     } catch (error) {
-      console.error('[Store] 初始化失败:', error)
+      logger.error('Store', '初始化失败', error)
       set({ error: '初始化失败' })
     }
   },
@@ -296,7 +185,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载库列表
   loadLibraries: async () => {
     try {
-      // @ts-ignore
       const libraries = await window.electronAPI.getLibraries()
       set({ libraries })
 
@@ -308,7 +196,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
         }
       }
     } catch (error) {
-      console.error('[Store] 加载库列表失败:', error)
+      logger.error('Store', '加载库列表失败', error)
       set({ error: '加载库列表失败' })
     }
   },
@@ -317,7 +205,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
   addLibrary: async (name: string, rootPath: string, autoScan?: boolean) => {
     try {
       set({ isLoading: true })
-      // @ts-ignore
       const library = await window.electronAPI.addLibrary(name, rootPath, autoScan)
       set((state) => ({
         libraries: [...state.libraries, library],
@@ -326,7 +213,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
       }))
       return library
     } catch (error) {
-      console.error('[Store] 添加库失败:', error)
+      logger.error('Store', '添加库失败', error)
       set({ error: '添加库失败', isLoading: false })
       throw error
     }
@@ -335,7 +222,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 删除库
   removeLibrary: async (id: number) => {
     try {
-      // @ts-ignore
       await window.electronAPI.removeLibrary(id)
       set((state) => ({
         libraries: state.libraries.filter((lib) => lib.id !== id),
@@ -344,7 +230,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
         folderTree: state.currentLibraryId === id ? [] : state.folderTree,
       }))
     } catch (error) {
-      console.error('[Store] 删除库失败:', error)
+      logger.error('Store', '删除库失败', error)
       set({ error: '删除库失败' })
     }
   },
@@ -370,7 +256,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
   scanLibrary: async (id: number) => {
     try {
       set({ isLoading: true })
-      // @ts-ignore
       const result = await window.electronAPI.scanLibrary(id)
 
       // 更新库列表以获取最新的图片数量
@@ -383,7 +268,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
       set({ isLoading: false })
       return result
     } catch (error) {
-      console.error('[Store] 扫描库失败:', error)
+      logger.error('Store', '扫描库失败', error)
       set({ error: '扫描库失败', isLoading: false })
       throw error
     }
@@ -400,11 +285,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
     }
 
     try {
-      // @ts-ignore
       const folderTree = await window.electronAPI.getFolderTree(currentLibraryId)
       set({ folderTree })
     } catch (error) {
-      console.error('[Store] 加载文件夹树失败:', error)
+      logger.error('Store', '加载文件夹树失败', error)
       set({ folderTree: [] })
     }
   },
@@ -432,24 +316,20 @@ export const useImageStore = create<ImageState>((set, get) => ({
       const limit = options?.limit || 100
       const offset = options?.offset || 0
 
-      // @ts-ignore
       const [images, total] = await Promise.all([
         // 根据是否选择文件夹决定调用哪个 API
+        // DB 层仅支持 relative_path/created_time/modified_time 排序，其他字段由前端 sortImages 处理
         selectedFolder !== null
-          ? // @ts-ignore
-            window.electronAPI.getImagesByFolder(currentLibraryId, selectedFolder, { limit, offset, orderBy: imageSortBy, order: imageSortOrder })
-          : // @ts-ignore
-            window.electronAPI.getImages(currentLibraryId, { limit, offset, orderBy: imageSortBy, order: imageSortOrder }),
+          ? window.electronAPI.getImagesByFolder(currentLibraryId, selectedFolder, { limit, offset, orderBy: imageSortBy as 'relative_path' | 'created_time' | 'modified_time', order: imageSortOrder })
+          : window.electronAPI.getImages(currentLibraryId, { limit, offset, orderBy: imageSortBy as 'relative_path' | 'created_time' | 'modified_time', order: imageSortOrder }),
         // 获取总数
         selectedFolder !== null
-          ? // @ts-ignore
-            window.electronAPI.getImageCountByFolder(currentLibraryId, selectedFolder)
-          : // @ts-ignore
-            window.electronAPI.getImageCount(currentLibraryId),
+          ? window.electronAPI.getImageCountByFolder(currentLibraryId, selectedFolder)
+          : window.electronAPI.getImageCount(currentLibraryId),
       ])
 
-      // 按文件名排序时，在前端进行二次排序（确保文本 + 数字自然排序）
-      const finalImages = imageSortBy === 'relative_path'
+      // 前端二次排序：DB 不支持 file_size/width/height 排序，以及 relative_path 的自然排序
+      const finalImages = (imageSortBy === 'relative_path' || !['relative_path', 'created_time', 'modified_time'].includes(imageSortBy))
         ? sortImages(images, imageSortBy, imageSortOrder)
         : images
 
@@ -459,7 +339,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
         isLoading: false,
       })
     } catch (error) {
-      console.error('[Store] 加载图片失败:', error)
+      logger.error('Store', '加载图片失败', error)
       set({ error: '加载图片失败', isLoading: false })
     }
   },
@@ -489,24 +369,19 @@ export const useImageStore = create<ImageState>((set, get) => ({
     }
 
     try {
-      // @ts-ignore
       const thumbnail = await window.electronAPI.getThumbnail(currentLibraryId, imageId, size)
 
       // 更新缓存（带 LRU 淘汰）
       set((state) => {
         const newCache = new Map(state.thumbnailCache)
         newCache.set(imageId, thumbnail)
-        // 超出上限时淘汰最早的条目
-        if (newCache.size > THUMBNAIL_CACHE_MAX) {
-          const keysToDelete = Array.from(newCache.keys()).slice(0, THUMBNAIL_CACHE_EVICT)
-          keysToDelete.forEach(k => newCache.delete(k))
-        }
+        evictLRU(newCache, THUMBNAIL_CACHE_MAX, THUMBNAIL_CACHE_EVICT)
         return { thumbnailCache: newCache }
       })
 
       return thumbnail
     } catch (error) {
-      console.error('[Store] 获取缩略图失败:', imageId, error)
+      logger.error('Store', '获取缩略图失败', imageId, error)
       return ''
     }
   },
@@ -517,8 +392,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
     if (!currentLibraryId) return
 
     try {
-      // @ts-ignore
-      const thumbnails: Record<number, string> = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
+      const thumbnails = await window.electronAPI.getThumbnails(currentLibraryId, imageIds, size)
 
       // 更新缓存（带 LRU 淘汰）
       set((state) => {
@@ -526,22 +400,17 @@ export const useImageStore = create<ImageState>((set, get) => ({
         for (const idStr in thumbnails) {
           newCache.set(Number(idStr), thumbnails[idStr])
         }
-        // 超出上限时淘汰最早的条目
-        if (newCache.size > THUMBNAIL_CACHE_MAX) {
-          const keysToDelete = Array.from(newCache.keys()).slice(0, THUMBNAIL_CACHE_EVICT)
-          keysToDelete.forEach(k => newCache.delete(k))
-        }
+        evictLRU(newCache, THUMBNAIL_CACHE_MAX, THUMBNAIL_CACHE_EVICT)
         return { thumbnailCache: newCache }
       })
     } catch (error) {
-      console.error('[Store] 预加载缩略图失败:', error)
+      logger.error('Store', '预加载缩略图失败', error)
     }
   },
 
   // 切换收藏
   toggleFavorite: async (libraryId: number, imagePath: string) => {
     try {
-      // @ts-ignore
       const isFavorite = await window.electronAPI.toggleFavorite(libraryId, imagePath)
 
       // 重新加载收藏列表
@@ -549,7 +418,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
       return isFavorite
     } catch (error) {
-      console.error('[Store] 切换收藏失败:', error)
+      logger.error('Store', '切换收藏失败', error)
       return false
     }
   },
@@ -557,11 +426,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载收藏列表
   loadFavorites: async () => {
     try {
-      // @ts-ignore
       const favorites = await window.electronAPI.getFavorites()
       set({ favorites })
     } catch (error) {
-      console.error('[Store] 加载收藏失败:', error)
+      logger.error('Store', '加载收藏失败', error)
     }
   },
 
@@ -569,32 +437,28 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadFavoriteImages: async () => {
     try {
       const { imageSortBy, imageSortOrder } = get()
-      // @ts-ignore
       const [favoriteImages, favoriteCount] = await Promise.all([
-        // @ts-ignore
         window.electronAPI.getFavoriteImages({ limit: 100, offset: 0 }),
-        // @ts-ignore
         window.electronAPI.getFavoriteImagesCount(),
       ])
-      
+
       // 在本地对收藏图片进行排序
       const sortedImages = sortFavoriteImages(favoriteImages, imageSortBy, imageSortOrder)
-      
+
       set({ favoriteImages: sortedImages, favoriteCount })
     } catch (error) {
-      console.error('[Store] 加载收藏库图片失败:', error)
+      logger.error('Store', '加载收藏库图片失败', error)
     }
   },
 
   // 获取收藏库图片数量
   getFavoriteImagesCount: async () => {
     try {
-      // @ts-ignore
       const count = await window.electronAPI.getFavoriteImagesCount()
       set({ favoriteCount: count })
       return count
     } catch (error) {
-      console.error('[Store] 获取收藏库图片数量失败:', error)
+      logger.error('Store', '获取收藏库图片数量失败', error)
       return 0
     }
   },
@@ -611,22 +475,20 @@ export const useImageStore = create<ImageState>((set, get) => ({
   toggleFavoriteFolder: async (libraryId: number, folderPath: string) => {
     try {
       const isFavorited = get().isFavoriteFolder(libraryId, folderPath)
-      
+
       if (isFavorited) {
-        // @ts-ignore
         await window.electronAPI.removeFavoriteFolder(libraryId, folderPath)
       } else {
-        // @ts-ignore
         await window.electronAPI.addFavoriteFolder(libraryId, folderPath)
       }
-      
+
       // 重新加载收藏文件夹列表
       await get().loadFavoriteFolders()
       await get().loadFavoriteFolderTree()
-      
+
       return !isFavorited
     } catch (error) {
-      console.error('[Store] 切换收藏文件夹失败:', error)
+      logger.error('Store', '切换收藏文件夹失败', error)
       return false
     }
   },
@@ -634,11 +496,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载收藏文件夹列表
   loadFavoriteFolders: async () => {
     try {
-      // @ts-ignore
       const favoriteFolders = await window.electronAPI.getFavoriteFolders()
       set({ favoriteFolders })
     } catch (error) {
-      console.error('[Store] 加载收藏文件夹失败:', error)
+      logger.error('Store', '加载收藏文件夹失败', error)
       set({ favoriteFolders: [] })
     }
   },
@@ -646,11 +507,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 加载收藏文件夹树
   loadFavoriteFolderTree: async () => {
     try {
-      // @ts-ignore
       const favoriteFolderTree = await window.electronAPI.getFavoriteFolderTree()
       set({ favoriteFolderTree })
     } catch (error) {
-      console.error('[Store] 加载收藏文件夹树失败:', error)
+      logger.error('Store', '加载收藏文件夹树失败', error)
       set({ favoriteFolderTree: [] })
     }
   },
@@ -696,20 +556,17 @@ export const useImageStore = create<ImageState>((set, get) => ({
     try {
       const { imageSortBy, imageSortOrder } = get()
       set({ isLoading: true, error: null })
-      // @ts-ignore
       const [favoriteImages, favoriteCount] = await Promise.all([
-        // @ts-ignore
         window.electronAPI.getFavoriteFolderImages(folderPath, { limit: 100, offset: 0 }),
-        // @ts-ignore
         window.electronAPI.getFavoriteFolderImageCount(folderPath),
       ])
-      
-      // 对收藏文件夹图片进行排序
-      const sortedImages = sortFavoriteImages(favoriteImages as any, imageSortBy, imageSortOrder)
-      
-      set({ favoriteImages: sortedImages as any, favoriteCount, isLoading: false })
+
+      // 对收藏文件夹图片进行排序（API 返回含 library 信息的对象，运行时兼容 FavoriteImage）
+      const sortedImages = sortFavoriteImages(favoriteImages, imageSortBy, imageSortOrder) as unknown as FavoriteImage[]
+
+      set({ favoriteImages: sortedImages, favoriteCount, isLoading: false })
     } catch (error) {
-      console.error('[Store] 加载收藏文件夹图片失败:', error)
+      logger.error('Store', '加载收藏文件夹图片失败', error)
       set({ error: '加载收藏文件夹图片失败', isLoading: false, favoriteImages: [], favoriteCount: 0 })
     }
   },
@@ -717,11 +574,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 获取收藏文件夹图片数量
   getFavoriteFolderImageCount: async (folderPath: string) => {
     try {
-      // @ts-ignore
       const count = await window.electronAPI.getFavoriteFolderImageCount(folderPath)
       return count
     } catch (error) {
-      console.error('[Store] 获取收藏文件夹图片数量失败:', error)
+      logger.error('Store', '获取收藏文件夹图片数量失败', error)
       return 0
     }
   },
@@ -730,32 +586,28 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadSingleFavoriteImages: async () => {
     try {
       const { imageSortBy, imageSortOrder } = get()
-      // @ts-ignore
       const [singleFavoriteImages, singleFavoriteCount] = await Promise.all([
-        // @ts-ignore
         window.electronAPI.getSingleFavoriteImages({ limit: 100, offset: 0 }),
-        // @ts-ignore
         window.electronAPI.getSingleFavoriteCount(),
       ])
-      
+
       // 在本地对单图收藏进行排序
       const sortedImages = sortFavoriteImages(singleFavoriteImages, imageSortBy, imageSortOrder)
-      
+
       set({ singleFavoriteImages: sortedImages, singleFavoriteCount })
     } catch (error) {
-      console.error('[Store] 加载单图收藏失败:', error)
+      logger.error('Store', '加载单图收藏失败', error)
     }
   },
 
   // 获取单图收藏数量
   getSingleFavoriteCount: async () => {
     try {
-      // @ts-ignore
       const count = await window.electronAPI.getSingleFavoriteCount()
       set({ singleFavoriteCount: count })
       return count
     } catch (error) {
-      console.error('[Store] 获取单图收藏数量失败:', error)
+      logger.error('Store', '获取单图收藏数量失败', error)
       return 0
     }
   },
@@ -771,67 +623,28 @@ export const useImageStore = create<ImageState>((set, get) => ({
     localStorage.setItem('gridLayoutMode', mode)
   },
 
-  // 设置排序字段
+  // 设置排序字段（纯 setter，需配合 applySort 触发重载）
   setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => {
-    const { currentLibraryId, favoriteViewMode } = get()
     set({ imageSortBy: sortBy })
-    // 排序字段改变时，重新加载图片
-    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-      // 收藏库根据视图模式加载不同的图片
-      if (favoriteViewMode === 'single') {
-        get().loadSingleFavoriteImages()
-      } else if (favoriteViewMode === 'folder') {
-        // 文件夹收藏模式，如果选中了文件夹，重新加载
-        const { selectedFavoriteFolder } = get()
-        if (selectedFavoriteFolder) {
-          get().loadFavoriteFolderImages(selectedFavoriteFolder)
-        } else {
-          get().loadFavoriteImages()
-        }
-      } else {
-        get().loadFavoriteImages()
-      }
-    } else {
-      get().loadImages()
-    }
   },
 
-  // 设置排序顺序
+  // 设置排序顺序（纯 setter，需配合 applySort 触发重载）
   setSortOrder: (order: 'ASC' | 'DESC') => {
-    const { currentLibraryId, favoriteViewMode } = get()
     set({ imageSortOrder: order })
-    // 排序顺序改变时，重新加载图片
-    if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-      // 收藏库根据视图模式加载不同的图片
-      if (favoriteViewMode === 'single') {
-        get().loadSingleFavoriteImages()
-      } else if (favoriteViewMode === 'folder') {
-        // 文件夹收藏模式，如果选中了文件夹，重新加载
-        const { selectedFavoriteFolder } = get()
-        if (selectedFavoriteFolder) {
-          get().loadFavoriteFolderImages(selectedFavoriteFolder)
-        } else {
-          get().loadFavoriteImages()
-        }
-      } else {
-        get().loadFavoriteImages()
-      }
-    } else {
-      get().loadImages()
-    }
   },
 
-  // 设置排序
+  // 同时设置排序字段和顺序（纯 setter，需配合 applySort 触发重载）
   setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => {
-    const { currentLibraryId, favoriteViewMode } = get()
     set({ imageSortBy: sortBy, imageSortOrder: order })
-    // 排序改变时，重新加载图片
+  },
+
+  // 根据当前排序设置和库状态，重新加载图片
+  applySort: () => {
+    const { currentLibraryId, favoriteViewMode } = get()
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
-      // 收藏库根据视图模式加载不同的图片
       if (favoriteViewMode === 'single') {
         get().loadSingleFavoriteImages()
       } else if (favoriteViewMode === 'folder') {
-        // 文件夹收藏模式，如果选中了文件夹，重新加载
         const { selectedFavoriteFolder } = get()
         if (selectedFavoriteFolder) {
           get().loadFavoriteFolderImages(selectedFavoriteFolder)

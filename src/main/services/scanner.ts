@@ -3,6 +3,11 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { ThumbnailsDB } from './database';
 import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
+import type { ScanResult } from '../../types';
+import { MEDIA_EXTENSIONS } from '../../types';
+import { logger } from '../../utils/logger';
+
+export type { ScanResult };
 
 /**
  * 扫描进度回调类型
@@ -18,17 +23,6 @@ export interface ScanProgressCallback {
 }
 
 /**
- * 扫描结果
- */
-export interface ScanResult {
-  added: number;      // 新增图片数
-  updated: number;    // 更新图片数
-  deleted: number;    // 删除图片数
-  skipped: number;    // 跳过（未变化）数
-  total: number;      // 总媒体数
-}
-
-/**
  * 扫描选项
  */
 export interface ScanOptions {
@@ -37,11 +31,11 @@ export interface ScanOptions {
 }
 
 /**
- * 支持的文件扩展名
+ * 从 MEDIA_EXTENSIONS 派生的扩展名列表（转为 string[] 以兼容 includes 检查）
  */
-const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv', '.m4v'];
-const AUDIO_EXTENSIONS = ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a'];
-const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif'];
+const IMAGE_EXTENSIONS: string[] = [...MEDIA_EXTENSIONS.image];
+const VIDEO_EXTENSIONS: string[] = [...MEDIA_EXTENSIONS.video];
+const AUDIO_EXTENSIONS: string[] = [...MEDIA_EXTENSIONS.audio];
 const DEFAULT_EXTENSIONS = [...IMAGE_EXTENSIONS, ...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS];
 
 /**
@@ -149,7 +143,7 @@ export class LibraryScanner {
               this.db.saveThumbnail(item.id, 'medium', buffer);
             }
           } catch (err) {
-            console.warn(`[Scanner] 缩略图生成失败：${item.filePath}`, err);
+            logger.warn('Scanner', '缩略图生成失败', item.filePath, err);
           }
         })
       );
@@ -160,11 +154,11 @@ export class LibraryScanner {
       // 检查是否有失败的
       const failed = results.filter(r => r.status === 'rejected').length;
       if (failed > 0) {
-        console.warn(`[Scanner] 批次中有 ${failed} 个缩略图生成失败`);
+        logger.warn('Scanner', `批次中有 ${failed} 个缩略图生成失败`);
       }
     }
 
-    console.log(`[Scanner] 缩略图预生成完成：${processed}/${needGenerate.length}`);
+    logger.info('Scanner', `缩略图预生成完成：${processed}/${needGenerate.length}`);
   }
 
   /**
@@ -336,7 +330,7 @@ export class LibraryScanner {
           result.added++;
         }
       } catch (error) {
-        console.error(`[Scanner] 处理文件失败：${filePath}`, error);
+        logger.error('Scanner', '处理文件失败', filePath, error);
       }
     }
 
@@ -386,7 +380,7 @@ export class LibraryScanner {
         }
       }
     } catch (error) {
-      console.error(`[Scanner] 扫描目录失败：${dir}`, error);
+      logger.error('Scanner', '扫描目录失败', dir, error);
     }
 
     return files;

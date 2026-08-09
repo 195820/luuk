@@ -7,8 +7,9 @@ export function useDebugLog(message: string, deps?: any[]) {
     if (window.electronAPI?.logToFile) {
       // @ts-ignore
       window.electronAPI.logToFile(message)
-    } else {
-      console.log('[DEBUG]', message)
+    } else if (import.meta.env.DEV) {
+      // 仅开发模式输出到 console，避免生产环境泄漏调试信息
+      console.debug('[DEBUG]', message)
     }
   }, deps)
 }

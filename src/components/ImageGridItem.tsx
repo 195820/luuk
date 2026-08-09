@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { ImageGridItem } from './ImageGrid'
+import { logger } from '@/utils/logger'
 
 export interface ImageGridItemProps {
   image: ImageGridItem
@@ -43,7 +44,7 @@ export function ImageGridItemComponent({
             setRealImageId(imageInfo.id)
           }
         } catch (err) {
-          console.error('获取图片 ID 失败:', err)
+          logger.error('ImageGridItem', '获取图片 ID 失败', err)
         } finally {
           setHasLoadedImageInfo(true)
         }
@@ -60,7 +61,7 @@ export function ImageGridItemComponent({
               setRealImageId(imageInfo.id)
             }
           } catch (err) {
-            console.error('获取图片 ID 失败（收藏文件夹）:', err)
+            logger.error('ImageGridItem', '获取图片 ID 失败（收藏文件夹）', err)
           } finally {
             setHasLoadedImageInfo(true)
           }
@@ -106,7 +107,7 @@ export function ImageGridItemComponent({
         }
       } catch (err) {
         if (!cancelled) {
-          console.error('加载缩略图失败:', image.alt, err)
+          logger.error('ImageGridItem', '加载缩略图失败', image.alt, err)
           setError(true)
           setIsLoading(false)
         }

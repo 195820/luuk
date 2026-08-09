@@ -49,7 +49,7 @@ export function ImageGrid({
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = images.filter((img) => {
-    const mt = img.mediaType || (img as any).media_type
+    const mt = img.mediaType
     return mt !== 'audio'
   })
   const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 32)))

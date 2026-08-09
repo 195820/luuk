@@ -44,7 +44,7 @@ export function MasonryGrid({
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = useMemo(() => images.filter((img) => {
-    const mt = img.mediaType || (img as any).media_type
+    const mt = img.mediaType
     return mt !== 'audio'
   }), [images])
 
@@ -158,7 +158,7 @@ export function MasonryGrid({
               key={`column-${columnIndex}`}
               className="absolute top-0 flex flex-col gap-2 box-border"
               style={{
-                left: `${columnIndex * (thumbnailSize + 7) + 3}px`,
+                left: `${columnIndex * (thumbnailSize + 8) + 8}px`,
                 width: `${thumbnailSize}px`,
               }}
             >

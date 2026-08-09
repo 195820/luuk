@@ -57,9 +57,9 @@ export function FolderTree({
     <div className="flex flex-col p-2">
       {/* 收藏库中的标签页切换 */}
       {isFavoriteLibrary && (
-        <div className="flex gap-1 p-1.5 mb-2 border-b border-border">
+        <div className="flex gap-1 p-1.5 mb-2">
           <button
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-0.5 border rounded-sm text-text-muted text-micro cursor-pointer transition-all duration-150 hover:bg-overlay-light hover:text-text-secondary ${favoriteViewMode === 'folder' ? 'bg-overlay-selected text-text-primary border-border' : 'border-transparent'}`}
+            className={`btn-pill flex-1 ${favoriteViewMode === 'folder' ? 'active' : ''}`}
             onClick={() => setFavoriteViewMode('folder')}
             title="文件夹收藏"
           >
@@ -67,7 +67,7 @@ export function FolderTree({
             文件夹收藏
           </button>
           <button
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-0.5 border rounded-sm text-text-muted text-micro cursor-pointer transition-all duration-150 hover:bg-overlay-light hover:text-text-secondary ${favoriteViewMode === 'single' ? 'bg-overlay-selected text-text-primary border-border' : 'border-transparent'}`}
+            className={`btn-pill flex-1 ${favoriteViewMode === 'single' ? 'active' : ''}`}
             onClick={handleSingleFavoriteClick}
             title="单图收藏"
           >
@@ -100,12 +100,12 @@ export function FolderTree({
         /* 普通库模式 - 显示文件夹树 */
         <>
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-sm cursor-pointer select-none transition-all duration-150 border border-border font-medium bg-canvas-tertiary text-text-primary hover:bg-canvas-raised hover:border-border-hover ${selectedFolder === null ? 'bg-overlay-selected border-border-hover' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 font-medium bg-glass-l1 text-text-primary hover:bg-glass-l2 ${selectedFolder === null ? 'bg-overlay-selected' : ''}`}
             onClick={() => onFolderSelect?.(null)}
           >
             <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted" />
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body text-text-primary">全部图片</span>
-            <span className="text-micro text-text-muted px-2 py-0.5 bg-canvas-tertiary rounded-full flex-shrink-0 border border-border tabular-nums transition-all duration-150">
+            <span className="text-micro text-text-muted px-2 py-0.5 bg-overlay-darker rounded-full flex-shrink-0 tabular-nums">
               {folders.reduce((sum, f) => sum + f.imageCount, 0)}
             </span>
           </div>
@@ -198,7 +198,8 @@ function FolderTreeItem({
         {/* 在收藏库中显示取消收藏按钮 */}
         {isFavoriteLibrary && onToggleFavoriteFolder && (
           <button
-            className="flex items-center justify-center w-5 h-5 p-0 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex-shrink-0 transition-all duration-150 hover:bg-overlay-lighter hover:text-text-primary focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
+            className="btn-icon-sm flex-shrink-0"
+            style={{ width: 20, height: 20 }}
             onClick={handleFavoriteClick}
             title="取消收藏文件夹"
           >
@@ -208,7 +209,8 @@ function FolderTreeItem({
         {/* 在普通库中显示收藏/取消收藏按钮 */}
         {!isFavoriteLibrary && libraryId && onToggleFavoriteFolder && (
           <button
-            className={`flex items-center justify-center w-5 h-5 p-0 border-none bg-transparent cursor-pointer rounded-sm flex-shrink-0 transition-all duration-150 hover:bg-overlay-lighter hover:text-text-primary focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2 ${folderFavorited ? 'text-favorite' : 'text-text-muted'}`}
+            className={`btn-icon-sm flex-shrink-0 ${folderFavorited ? 'text-favorite' : 'text-text-muted'}`}
+            style={{ width: 20, height: 20 }}
             onClick={handleFavoriteClick}
             title={folderFavorited ? '取消收藏文件夹' : '收藏文件夹'}
           >

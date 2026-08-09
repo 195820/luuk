@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { motion } from 'motion/react'
 import { Star } from 'lucide-react'
 import { motionPresets } from '@/lib/motion-presets'
+import { logger } from '@/utils/logger'
 
 interface RatingStarsProps {
   libraryId: number
@@ -30,7 +31,7 @@ export function RatingStars({
       setRating(newRating)
       onRatingChange?.(newRating)
     } catch (error) {
-      console.error('[RatingStars] 设置评分失败:', error)
+      logger.error('RatingStars', '设置评分失败', error)
     } finally {
       setLoading(false)
     }
@@ -62,7 +63,7 @@ export function RatingStars({
       {[1, 2, 3, 4, 5].map((starValue) => (
         <motion.button
           key={starValue}
-          whileTap={{ scale: 0.9 }}
+          whileTap={{ scale: 0.95 }}
           transition={motionPresets.micro}
           className="bg-transparent border-none cursor-pointer p-0 transition-all duration-150 hover:scale-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           onClick={(e) => handleClick(e, starValue)}

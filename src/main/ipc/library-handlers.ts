@@ -4,6 +4,8 @@ import { getImageService } from '../services/image-service';
 import { getMimeTypeFromPath } from '../utils/media';
 import { registerMediaUrl } from '../services/media-registry';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
+import { logger } from '../../utils/logger';
+import { sendToRenderer } from '../utils/ipc';
 
 /**
  * 验证文件路径是否在已注册库目录内
@@ -58,11 +60,8 @@ export function registerLibraryHandlers(): void {
     // 如果需要等待扫描完成，在这里等待
     if (autoScan !== false) {
       // 返回库信息，前端可以轮询或通过事件监听扫描完成
-      // 这里我们通过发送事件通知前端扫描开始
-      const windows = BrowserWindow.getAllWindows();
-      if (windows.length > 0) {
-        windows[0].webContents.send('library-scan-started', { libraryId: library.id });
-      }
+      // 通知前端扫描开始
+      sendToRenderer('library-scan-started', { libraryId: library.id });
     }
     
     return library;
@@ -259,13 +258,11 @@ export function registerLibraryHandlers(): void {
     imageId: number,
     size: ThumbnailSize = 'medium'
   ): Promise<string> => {
-    console.log(`[IPC] getThumbnail request: lib=${libraryId} id=${imageId} size=${size}`);
     try {
       const result = await service.getThumbnail(libraryId, imageId, size);
-      console.log(`[IPC] getThumbnail success: lib=${libraryId} id=${imageId} resultLen=${result?.length || 0}`);
       return result;
     } catch (err) {
-      console.error(`[IPC] getThumbnail FAILED: lib=${libraryId} id=${imageId}`, err);
+      logger.error('IPC', 'getThumbnail FAILED', `lib=${libraryId} id=${imageId}`, err);
       throw err;
     }
   });
@@ -277,7 +274,6 @@ export function registerLibraryHandlers(): void {
     imageIds: number[],
     size: ThumbnailSize = 'medium'
   ): Promise<Record<number, string>> => {
-    console.log(`[IPC] getThumbnails request: lib=${libraryId} count=${imageIds.length} size=${size}`);
     const map = await service.getThumbnails(libraryId, imageIds, size);
     const result: Record<number, string> = {};
     for (const [key, value] of map.entries()) {
@@ -377,24 +373,18 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     progress: { processedCount: number; totalCount: number; currentFile: string }
   ): Promise<void> => {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].webContents.send('scan-progress', progress);
-    }
+    sendToRenderer('scan-progress', progress);
   });
 
   // 清除扫描进度
   ipcMain.handle('clearScanProgress', async (): Promise<void> => {
-    const windows = BrowserWindow.getAllWindows();
-    if (windows.length > 0) {
-      windows[0].webContents.send('scan-progress', {
-        isScanning: false,
-        processedCount: 0,
-        totalCount: 0,
-        currentFile: '',
-        status: 'complete'
-      });
-    }
+    sendToRenderer('scan-progress', {
+      isScanning: false,
+      processedCount: 0,
+      totalCount: 0,
+      currentFile: '',
+      status: 'complete'
+    });
   });
 
   // ==================== 媒体相关 IPC ====================
@@ -430,47 +420,28 @@ export function registerLibraryHandlers(): void {
 }
 
 /**
+ * 已注册的 IPC 处理器名称（用于批量注销）
+ */
+const IPC_HANDLER_NAMES = [
+  'initImageService', 'getLibraries', 'addLibrary', 'selectFolder',
+  'removeLibrary', 'scanLibrary', 'getFolderTree',
+  'getImages', 'getImagesByFolder', 'getImageCount', 'getImageCountByFolder',
+  'getImagePath', 'getImagePathByRelativePath', 'getImageByRelativePath',
+  'getFavoriteImages', 'getFavoriteImagesCount',
+  'addFavoriteFolder', 'removeFavoriteFolder', 'getFavoriteFolders',
+  'getFavoriteFolderTree', 'isFavoriteFolder',
+  'getFavoriteFolderImages', 'getFavoriteFolderImageCount',
+  'getSingleFavoriteImages', 'getSingleFavoriteCount',
+  'getThumbnail', 'getThumbnails', 'toggleFavorite', 'getFavorites',
+  'getCacheStats', 'clearCache', 'readFile', 'fileExists',
+  'loadFullImage', 'getMediaUrl', 'getMediaPath',
+  'extractVideoMetadata', 'generateVideoThumbnail',
+  'updateScanProgress', 'clearScanProgress',
+] as const;
+
+/**
  * 清理 IPC 处理器
  */
 export function unregisterLibraryHandlers(): void {
-  ipcMain.removeHandler('initImageService');
-  ipcMain.removeHandler('getLibraries');
-  ipcMain.removeHandler('addLibrary');
-  ipcMain.removeHandler('selectFolder');
-  ipcMain.removeHandler('removeLibrary');
-  ipcMain.removeHandler('scanLibrary');
-  ipcMain.removeHandler('getFolderTree');
-  ipcMain.removeHandler('getImages');
-  ipcMain.removeHandler('getImagesByFolder');
-  ipcMain.removeHandler('getImageCount');
-  ipcMain.removeHandler('getImageCountByFolder');
-  ipcMain.removeHandler('getImagePath');
-  ipcMain.removeHandler('getImagePathByRelativePath');
-  ipcMain.removeHandler('getImageByRelativePath');
-  ipcMain.removeHandler('getFavoriteImages');
-  ipcMain.removeHandler('getFavoriteImagesCount');
-  ipcMain.removeHandler('addFavoriteFolder');
-  ipcMain.removeHandler('removeFavoriteFolder');
-  ipcMain.removeHandler('getFavoriteFolders');
-  ipcMain.removeHandler('getFavoriteFolderTree');
-  ipcMain.removeHandler('isFavoriteFolder');
-  ipcMain.removeHandler('getFavoriteFolderImages');
-  ipcMain.removeHandler('getFavoriteFolderImageCount');
-  ipcMain.removeHandler('getSingleFavoriteImages');
-  ipcMain.removeHandler('getSingleFavoriteCount');
-  ipcMain.removeHandler('getThumbnail');
-  ipcMain.removeHandler('getThumbnails');
-  ipcMain.removeHandler('toggleFavorite');
-  ipcMain.removeHandler('getFavorites');
-  ipcMain.removeHandler('getCacheStats');
-  ipcMain.removeHandler('clearCache');
-  ipcMain.removeHandler('readFile');
-  ipcMain.removeHandler('fileExists');
-  ipcMain.removeHandler('loadFullImage');
-  ipcMain.removeHandler('getMediaUrl');
-  ipcMain.removeHandler('updateScanProgress');
-  ipcMain.removeHandler('clearScanProgress');
-  ipcMain.removeHandler('getMediaPath');
-  ipcMain.removeHandler('extractVideoMetadata');
-  ipcMain.removeHandler('generateVideoThumbnail');
+  IPC_HANDLER_NAMES.forEach(name => ipcMain.removeHandler(name));
 }

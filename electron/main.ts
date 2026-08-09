@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, Menu } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
@@ -59,8 +59,8 @@ function registerMediaProtocol() {
         if (!isAllowed) {
           return new Response('Forbidden', { status: 403 })
         }
-      } catch (e: any) {
-        return new Response(JSON.stringify({ error: e.message }), {
+      } catch (e) {
+        return new Response(JSON.stringify({ error: 'service_unavailable' }), {
           status: 503, headers: { 'Content-Type': 'application/json' },
         })
       }
@@ -125,11 +125,15 @@ function registerMediaProtocol() {
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.js')
 
+  // 移除默认菜单栏，消除原生标题栏与自定义 header 的双层问题
+  Menu.setApplicationMenu(null)
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    frame: false,
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -141,10 +145,34 @@ function createWindow() {
     backgroundColor: '#1a1a1a',
   })
 
+  // 窗口控制 IPC
+  ipcMain.on('window-minimize', () => mainWindow?.minimize())
+  ipcMain.on('window-maximize', () => {
+    if (mainWindow?.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow?.maximize()
+    }
+  })
+  ipcMain.on('window-close', () => mainWindow?.close())
+  ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false)
+
   // 加载应用
-  if (process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
-    mainWindow.webContents.openDevTools()
+  const devUrl = process.env.VITE_DEV_SERVER_URL
+  if (devUrl) {
+    try {
+      const parsed = new URL(devUrl)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('无效协议')
+      }
+      mainWindow.loadURL(devUrl)
+      // 仅在开发模式自动打开 DevTools
+      if (process.env.NODE_ENV !== 'production') {
+        mainWindow.webContents.openDevTools()
+      }
+    } catch {
+      mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
+    }
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
