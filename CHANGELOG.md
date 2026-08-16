@@ -16,7 +16,7 @@
 - **多媒体支持**：视频/音频播放（`luuk-file://` 自定义协议，流式加载，支持 range 请求）
 - **IPC 接口**：`loadFullImage`（图片 data URL）、`getMediaUrl`（媒体流式 URL）
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名，比数据库 `media_type` 更可靠
-- **多媒体模块重构方案**：竞品调研（Immich/Hydrus/ImageGlass/nomacs）、开源库选型（YARL/wavesurfer.js）、4 阶段实施计划（docs/11-多媒体模块重构方案.md）
+- **多媒体模块重构方案**：竞品调研（Immich/Hydrus/ImageGlass/nomacs）、开源库选型（YARL/wavesurfer.js）、4 阶段实施计划（docs/archive/多媒体模块重构方案.md）
 
 ### 已知问题（2026-06-22 深度审查发现）
 - **P0**: 视频 seek bar 不更新（`defaultValue` 未绑定 `currentTime`）

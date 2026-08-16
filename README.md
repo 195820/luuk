@@ -32,7 +32,8 @@ npm run build:dir
 - **Vite 7** - 构建工具
 - **Zustand 5** - 状态管理
 - **@tanstack/react-virtual** - 虚拟滚动
-- **react-zoom-pan-pinch** - 图片缩放
+- **yet-another-react-lightbox (YARL)** - 图片查看（缩放/旋转/幻灯片）
+- **wavesurfer.js** - 音频波形可视化
 
 ### 后端 (Electron)
 - **Electron 40** - 跨平台框架
@@ -40,13 +41,13 @@ npm run build:dir
 - **sharp** - 图片处理
 - **chokidar** - 文件监听
 - **electron-store** - 配置存储
-- **data: URL** - base视频文件视频/音频 base64 编码加载
+- **media:// 协议** - 流式加载媒体文件（令牌映射 + Range 请求）
 - **electron-rebuild** - 原生模块重建
 
 ## 📁 项目结构
 
 ```
-E:\luuk\
+D:\luuk\
 ├── electron/           # Electron 主进程和预加载脚本
 │   ├── main.ts
 │   └── preload.ts
