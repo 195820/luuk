@@ -4,11 +4,13 @@
   "directories": {
     "output": "release"
   },
+  "npmRebuild": false,
   "files": [
     "dist/**/*",
     "dist-electron/**/*"
   ],
   "win": {
+    "signAndEditExecutable": false,
     "target": [
       {
         "target": "nsis",
