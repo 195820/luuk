@@ -34,7 +34,7 @@ npm run preview        # 预览构建结果
 │  ImageViewer (缩放/旋转/翻转/幻灯片/视频播放)   │
 ├─────────────────────────────────────────────────┤
 │         状态管理 (Zustand)                       │
-│  imageStore (核心) | audioStore                 │
+│  imageStore (核心) | audioStore | historyStore    │
 ├─────────────────────────────────────────────────┤
 │         IPC 通信 (library-handlers.ts)           │
 │  getLibraries | getFolderTree | getThumbnail    │
@@ -72,7 +72,8 @@ D:\luuk\
 │   │   ├── MasonryGrid.tsx      # 瀑布流视图
 │   │   ├── FolderTree.tsx       # 文件夹树
 │   │   ├── SortControl.tsx      # 排序控制
-│   │   ├── RatingStars.tsx      # 评分组件
+│   │   ├── RatingStars.tsx      # 评分组件（查看器星标）
+│   │   ├── RecentHistory.tsx    # 侧边栏"最近浏览"
 │   │   ├── ScanProgress.tsx     # 扫描进度
 │   │   ├── layout/
 │   │   │   ├── AppHeader.tsx    # 应用头部
@@ -87,6 +88,7 @@ D:\luuk\
 │   ├── stores/                 # Zustand 状态管理
 │   │   ├── imageStore.ts        # 图片数据 store（核心）
 │   │   ├── audioStore.ts        # 音频播放 store
+│   │   ├── historyStore.ts      # 浏览历史 store
 │   │   └── index.ts             # 统一导出
 │   ├── utils/
 │   │   ├── sort.ts              # 排序工具
@@ -153,7 +155,7 @@ D:\luuk\
 1. **Electron 下载**: 使用镜像源（项目已配置 `.npmrc`）
 2. **路径处理**: 使用 `path.normalize()` 处理跨平台路径
 3. **IPC 通信**: 前端通过 `window.electronAPI` 调用后端功能
-4. **状态管理**: `imageStore.ts` 是核心 store，`audioStore.ts` 管理音频播放状态
+4. **状态管理**: `imageStore.ts` 是核心 store，`audioStore.ts` 管理音频播放状态，`historyStore.ts` 管理浏览历史
 5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
 6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
 7. **自定义协议**: `media://` 在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册。URL 中的路径编码采用令牌映射（`src/main/services/media-registry.ts`），避免浏览器对 URL authority 强制小写化破坏编码
