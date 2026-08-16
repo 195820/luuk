@@ -1,6 +1,6 @@
 import { ArrowUp, ArrowDown } from 'lucide-react'
 
-export type SortBy = 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height'
+export type SortBy = 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating'
 export type SortOrder = 'ASC' | 'DESC'
 
 export interface SortOption {
@@ -15,6 +15,7 @@ export const SORT_OPTIONS: SortOption[] = [
   { value: 'file_size', label: '文件大小' },
   { value: 'width', label: '宽度' },
   { value: 'height', label: '高度' },
+  { value: 'rating', label: '评分' },
 ]
 
 interface SortControlProps {

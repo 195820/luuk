@@ -156,8 +156,15 @@ export class MasterDB {
 
   removeLibrary(id: number): void {
     if (!this.db) return;
-    const stmt = this.db.prepare('DELETE FROM libraries WHERE id = ?');
-    stmt.run(id);
+    const db = this.db;
+    // 先删除依赖的外键行，否则 FOREIGN KEY 约束会导致删除失败
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM favorites WHERE library_id = ?').run(id);
+      db.prepare('DELETE FROM favorite_folders WHERE library_id = ?').run(id);
+      db.prepare('DELETE FROM history WHERE library_id = ?').run(id);
+      db.prepare('DELETE FROM libraries WHERE id = ?').run(id);
+    });
+    tx();
   }
 
   addFavorite(libraryId: number, imagePath: string, tags?: string[], rating?: number): void {
@@ -170,6 +177,22 @@ export class MasterDB {
     if (!this.db) return;
     const stmt = this.db.prepare('DELETE FROM favorites WHERE library_id = ? AND image_path = ?');
     stmt.run(libraryId, imagePath);
+  }
+
+  /**
+   * 设置图片评分（评分隐含收藏：不存在收藏记录时自动创建）
+   * 已存在的收藏保留 tags，仅更新 rating
+   */
+  setFavoriteRating(libraryId: number, imagePath: string, rating: number): void {
+    if (!this.db) return;
+    const existing = this.db.prepare('SELECT tags FROM favorites WHERE library_id = ? AND image_path = ?')
+      .get(libraryId, imagePath) as { tags: string } | undefined;
+    if (existing) {
+      this.db.prepare('UPDATE favorites SET rating = ? WHERE library_id = ? AND image_path = ?')
+        .run(rating, libraryId, imagePath);
+    } else {
+      this.addFavorite(libraryId, imagePath, [], rating);
+    }
   }
 
   getFavorites(): Array<{ library_id: number; image_path: string; tags: string[]; rating: number }> {
@@ -420,10 +443,44 @@ export class MasterDB {
     return result.count > 0;
   }
 
+  // 历史记录容量上限
+  private static readonly HISTORY_LIMIT = 500;
+
   addHistory(libraryId: number, imagePath: string): void {
     if (!this.db) return;
     const stmt = this.db.prepare('INSERT INTO history (library_id, image_path) VALUES (?, ?)');
     stmt.run(libraryId, imagePath);
+    // 只保留最近 HISTORY_LIMIT 条，防止无限增长
+    this.db.prepare(
+      'DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY viewed_at DESC LIMIT ?)'
+    ).run(MasterDB.HISTORY_LIMIT);
+  }
+
+  /**
+   * 获取最近浏览历史（带库信息）
+   */
+  getHistory(limit: number = 50): Array<{
+    library_id: number;
+    library_name: string;
+    library_root_path: string;
+    image_path: string;
+    viewed_at: string;
+  }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(`
+      SELECT h.library_id, l.name as library_name, l.root_path as library_root_path,
+             h.image_path, h.viewed_at
+      FROM history h
+      JOIN libraries l ON h.library_id = l.id
+      ORDER BY h.viewed_at DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as any[];
+  }
+
+  clearHistory(): void {
+    if (!this.db) return;
+    this.db.prepare('DELETE FROM history').run();
   }
 
   close(): void {
@@ -595,12 +652,6 @@ export class ThumbnailsDB {
     stmt.run(...values);
   }
 
-  getImageByPath(relativePath: string): Image | null {
-    if (!this.db) return null;
-    const stmt = this.db.prepare('SELECT * FROM images WHERE relative_path = ? AND is_deleted = 0');
-    return stmt.get(relativePath) as Image | null;
-  }
-
   getImage(id: number): Image | null {
     if (!this.db) return null;
     const stmt = this.db.prepare('SELECT * FROM images WHERE id = ? AND is_deleted = 0');
@@ -664,10 +715,13 @@ export class ThumbnailsDB {
     return stmt.run().changes;
   }
 
-  getAllPaths(): string[] {
+  /**
+   * 获取全部未删除图片记录（供扫描器批量预载，避免逐条查询）
+   */
+  getAllImages(): Image[] {
     if (!this.db) return [];
-    const stmt = this.db.prepare('SELECT relative_path FROM images WHERE is_deleted = 0');
-    return (stmt.all() as { relative_path: string }[]).map(row => row.relative_path);
+    const stmt = this.db.prepare('SELECT * FROM images WHERE is_deleted = 0');
+    return stmt.all() as Image[];
   }
 
   /**

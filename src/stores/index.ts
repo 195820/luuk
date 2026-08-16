@@ -3,3 +3,4 @@
 export { useImageStore, FAVORITE_LIBRARY_ID } from './imageStore'
 export { useAudioStore } from './audioStore'
 export type { AudioItem } from './audioStore'
+export { useHistoryStore } from './historyStore'

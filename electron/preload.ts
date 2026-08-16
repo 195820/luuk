@@ -67,6 +67,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) =>
     ipcRenderer.invoke('toggleFavorite', libraryId, imagePath, tags),
   getFavorites: () => ipcRenderer.invoke('getFavorites'),
+  setFavoriteRating: (libraryId: number, imagePath: string, rating: number) =>
+    ipcRenderer.invoke('setFavoriteRating', libraryId, imagePath, rating),
+
+  // 浏览历史
+  addHistory: (libraryId: number, imagePath: string) =>
+    ipcRenderer.invoke('addHistory', libraryId, imagePath),
+  getHistory: (limit?: number) => ipcRenderer.invoke('getHistory', limit),
+  clearHistory: () => ipcRenderer.invoke('clearHistory'),
 
   // 缓存
   getCacheStats: () => ipcRenderer.invoke('getCacheStats'),

@@ -17,8 +17,9 @@ import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
-import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore } from './stores'
-import type { Library } from './types'
+import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore, useHistoryStore } from './stores'
+import { RecentHistory } from './components/RecentHistory'
+import type { Library, HistoryItem } from './types'
 import { logger } from './utils/logger'
 
 const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
@@ -57,6 +58,8 @@ function App() {
     toggleFolderSidebar,
     folderSidebarOpen,
     toggleFavorite,
+    getRating,
+    setImageRating,
     favoriteCount,
     favoriteImages,
     loadFavoriteImages,
@@ -84,6 +87,8 @@ function App() {
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
 
+  const { history, loadHistory, clearHistory } = useHistoryStore()
+
   const [currentImageSrc, setCurrentImageSrc] = useState<string>('')
 
   // 初始化服务
@@ -92,6 +97,7 @@ function App() {
       await initialize()
       await loadLibraries()
       await loadFavorites() // 加载收藏列表
+      await loadHistory() // 加载浏览历史
       // 启动时默认进入收藏库
       setCurrentLibrary(FAVORITE_LIBRARY_ID)
       await loadFavoriteImages()
@@ -249,11 +255,16 @@ function App() {
         const fav = targetArray[favoriteImageIndex]
         if (fav) {
           setCurrentImage(fav as any)
+          // 记录浏览历史（收藏库使用图片原始库）；传 fav 携带 id 元数据，保证缩略图/打开立即可用
+          useHistoryStore.getState().addHistory(fav.library_id, fav.relative_path, fav as any)
         }
       } else if (images.length > 0) {
         const img = images[currentIndex]
         if (img) {
           setCurrentImage(img)
+          if (currentLibraryId) {
+            useHistoryStore.getState().addHistory(currentLibraryId, img.relative_path, img as any)
+          }
         }
       }
     }
@@ -306,6 +317,44 @@ function App() {
       }
     }
   }
+
+  // 从"最近浏览"打开图片：切到所属库并进入查看器
+  const handleOpenHistory = useCallback(async (item: HistoryItem) => {
+    const libraryId = item.library_id
+    const imagePath = item.image_path
+    if (!libraryId || !imagePath) return
+
+    // 切换到目标库（触发加载图片）
+    if (currentLibraryId !== libraryId) {
+      setCurrentLibrary(libraryId)
+    }
+    await loadImages()
+
+    // 优先用已加载窗口里的真实图片对象（id 或 relative_path 匹配），保证 prev/next 与正常导航一致
+    const imgs = useImageStore.getState().images
+    let idx = imgs.findIndex((i: any) => i.id === item.id)
+    if (idx < 0) idx = imgs.findIndex((i: any) => i.relative_path === imagePath)
+    const inWindow = idx >= 0
+
+    // 不在窗口内（大库超出预览窗口）：用条目元数据构造图片对象；
+    // 需有效 thumbs id 才能经 getImagePath 打开原图
+    const appImage = inWindow
+      ? imgs[idx]
+      : {
+          id: item.id,
+          relative_path: imagePath,
+          width: item.width || 0,
+          height: item.height || 0,
+          file_size: item.file_size || 0,
+          format: item.format || '',
+          mediaType: item.mediaType || 'image',
+          library_id: libraryId,
+        }
+    setCurrentImage(appImage as any)
+    // 未命中窗口时用越界哨兵索引，防止 currentImage 效应覆盖手动设置的图片
+    setCurrentIndex(inWindow ? idx : imgs.length)
+    setViewMode('viewer')
+  }, [currentLibraryId, setCurrentLibrary, loadImages])
 
   const handleClose = useCallback(() => {
     setViewMode('grid')
@@ -504,6 +553,9 @@ function App() {
       return
     }
     await removeLibrary(lib.id)
+    // 删除库会连带清掉其收藏与浏览记录，刷新前端状态
+    await loadHistory()
+    await loadFavorites()
   }
 
   // 扫描库
@@ -656,6 +708,11 @@ function App() {
   }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite, currentImage])
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
+
+  // 查看器评分参数：收藏库中 libraryId 取图片原始库，普通库用当前库
+  const viewerLibraryId = isFavoriteLibrary ? (currentImage as any)?.library_id : currentLibraryId
+  const viewerImagePath = (currentImage as any)?.relative_path
+  const viewerRating = viewerLibraryId && viewerImagePath ? getRating(viewerLibraryId, viewerImagePath) : 0
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -848,6 +905,11 @@ function App() {
                   }}
                 />
               )}
+              <RecentHistory
+                history={history}
+                onOpen={handleOpenHistory}
+                onClear={clearHistory}
+              />
             </div>
           </aside>
         )}
@@ -973,6 +1035,14 @@ function App() {
                 slideshowSettings={slideshow}
                 onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
                 mediaType={(currentImage as any).mediaType || 'image'}
+                libraryId={viewerLibraryId || undefined}
+                imagePath={viewerImagePath}
+                rating={viewerRating}
+                onRatingChange={(newRating) => {
+                  if (viewerLibraryId && viewerImagePath) {
+                    setImageRating(viewerLibraryId, viewerImagePath, newRating)
+                  }
+                }}
                 onVideoEnded={handleVideoEnded}
                 onVideoPlayStateChange={setIsVideoPlaying}
               />

@@ -22,6 +22,7 @@ import { formatFileSize } from '../utils/format'
 import { logger } from '../utils/logger'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
+import { RatingStars } from './RatingStars'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -48,6 +49,11 @@ interface ImageViewerProps {
   isFavorite?: boolean
   onFavoriteChange?: (isFavorite: boolean) => void
   mediaType?: 'image' | 'video' | 'audio'
+  /** 图片路径（相对库根目录），用于评分 */
+  imagePath?: string
+  /** 当前评分 0-5 */
+  rating?: number
+  onRatingChange?: (rating: number) => void
   /** 视频播完回调（幻灯片模式下用于自动前进） */
   onVideoEnded?: () => void
   /** 视频播放状态变化回调 */
@@ -71,6 +77,10 @@ export function ImageViewer({
   onClose,
   imageInfo,
   mediaType = 'image',
+  libraryId,
+  imagePath,
+  rating = 0,
+  onRatingChange,
   onVideoEnded,
   onVideoPlayStateChange,
 }: ImageViewerProps) {
@@ -405,6 +415,24 @@ export function ImageViewer({
             <Info size={16} />
           </button>
         </motion.div>
+
+        {libraryId && imagePath && (
+          <motion.div
+            className="flex items-center gap-1.5 ml-auto [-webkit-app-region:no-drag]"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...motionPresets.fade, delay: 0.35 }}
+          >
+            <RatingStars
+              key={imagePath}
+              libraryId={libraryId}
+              imagePath={imagePath}
+              initialRating={rating}
+              size="small"
+              onRatingChange={onRatingChange}
+            />
+          </motion.div>
+        )}
       </motion.div>
 
       {/* 媒体查看区域 */}

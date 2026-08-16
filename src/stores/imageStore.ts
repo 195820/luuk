@@ -52,7 +52,7 @@ interface ImageState {
   gridLayoutMode: 'grid' | 'masonry'
 
   // 排序设置
-  imageSortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height'
+  imageSortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating'
   imageSortOrder: 'ASC' | 'DESC'
 
   // 缩略图缓存
@@ -91,6 +91,8 @@ interface ImageState {
   // 收藏（图片）
   toggleFavorite: (libraryId: number, imagePath: string) => Promise<boolean>
   loadFavorites: () => Promise<void>
+  getRating: (libraryId: number, imagePath: string) => number
+  setImageRating: (libraryId: number, imagePath: string, rating: number) => Promise<void>
   loadFavoriteImages: () => Promise<void>
   loadFavoriteFolderImages: (folderPath: string) => Promise<void>
   loadSingleFavoriteImages: () => Promise<void>
@@ -115,9 +117,9 @@ interface ImageState {
   setGridLayoutMode: (mode: 'grid' | 'masonry') => void
 
   // 排序操作
-  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => void
+  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating') => void
   setSortOrder: (order: 'ASC' | 'DESC') => void
-  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => void
+  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating', order: 'ASC' | 'DESC') => void
   applySort: () => void
 
   // 收藏文件夹选中状态
@@ -469,6 +471,25 @@ export const useImageStore = create<ImageState>((set, get) => ({
     return favorites.some(f => f.libraryId === libraryId && f.imagePath === imagePath)
   },
 
+  // 获取图片评分（从收藏记录中读取）
+  getRating: (libraryId: number, imagePath: string) => {
+    const { favorites } = get()
+    const fav = favorites.find(f => f.libraryId === libraryId && f.imagePath === imagePath)
+    return fav?.rating || 0
+  },
+
+  // 设置图片评分
+  setImageRating: async (libraryId: number, imagePath: string, rating: number) => {
+    try {
+      await window.electronAPI.setFavoriteRating(libraryId, imagePath, rating)
+      // 评分隐含收藏，刷新收藏列表与计数，使视图一致
+      await get().loadFavorites()
+      await get().getFavoriteImagesCount()
+    } catch (error) {
+      logger.error('Store', '设置评分失败', error)
+    }
+  },
+
   // ==================== 收藏文件夹相关方法 ====================
 
   // 切换收藏文件夹
@@ -624,7 +645,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   },
 
   // 设置排序字段（纯 setter，需配合 applySort 触发重载）
-  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => {
+  setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating') => {
     set({ imageSortBy: sortBy })
   },
 
@@ -634,7 +655,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   },
 
   // 同时设置排序字段和顺序（纯 setter，需配合 applySort 触发重载）
-  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height', order: 'ASC' | 'DESC') => {
+  setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating', order: 'ASC' | 'DESC') => {
     set({ imageSortBy: sortBy, imageSortOrder: order })
   },
 

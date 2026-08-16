@@ -1,4 +1,4 @@
-import { SortControl } from '../SortControl'
+import { SortControl, type SortBy } from '../SortControl'
 import type { Library } from '../../types'
 
 interface AppHeaderProps {
@@ -8,7 +8,7 @@ interface AppHeaderProps {
   totalImages: number
   viewMode: 'grid' | 'viewer'
   thumbnailSize: number
-  imageSortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height'
+  imageSortBy: SortBy
   imageSortOrder: 'ASC' | 'DESC'
   gridLayoutMode: 'grid' | 'masonry'
   isFavoriteLibrary: boolean
@@ -16,7 +16,7 @@ interface AppHeaderProps {
   onLibraryChange: (value: string) => void
   onToggleLibraryPanel: () => void
   onThumbnailSizeChange: (size: number) => void
-  onSortByChange: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height') => void
+  onSortByChange: (sortBy: SortBy) => void
   onSortOrderChange: (order: 'ASC' | 'DESC') => void
   onGridLayoutChange: () => void
   onViewModeChange: () => void

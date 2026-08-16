@@ -90,9 +90,9 @@ export function comparePathStrings(
  * @param order 排序顺序 ('ASC' | 'DESC')
  * @returns 排序后的数组
  */
-export function sortImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number }>(
+export function sortImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number; rating?: number }>(
   images: T[],
-  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
+  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating',
   order: 'ASC' | 'DESC'
 ): T[] {
   return [...images].sort((a, b) => {
@@ -116,6 +116,10 @@ export function sortImages<T extends { relative_path?: string; file_size?: numbe
         aVal = a.height || 0
         bVal = b.height || 0
         break
+      case 'rating':
+        aVal = a.rating || 0
+        bVal = b.rating || 0
+        break
       default:
         aVal = 0
         bVal = 0
@@ -137,9 +141,9 @@ export function sortImages<T extends { relative_path?: string; file_size?: numbe
  * @param order 排序顺序
  * @returns 排序后的数组
  */
-export function sortFavoriteImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number }>(
+export function sortFavoriteImages<T extends { relative_path?: string; file_size?: number; width?: number; height?: number; rating?: number }>(
   images: T[],
-  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height',
+  sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating',
   order: 'ASC' | 'DESC'
 ): T[] {
   return sortImages(images, sortBy, order)

@@ -583,6 +583,13 @@ export class ImageService {
   }
 
   /**
+   * 设置图片评分（评分隐含收藏，保留已有 tags）
+   */
+  setFavoriteRating(libraryId: number, imagePath: string, rating: number): void {
+    this.masterDB.setFavoriteRating(libraryId, imagePath, rating);
+  }
+
+  /**
    * 获取收藏库中的图片列表（虚拟库）
    */
   async getFavoriteImages(options: ImageQueryOptions): Promise<any[]> {
@@ -613,6 +620,7 @@ export class ImageService {
           codec: imageInfo?.codec,
           is_favorite: true,
           favorited_at: fav.created_at,
+          rating: fav.rating,
         };
       } catch (err) {
         logger.error('ImageService', '获取收藏图片详情失败', `${fav.library_id}/${fav.image_path}`, err);
@@ -631,6 +639,7 @@ export class ImageService {
           codec: null,
           is_favorite: true,
           favorited_at: fav.created_at,
+          rating: fav.rating,
         };
       }
     }));
@@ -699,6 +708,7 @@ export class ImageService {
               mediaType: correctMediaType,
               is_favorite: true,
               favorited_at: fav.created_at,
+              rating: fav.rating,
             });
           }
         }
@@ -761,6 +771,12 @@ export class ImageService {
     const favoriteFolders = this.masterDB.getFavoriteFolders();
     const allImages: any[] = [];
 
+    // 预取收藏评分，避免逐图查询
+    const ratingByKey = new Map<string, number>();
+    for (const f of this.masterDB.getFavorites()) {
+      ratingByKey.set(`${f.library_id}/${f.image_path}`, f.rating);
+    }
+
     for (const fav of favoriteFolders) {
       if (fav.folder_path === folderPath || fav.folder_path.startsWith(folderPath + '/')) {
         try {
@@ -768,7 +784,10 @@ export class ImageService {
           if (library && library.status === 'online') {
             const db = this.connectLibrary(fav.library_id);
             const images = db.getImagesByFolder(fav.folder_path, { limit: options.limit, offset: 0 });
-            allImages.push(...images.map(img => this.mapImageWithLibraryInfo(img, fav.library_id, fav.library_name)));
+            allImages.push(...images.map(img => ({
+              ...this.mapImageWithLibraryInfo(img, fav.library_id, fav.library_name),
+              rating: ratingByKey.get(`${fav.library_id}/${img.relative_path}`) || 0,
+            })));
           }
         } catch (err) {
           logger.error('ImageService', '获取收藏文件夹图片失败', `${fav.library_id}/${fav.folder_path}`, err);
@@ -820,6 +839,40 @@ export class ImageService {
    */
   addHistory(libraryId: number, imagePath: string): void {
     this.masterDB.addHistory(libraryId, imagePath);
+  }
+
+  /**
+   * 获取最近浏览历史（带库信息与图片元数据，用于缩略图显示）
+   */
+  async getHistory(limit: number = 50): Promise<any[]> {
+    const rawHistory = this.masterDB.getHistory(limit);
+    const result: any[] = [];
+
+    for (const item of rawHistory) {
+      try {
+        const db = this.connectLibrary(item.library_id);
+        const image = db.getImageByRelativePath(item.image_path);
+        const mediaType = getMediaTypeFromPath(item.image_path);
+        result.push({
+          ...item,
+          id: image?.id || 0,
+          width: image?.width || 0,
+          height: image?.height || 0,
+          file_size: image?.file_size || 0,
+          format: image?.format || path.extname(item.image_path).slice(1),
+          mediaType,
+        });
+      } catch (err) {
+        // 库缺失或图片不存在时跳过该条
+        logger.warn('ImageService', '获取历史图片详情失败', `${item.library_id}/${item.image_path}`, err);
+        result.push({ ...item, id: 0, mediaType: getMediaTypeFromPath(item.image_path) });
+      }
+    }
+    return result;
+  }
+
+  clearHistory(): void {
+    this.masterDB.clearHistory();
   }
 
   /**

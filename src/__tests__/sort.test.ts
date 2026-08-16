@@ -89,6 +89,19 @@ describe('sortImages', () => {
     sortImages(images, 'relative_path', 'ASC')
     expect(images).toEqual(original)
   })
+
+  it('按评分降序（0-5 星）', () => {
+    const rated = [
+      { relative_path: 'a.jpg', rating: 2 },
+      { relative_path: 'b.jpg', rating: 5 },
+      { relative_path: 'c.jpg', rating: 0 },
+      { relative_path: 'd.jpg', rating: 5 },
+    ]
+    const sorted = sortImages(rated, 'rating', 'DESC')
+    expect(sorted[0].rating).toBe(5)
+    expect(sorted[2].rating).toBe(2)
+    expect(sorted[3].rating).toBe(0)
+  })
 })
 
 describe('sortFavoriteImages', () => {

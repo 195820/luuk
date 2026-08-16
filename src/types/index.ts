@@ -38,6 +38,11 @@ export interface ElectronAPI {
   // 收藏
   toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) => Promise<boolean>
   getFavorites: () => Promise<Favorite[]>
+  setFavoriteRating: (libraryId: number, imagePath: string, rating: number) => Promise<void>
+  // 浏览历史
+  addHistory: (libraryId: number, imagePath: string) => Promise<void>
+  getHistory: (limit?: number) => Promise<HistoryItem[]>
+  clearHistory: () => Promise<void>
   // 缓存
   getCacheStats: () => Promise<{ count: number; sizeMB: number; utilization: number }>
   clearCache: () => Promise<void>
@@ -84,6 +89,22 @@ export interface FavoriteImage {
   format: string
   is_favorite: boolean
   favorited_at: string
+  rating?: number
+}
+
+// 浏览历史条目
+export interface HistoryItem {
+  library_id: number
+  library_name: string
+  library_root_path: string
+  image_path: string
+  viewed_at: string
+  id?: number
+  width?: number
+  height?: number
+  file_size?: number
+  format?: string
+  mediaType?: MediaType
 }
 
 // 文件夹树节点

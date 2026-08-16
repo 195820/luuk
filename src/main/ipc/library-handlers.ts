@@ -305,6 +305,40 @@ export function registerLibraryHandlers(): void {
     }));
   });
 
+  // 设置图片评分
+  ipcMain.handle('setFavoriteRating', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imagePath: string,
+    rating: number
+  ): Promise<void> => {
+    service.setFavoriteRating(libraryId, imagePath, rating);
+  });
+
+  // ==================== 浏览历史 IPC ====================
+
+  // 添加浏览历史
+  ipcMain.handle('addHistory', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imagePath: string
+  ): Promise<void> => {
+    service.addHistory(libraryId, imagePath);
+  });
+
+  // 获取最近浏览历史
+  ipcMain.handle('getHistory', async (
+    _event: Electron.IpcMainInvokeEvent,
+    limit?: number
+  ): Promise<any[]> => {
+    return service.getHistory(limit);
+  });
+
+  // 清空浏览历史
+  ipcMain.handle('clearHistory', async (): Promise<void> => {
+    service.clearHistory();
+  });
+
   // 获取缓存统计
   ipcMain.handle('getCacheStats', async (): Promise<{ count: number; sizeMB: number; utilization: number }> => {
     return service.getCacheStats();
@@ -433,6 +467,7 @@ const IPC_HANDLER_NAMES = [
   'getFavoriteFolderImages', 'getFavoriteFolderImageCount',
   'getSingleFavoriteImages', 'getSingleFavoriteCount',
   'getThumbnail', 'getThumbnails', 'toggleFavorite', 'getFavorites',
+  'setFavoriteRating', 'addHistory', 'getHistory', 'clearHistory',
   'getCacheStats', 'clearCache', 'readFile', 'fileExists',
   'loadFullImage', 'getMediaUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',

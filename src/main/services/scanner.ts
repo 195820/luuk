@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createHash } from 'crypto';
-import { ThumbnailsDB } from './database';
+import { ThumbnailsDB, type Image } from './database';
 import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
 import type { ScanResult } from '../../types';
 import { MEDIA_EXTENSIONS } from '../../types';
@@ -178,8 +178,11 @@ export class LibraryScanner {
       throw new Error(`库路径不存在：${this.libraryPath}`);
     }
 
-    // 获取数据库中已有的路径
-    const existingPaths = new Set(this.db.getAllPaths());
+    // 批量预载数据库中的已有记录（单次查询 → Map，避免逐文件查询）
+    const existingByPath = new Map<string, Image>();
+    for (const img of this.db.getAllImages()) {
+      existingByPath.set(img.relative_path, img);
+    }
     const scannedPaths = new Set<string>();
 
     // 收集需要预生成缩略图的文件
@@ -211,11 +214,12 @@ export class LibraryScanner {
         const mediaType = getMediaType(ext) || 'image';
 
         // 检查文件是否已存在
-        if (existingPaths.has(relativePath)) {
+        if (existingByPath.has(relativePath)) {
           // 文件已存在，检查是否需要更新
-          const existingImage = this.db.getImageByPath(relativePath);
+          const existingImage = existingByPath.get(relativePath);
 
-          if (existingImage && existingImage.modified_time === modifiedTime) {
+          // 未变化 + 文件大小相同 → 跳过（双条件增量，比仅比较时间更可靠）
+          if (existingImage && existingImage.modified_time === modifiedTime && existingImage.file_size === stat.size) {
             // 文件未变化，跳过
             result.skipped++;
             continue;
@@ -335,7 +339,7 @@ export class LibraryScanner {
     }
 
     // 检测已删除的文件
-    for (const existingPath of existingPaths) {
+    for (const existingPath of existingByPath.keys()) {
       if (!scannedPaths.has(existingPath)) {
         this.db.markAsDeleted(existingPath);
         result.deleted++;
