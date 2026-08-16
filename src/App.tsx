@@ -629,6 +629,8 @@ function App() {
         if (e.key === 'Escape') handleClose()
 
         if (e.key === ' ' || e.key === 'Spacebar') {
+          // 视频时 Space 由 ImageViewer 接管（播放/暂停），避免两处 window 监听器同时触发幻灯片
+          if ((currentImage as any)?.mediaType === 'video') return
           e.preventDefault()
           toggleSlideshow()
         }
@@ -651,7 +653,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite])
+  }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite, currentImage])
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
 

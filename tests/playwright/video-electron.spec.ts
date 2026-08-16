@@ -18,7 +18,7 @@ const ELECTRON_MAIN = path.join(PROJECT_ROOT, 'dist-electron/main.js');
 
 // 已知收藏夹视频
 // 注意: V4.mp4 和 V5.mp4 是 QuickTime 格式 (ftyp qt)，Chrome FFmpeg 无法解码
-// 详见: docs/06-故障排除.md -> 问题 3
+// 详见: docs/guides/故障排除.md
 const APP_URL = 'http://localhost:5173';
 const FAVORITE_VIDEOS = [
   { libraryId: 1, relativePath: 'rioko凉凉子 - NO.062 寝取られ [45P12V-1.02GB]/视频/V5.mp4', knownIssue: 'QuickTime format' },
@@ -616,24 +616,29 @@ electronTest.describe('分类5: 边界情况', () => {
       electronTest.skip(true, '当前不是视频');
     }
 
-    // 按 Space，观察是否同时触发幻灯片和播放/暂停
-    await page.keyboard.press('Space');
-    await page.waitForTimeout(1000);
-
-    const hasSlideshow = await page.locator('.slideshow-bar').isVisible().catch(() => false);
-    const hasVideoPlaying = await page.evaluate(() => {
+    // 记录按压 Space 前的状态
+    const beforePlaying = await page.evaluate(() => {
       const video = document.querySelector('video');
       return video ? !video.paused : false;
     });
+    const beforeSlideshow = await page.locator('.slideshow-bar').isVisible().catch(() => false);
 
-    console.log(`5.4 Space 后 - 幻灯片: ${hasSlideshow}, 视频播放: ${hasVideoPlaying}`);
+    // 按 Space
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(1000);
 
-    // 如果两者都为 true，确认存在冲突
-    if (hasSlideshow && hasVideoPlaying) {
-      console.log('⚠️ 5.4 确认冲突: Space 同时触发了幻灯片和视频播放');
-    } else {
-      console.log('✅ 5.4 无冲突: 只有一个行为被触发');
-    }
+    const afterPlaying = await page.evaluate(() => {
+      const video = document.querySelector('video');
+      return video ? !video.paused : false;
+    });
+    const afterSlideshow = await page.locator('.slideshow-bar').isVisible().catch(() => false);
+
+    console.log(`5.4 Space 后 - 幻灯片: ${beforeSlideshow} → ${afterSlideshow}, 视频播放: ${beforePlaying} → ${afterPlaying}`);
+
+    // 修复核心断言：视频上按 Space 不应把幻灯片打开（App.tsx 对视频跳过 toggleSlideshow）
+    // 视频播放切换依赖文件可解码性，仅记录不强制断言
+    expect(afterSlideshow).toBe(false);
+    console.log('✅ 5.4 通过: 视频上按 Space 不触发幻灯片');
   });
 
   electronTest('5.5 videoRef 在 render 时为 null 的风险', async ({ page }) => {
