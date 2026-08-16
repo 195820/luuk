@@ -366,6 +366,25 @@ function App() {
     setSlideshow(prev => ({ ...prev, enabled: false }))
   }, [])
 
+  // 切换库：查看器打开时先退出，避免残留上一库的图片/索引
+  const handleSwitchLibrary = useCallback((value: string) => {
+    if (viewMode === 'viewer') {
+      setViewMode('grid')
+      setCurrentImage(null)
+      setSlideshow(prev => ({ ...prev, enabled: false }))
+      setIsVideoPlaying(false)
+    }
+    setCurrentIndex(0)
+    setFavoriteImageIndex(0)
+
+    if (value === 'favorites') {
+      setCurrentLibrary(FAVORITE_LIBRARY_ID)
+      loadFavoriteImages()
+    } else {
+      setCurrentLibrary(value ? Number(value) : null)
+    }
+  }, [viewMode, setCurrentImage, setCurrentLibrary, loadFavoriteImages])
+
   const toggleSlideshow = useCallback(() => {
     setSlideshow(prev => ({ ...prev, enabled: !prev.enabled }))
   }, [])
@@ -740,15 +759,7 @@ function App() {
             </button>
             <select
               value={currentLibraryId ?? ''}
-              onChange={(e) => {
-                const value = e.target.value
-                if (value === 'favorites') {
-                  setCurrentLibrary(FAVORITE_LIBRARY_ID)
-                  loadFavoriteImages()
-                } else {
-                  setCurrentLibrary(value ? Number(value) : null)
-                }
-              }}
+              onChange={(e) => handleSwitchLibrary(e.target.value)}
               className="h-9 pl-3 pr-8 rounded-md border border-border bg-glass-l1 text-text-primary text-body cursor-pointer outline-none transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
             >
               <option value="favorites">♡ 收藏夹 ({favoriteCount})</option>
