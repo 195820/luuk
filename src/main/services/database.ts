@@ -189,6 +189,12 @@ export class MasterDB {
     stmt.run(libraryId, imagePath);
   }
 
+  removeHistoryByPath(libraryId: number, imagePath: string): void {
+    if (!this.db) return;
+    this.db.prepare('DELETE FROM history WHERE library_id = ? AND image_path = ?')
+      .run(libraryId, imagePath);
+  }
+
   /**
    * 设置图片评分（评分隐含收藏：不存在收藏记录时自动创建）
    * 已存在的收藏保留 tags，仅更新 rating

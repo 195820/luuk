@@ -173,6 +173,11 @@ export class FileService {
           logger.error('FileService', '收藏清理失败（文件已移入回收站）', e);
         }
         try {
+          masterDB.removeHistoryByPath(libraryId, relativePath);
+        } catch (e) {
+          logger.error('FileService', '历史记录清理失败（文件已移入回收站）', e);
+        }
+        try {
           thumbsDB.markAsDeleted(relativePath);
         } catch (e) {
           logger.error('FileService', 'thumbs.db 软删除失败（文件已移入回收站）', e);
