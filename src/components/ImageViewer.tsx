@@ -16,6 +16,8 @@ import {
   Pause,
   Volume2,
   VolumeX,
+  Image as WallpaperIcon,
+  FolderSearch,
 } from 'lucide-react'
 import { isBrowserPlayableVideo } from '../utils/media'
 import { formatFileSize } from '../utils/format'
@@ -23,6 +25,7 @@ import { logger } from '../utils/logger'
 import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
+import { FileContextMenu } from './file-ops/FileContextMenu'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -104,6 +107,33 @@ export function ImageViewer({
   const [videoDuration, setVideoDuration] = useState(0)
   const [videoVolume, setVideoVolume] = useState(1)
   const [isGifPlaying, setIsGifPlaying] = useState(true)
+  // 右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY })
+  }, [])
+
+  const handleMenuAction = useCallback(async (action: string) => {
+    if (!libraryId || !imagePath) return
+    switch (action) {
+      case 'copyPath':
+        await navigator.clipboard.writeText(imagePath)
+        break
+      case 'setWallpaper':
+        await window.electronAPI.setWallpaper(libraryId, imagePath)
+        break
+      case 'showInExplorer':
+        await window.electronAPI.showInExplorer(libraryId, imagePath)
+        break
+      case 'delete':
+        await window.electronAPI.deleteFiles(libraryId, [imagePath])
+        onClose?.()
+        break
+    }
+    setContextMenu(null)
+  }, [libraryId, imagePath, onClose])
 
   const formatTime = (seconds: number): string => {
     if (!isFinite(seconds)) return '0:00'
@@ -308,7 +338,7 @@ export function ImageViewer({
   const toolbarBtnActiveClass = 'bg-overlay-selected text-text-primary'
 
   return (
-    <div className="relative w-full h-full flex flex-col overflow-hidden">
+    <div className="relative w-full h-full flex flex-col overflow-hidden" onContextMenu={handleContextMenu}>
       {/* 工具栏 */}
       <motion.div
         className="relative z-10 h-10 px-4 flex items-center gap-4 bg-canvas [-webkit-app-region:drag] flex-shrink-0"
@@ -399,6 +429,31 @@ export function ImageViewer({
               </button>
             </motion.div>
           </>
+        )}
+
+        {/* 文件操作按钮（壁纸、资源管理器） */}
+        {libraryId && imagePath && (
+          <motion.div
+            className="flex items-center gap-1 [-webkit-app-region:no-drag]"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...motionPresets.fade, delay: 0.28 }}
+          >
+            <button
+              onClick={() => window.electronAPI.setWallpaper(libraryId, imagePath)}
+              className={toolbarBtnClass}
+              title="设为壁纸"
+            >
+              <WallpaperIcon size={16} />
+            </button>
+            <button
+              onClick={() => window.electronAPI.showInExplorer(libraryId, imagePath)}
+              className={toolbarBtnClass}
+              title="在资源管理器中显示"
+            >
+              <FolderSearch size={16} />
+            </button>
+          </motion.div>
         )}
 
         <motion.div
@@ -644,6 +699,16 @@ export function ImageViewer({
           </button>
           <span className="text-xs font-bold text-accent tracking-[1px]">GIF</span>
         </div>
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onAction={handleMenuAction}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </div>
   )
