@@ -98,8 +98,8 @@ export class FileService {
     try {
       thumbsDB.updateRelativePath(oldRelativePath, newRelativePath);
     } catch (e) {
-      logger.error('thumbs.db 更新失败，回滚物理操作', e);
-      try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('回滚失败'); }
+      logger.error('FileService', 'thumbs.db 更新失败，回滚物理操作', e);
+      try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('FileService', '回滚失败'); }
       return { success: false, error: '数据库更新失败，已回滚' };
     }
 
@@ -107,13 +107,13 @@ export class FileService {
     try {
       masterDB.updateImagePath(libraryId, oldRelativePath, newRelativePath);
     } catch (e) {
-      logger.error('master.db 更新失败，回滚所有操作', e);
-      try { thumbsDB.updateRelativePath(newRelativePath, oldRelativePath); } catch { logger.error('thumbs.db 回滚失败'); }
-      try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('物理回滚失败'); }
+      logger.error('FileService', 'master.db 更新失败，回滚所有操作', e);
+      try { thumbsDB.updateRelativePath(newRelativePath, oldRelativePath); } catch { logger.error('FileService', 'thumbs.db 回滚失败'); }
+      try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('FileService', '物理回滚失败'); }
       return { success: false, error: '数据库更新失败，已回滚' };
     }
 
-    logger.info(`重命名: ${oldRelativePath} -> ${newRelativePath}`);
+    logger.info('FileService', `重命名: ${oldRelativePath} -> ${newRelativePath}`);
     return { success: true };
   }
 
@@ -165,23 +165,23 @@ export class FileService {
         try {
           masterDB.addDeletedFile(libraryId, relativePath, fileSize);
         } catch (e) {
-          logger.error('deleted_files 记录失败（文件已移入回收站）', e);
+          logger.error('FileService', 'deleted_files 记录失败（文件已移入回收站）', e);
         }
         try {
           masterDB.removeFavorite(libraryId, relativePath);
         } catch (e) {
-          logger.error('收藏清理失败（文件已移入回收站）', e);
+          logger.error('FileService', '收藏清理失败（文件已移入回收站）', e);
         }
         try {
           thumbsDB.markAsDeleted(relativePath);
         } catch (e) {
-          logger.error('thumbs.db 软删除失败（文件已移入回收站）', e);
+          logger.error('FileService', 'thumbs.db 软删除失败（文件已移入回收站）', e);
         }
 
         succeeded.push({ path: relativePath });
-        logger.info(`已移入回收站: ${relativePath}`);
+        logger.info('FileService', `已移入回收站: ${relativePath}`);
       } catch (e) {
-        logger.error('删除失败', e);
+        logger.error('FileService', '删除失败', e);
         failed.push({ path: relativePath, error: (e as Error).message });
       }
     }
@@ -220,8 +220,8 @@ export class FileService {
         try {
           thumbsDB.updateRelativePath(relativePath, newRelativePath);
         } catch (e) {
-          logger.error('thumbs.db 更新失败，回滚物理操作', e);
-          try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('回滚失败'); }
+          logger.error('FileService', 'thumbs.db 更新失败，回滚物理操作', e);
+          try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('FileService', '回滚失败'); }
           failed.push({ path: relativePath, error: '数据库更新失败，已回滚' });
           continue;
         }
@@ -229,9 +229,9 @@ export class FileService {
         try {
           masterDB.updateImagePath(libraryId, relativePath, newRelativePath);
         } catch (e) {
-          logger.error('master.db 更新失败，回滚所有操作', e);
-          try { thumbsDB.updateRelativePath(newRelativePath, relativePath); } catch { logger.error('thumbs.db 回滚失败'); }
-          try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('物理回滚失败'); }
+          logger.error('FileService', 'master.db 更新失败，回滚所有操作', e);
+          try { thumbsDB.updateRelativePath(newRelativePath, relativePath); } catch { logger.error('FileService', 'thumbs.db 回滚失败'); }
+          try { await fsp.rename(newAbs, oldAbs); } catch { logger.error('FileService', '物理回滚失败'); }
           failed.push({ path: relativePath, error: '数据库更新失败，已回滚' });
           continue;
         }
@@ -281,7 +281,7 @@ export class FileService {
       await fsp.access(absPath);
       const setWallpaperFn = await getSetWallpaper();
       await setWallpaperFn(absPath);
-      logger.info(`壁纸已设置: ${relativePath}`);
+      logger.info('FileService', `壁纸已设置: ${relativePath}`);
       return { success: true };
     } catch (e) {
       return { success: false, error: (e as Error).message };

@@ -12,7 +12,7 @@ vi.mock('trash', () => ({ default: async (p: string) => { await fsp.rm(p, { forc
 vi.mock('wallpaper', () => ({ setWallpaper: async () => {} }));
 
 import { FileService } from '../file-service';
-import { MasterDB, ThumbnailsDB, getMasterDB, getThumbnailsDB, closeThumbnailsDB, closeAllDatabases } from '../database';
+import { MasterDB, getMasterDB, getThumbnailsDB, closeAllDatabases } from '../database';
 
 describe('FileService', () => {
   let fileService: FileService;
