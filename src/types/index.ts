@@ -49,6 +49,16 @@ export interface ElectronAPI {
   // 文件操作
   readFile: (filePath: string) => Promise<Buffer>
   fileExists: (filePath: string) => Promise<boolean>
+  // 文件操作（复制/移动/重命名/删除/壁纸/资源管理器）
+  renameFile: (libraryId: number, oldPath: string, newPath: string) => Promise<FileOperationResult>
+  batchRename: (libraryId: number, renames: Array<{ oldPath: string; newPath: string }>) => Promise<BatchRenameResult>
+  moveFiles: (libraryId: number, paths: string[], targetDir: string) => Promise<BatchResult>
+  copyFiles: (libraryId: number, paths: string[], targetDir: string) => Promise<BatchResult>
+  deleteFiles: (libraryId: number, paths: string[]) => Promise<BatchResult>
+  setWallpaper: (libraryId: number, relativePath: string) => Promise<FileOperationResult>
+  showInExplorer: (libraryId: number, relativePath: string) => Promise<FileOperationResult>
+  selectDestinationFolder: (libraryId: number) => Promise<string | null | { error: string }>
+  getDeletedFiles: (limit?: number) => Promise<DeletedFileRecord[]>
   // 初始化服务
   initImageService: () => Promise<void>
   // 媒体相关
@@ -259,4 +269,29 @@ export interface Settings {
   preloadCount: number
   lazyLoadThreshold: number
   supportedFormats: string[]
+}
+
+// ==================== 文件操作类型 ====================
+
+export interface FileOperationResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface BatchResult {
+  succeeded: Array<{ path: string }>;
+  failed: Array<{ path: string; error: string }>;
+}
+
+export interface BatchRenameResult {
+  succeeded: Array<{ oldPath: string; newPath: string }>;
+  failed: Array<{ oldPath: string; newPath: string; error: string }>;
+}
+
+export interface DeletedFileRecord {
+  id: number;
+  library_id: number;
+  original_path: string;
+  deleted_at: string;
+  file_size: number;
 }
