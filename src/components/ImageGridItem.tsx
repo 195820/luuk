@@ -5,9 +5,10 @@ import { logger } from '@/utils/logger'
 export interface ImageGridItemProps {
   image: ImageGridItem
   isSelected: boolean
-  onClick?: (image: ImageGridItem) => void
+  onClick?: (image: ImageGridItem, e: React.MouseEvent) => void
   onDoubleClick?: (image: ImageGridItem) => void
   onToggleFavorite?: (image: ImageGridItem) => void
+  onContextMenu?: (image: ImageGridItem, e: React.MouseEvent) => void
   thumbnailSize: number
   formatFileSize: (bytes?: number) => string
   libraryId: number
@@ -21,6 +22,7 @@ export function ImageGridItemComponent({
   onClick,
   onDoubleClick,
   onToggleFavorite,
+  onContextMenu,
   thumbnailSize,
   formatFileSize,
   libraryId,
@@ -121,13 +123,18 @@ export function ImageGridItemComponent({
     }
   }, [libraryId, image.id, realImageId, isFavoriteLibrary, image.libraryId, hasLoadedImageInfo, image.alt])
 
-  const handleClick = useCallback(() => {
-    onClick?.(image)
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    onClick?.(image, e)
   }, [onClick, image])
 
   const handleDoubleClick = useCallback(() => {
     onDoubleClick?.(image)
   }, [onDoubleClick, image])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    onContextMenu?.(image, e)
+  }, [onContextMenu, image])
 
   const handleFavoriteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -146,6 +153,7 @@ export function ImageGridItemComponent({
       className={`grid-card group${isSelected ? ' selected' : ''}`}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
       style={{
         width: isMasonry ? '100%' : thumbnailSize,
         flexShrink: 0,
