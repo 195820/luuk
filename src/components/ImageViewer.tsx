@@ -131,6 +131,9 @@ export function ImageViewer({
         await window.electronAPI.deleteFiles(libraryId, [imagePath])
         onClose?.()
         break
+      // TODO: rename/move/copy 待 Task 10 批量重命名对话框完成后接入
+      default:
+        break
     }
     setContextMenu(null)
   }, [libraryId, imagePath, onClose])
