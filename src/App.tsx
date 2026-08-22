@@ -19,6 +19,7 @@ import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore, useHistoryStore } from './stores'
 import { RecentHistory } from './components/RecentHistory'
+import { RecycleBinView } from './components/file-ops/RecycleBinView'
 import type { Library, HistoryItem } from './types'
 import { logger } from './utils/logger'
 
@@ -27,6 +28,7 @@ const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
+  const [appView, setAppView] = useState<'main' | 'recycleBin'>('main')
   const [thumbnailSize, setThumbnailSize] = useState(200)
   const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
   const [selectedInterval, setSelectedInterval] = useState(5)
@@ -910,27 +912,43 @@ function App() {
                 onOpen={handleOpenHistory}
                 onClear={clearHistory}
               />
+              {/* 回收站入口 */}
+              <button
+                onClick={() => setAppView(appView === 'recycleBin' ? 'main' : 'recycleBin')}
+                className={`w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-md text-sm transition-colors duration-150 ${
+                  appView === 'recycleBin'
+                    ? 'bg-overlay-accent text-text-primary'
+                    : 'text-text-secondary hover:bg-canvas-tertiary'
+                }`}
+              >
+                <Trash2 size={14} />
+                回收站
+              </button>
             </div>
           </aside>
         )}
 
         {/* 主内容区域 */}
         <main className="flex-1 overflow-hidden relative bg-canvas h-full">
-          {isLoading && !currentImage && (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
-              <div className="w-10 h-10 border-2 border-border border-t-text-muted rounded-full animate-spin"></div>
-              <span>加载中...</span>
-            </div>
-          )}
+          {appView === 'recycleBin' ? (
+            <RecycleBinView />
+          ) : (
+            <>
+              {isLoading && !currentImage && (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
+                  <div className="w-10 h-10 border-2 border-border border-t-text-muted rounded-full animate-spin"></div>
+                  <span>加载中...</span>
+                </div>
+              )}
 
-          {error && (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
-              <AlertTriangle size={32} className="text-error opacity-80" />
-              <span>{error}</span>
-            </div>
-          )}
+              {error && (
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-text-secondary">
+                  <AlertTriangle size={32} className="text-error opacity-80" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-          {isFavoriteLibrary && favoriteCount === 0 ? (
+              {isFavoriteLibrary && favoriteCount === 0 ? (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-text-secondary">
               <h2 className="text-xl m-0 text-text-primary font-medium tracking-tight">
                 <Heart size={20} className="inline-block mr-2 text-favorite" />还没有收藏
@@ -1048,6 +1066,8 @@ function App() {
               />
             </div>
           ) : null}
+            </>
+          )}
         </main>
       </div>
 
