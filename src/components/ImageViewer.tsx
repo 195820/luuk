@@ -26,6 +26,7 @@ import { ImageLightbox, lightboxActions } from './ImageLightbox'
 import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
+import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -109,6 +110,7 @@ export function ImageViewer({
   const [isGifPlaying, setIsGifPlaying] = useState(true)
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+  const [renameDialog, setRenameDialog] = useState(false)
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -131,8 +133,8 @@ export function ImageViewer({
         await window.electronAPI.deleteFiles(libraryId, [imagePath])
         onClose?.()
         break
-      // TODO: rename/move/copy 待 Task 10 批量重命名对话框完成后接入
-      default:
+      case 'rename':
+        setRenameDialog(true)
         break
     }
     setContextMenu(null)
@@ -711,6 +713,15 @@ export function ImageViewer({
           y={contextMenu.y}
           onAction={handleMenuAction}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* 批量重命名对话框 */}
+      {renameDialog && libraryId && imagePath && (
+        <BatchRenameDialog
+          libraryId={libraryId}
+          initialPaths={[imagePath]}
+          onClose={() => setRenameDialog(false)}
         />
       )}
     </div>

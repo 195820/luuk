@@ -3,6 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { formatFileSize } from '../utils/format'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
+import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { useImageStore } from '@/stores/imageStore'
 
 export interface ImageGridItem {
@@ -52,6 +53,7 @@ export function ImageGrid({
   // 多选状态与右键菜单
   const { selectedPaths, toggleSelection } = useImageStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
+  const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = images.filter((img) => {
@@ -147,7 +149,11 @@ export function ImageGrid({
         useImageStore.getState().clearSelection()
         break
       }
-      // rename/move/copy 在 Task 10 的对话框中处理
+      case 'rename': {
+        const pathsToRename = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        setRenameDialog({ paths: pathsToRename })
+        break
+      }
     }
     setContextMenu(null)
   }, [contextMenu, libraryId, selectedPaths])
@@ -211,6 +217,13 @@ export function ImageGrid({
           y={contextMenu.y}
           onAction={handleMenuAction}
           onClose={() => setContextMenu(null)}
+        />
+      )}
+      {renameDialog && (
+        <BatchRenameDialog
+          libraryId={libraryId}
+          initialPaths={renameDialog.paths}
+          onClose={() => setRenameDialog(null)}
         />
       )}
     </div>
