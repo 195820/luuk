@@ -160,9 +160,23 @@ export class FileService {
         } catch { /* stat 失败不阻塞删除 */ }
 
         await trash(absPath);
-        masterDB.addDeletedFile(libraryId, relativePath, fileSize);
-        masterDB.removeFavorite(libraryId, relativePath);
-        thumbsDB.markAsDeleted(relativePath);
+
+        // trash 成功后，DB 操作失败需记录告警（文件已移入回收站，无法物理回滚）
+        try {
+          masterDB.addDeletedFile(libraryId, relativePath, fileSize);
+        } catch (e) {
+          logger.error('deleted_files 记录失败（文件已移入回收站）', e);
+        }
+        try {
+          masterDB.removeFavorite(libraryId, relativePath);
+        } catch (e) {
+          logger.error('收藏清理失败（文件已移入回收站）', e);
+        }
+        try {
+          thumbsDB.markAsDeleted(relativePath);
+        } catch (e) {
+          logger.error('thumbs.db 软删除失败（文件已移入回收站）', e);
+        }
 
         succeeded.push({ path: relativePath });
         logger.info(`已移入回收站: ${relativePath}`);
@@ -192,6 +206,10 @@ export class FileService {
       const oldAbs = this.toAbsolute(rootPath, relativePath);
       const fileName = path.basename(relativePath);
       const newRelativePath = targetRelativeDir ? `${targetRelativeDir}/${fileName}` : fileName;
+
+      const newPathError = this.validatePath(rootPath, newRelativePath);
+      if (newPathError) { failed.push({ path: relativePath, error: newPathError }); continue; }
+
       const newAbs = this.toAbsolute(rootPath, newRelativePath);
 
       try {
