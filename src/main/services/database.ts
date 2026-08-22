@@ -104,6 +104,16 @@ export class MasterDB {
 
       CREATE INDEX IF NOT EXISTS idx_history_time ON history(viewed_at DESC);
       CREATE INDEX IF NOT EXISTS idx_libraries_status ON libraries(status);
+
+      CREATE TABLE IF NOT EXISTS deleted_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL,
+        original_path TEXT NOT NULL,
+        file_size INTEGER,
+        deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (library_id) REFERENCES libraries(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_deleted_time ON deleted_files(deleted_at DESC);
     `);
   }
 
@@ -481,6 +491,74 @@ export class MasterDB {
   clearHistory(): void {
     if (!this.db) return;
     this.db.prepare('DELETE FROM history').run();
+  }
+
+  // ==================== 路径级联更新 ====================
+
+  updateImagePath(libraryId: number, oldPath: string, newPath: string): void {
+    if (!this.db) return;
+    const normalizedOld = oldPath.replace(/\\/g, '/');
+    const normalizedNew = newPath.replace(/\\/g, '/');
+
+    const tx = this.db.transaction(() => {
+      this.db!.prepare(
+        'UPDATE favorites SET image_path = ? WHERE library_id = ? AND image_path = ?'
+      ).run(normalizedNew, libraryId, normalizedOld);
+
+      this.db!.prepare(
+        'UPDATE history SET image_path = ? WHERE library_id = ? AND image_path = ?'
+      ).run(normalizedNew, libraryId, normalizedOld);
+    });
+    tx();
+  }
+
+  updateFolderPath(libraryId: number, oldFolderPath: string, newFolderPath: string): void {
+    if (!this.db) return;
+    const normalizedOld = oldFolderPath.replace(/\\/g, '/');
+    const normalizedNew = newFolderPath.replace(/\\/g, '/');
+    const likePattern = normalizedOld + '/%';
+
+    const tx = this.db.transaction(() => {
+      // favorite_folders 前缀匹配
+      const folders = this.db!.prepare(
+        'SELECT id, folder_path FROM favorite_folders WHERE library_id = ? AND (folder_path = ? OR folder_path LIKE ?)'
+      ).all(libraryId, normalizedOld, likePattern) as Array<{ id: number; folder_path: string }>;
+
+      const updateFolder = this.db!.prepare('UPDATE favorite_folders SET folder_path = ? WHERE id = ?');
+      for (const row of folders) {
+        const fp = row.folder_path.replace(/\\/g, '/');
+        const newPath = fp === normalizedOld ? normalizedNew : normalizedNew + fp.slice(normalizedOld.length);
+        updateFolder.run(newPath, row.id);
+      }
+
+      // favorites/history 前缀匹配
+      for (const table of ['favorites', 'history']) {
+        this.db!.prepare(
+          `UPDATE ${table} SET image_path = ? || SUBSTR(image_path, LENGTH(?) + 1)
+           WHERE library_id = ? AND (image_path = ? OR image_path LIKE ?)`
+        ).run(normalizedNew, normalizedOld, libraryId, normalizedOld, likePattern);
+      }
+    });
+    tx();
+  }
+
+  // ==================== 已删除文件记录 ====================
+
+  addDeletedFile(libraryId: number, originalPath: string, fileSize: number): void {
+    if (!this.db) return;
+    this.db.prepare(
+      'INSERT INTO deleted_files (library_id, original_path, file_size) VALUES (?, ?, ?)'
+    ).run(libraryId, originalPath.replace(/\\/g, '/'), fileSize);
+  }
+
+  getDeletedFiles(limit: number = 100): Array<{ id: number; library_id: number; original_path: string; deleted_at: string; file_size: number }> {
+    if (!this.db) return [];
+    return this.db.prepare('SELECT * FROM deleted_files ORDER BY deleted_at DESC LIMIT ?').all(limit) as any[];
+  }
+
+  removeDeletedFile(id: number): void {
+    if (!this.db) return;
+    this.db.prepare('DELETE FROM deleted_files WHERE id = ?').run(id);
   }
 
   close(): void {
@@ -952,6 +1030,12 @@ export class ThumbnailsDB {
       normalizedPath,
       folderPath
     ) as { count: number }).count;
+  }
+
+  updateRelativePath(oldPath: string, newPath: string): void {
+    if (!this.db) return;
+    this.db.prepare('UPDATE images SET relative_path = ? WHERE relative_path = ?')
+      .run(newPath.replace(/\\/g, '/'), oldPath.replace(/\\/g, '/'));
   }
 
   close(): void {
