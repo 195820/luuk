@@ -148,10 +148,14 @@ export function MasonryGrid({
 
   // 点击处理（Ctrl/Shift 多选）
   const handleItemClick = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
-    if (e.shiftKey && lastSelectedPath && image.imagePath) {
+    if (e.shiftKey && image.imagePath) {
       e.preventDefault()
-      const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
-      selectRange(lastSelectedPath, image.imagePath, allPaths)
+      if (lastSelectedPath) {
+        const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
+        selectRange(lastSelectedPath, image.imagePath, allPaths)
+      } else {
+        toggleSelection(image.imagePath)
+      }
       return
     }
     if (e.ctrlKey || e.metaKey) {
@@ -244,7 +248,7 @@ export function MasonryGrid({
                   >
                     <ImageGridItemComponent
                       image={image}
-                      isSelected={selectedId === image.id}
+                      isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
                       onClick={handleItemClick}
                       onDoubleClick={onImageDoubleClick}
                       onToggleFavorite={onToggleFavorite}

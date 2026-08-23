@@ -114,10 +114,15 @@ export function ImageGrid({
 
   // Ctrl/Shift 多选点击处理
   const handleItemClick = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
-    if (e.shiftKey && lastSelectedPath && image.imagePath) {
+    if (e.shiftKey && image.imagePath) {
       e.preventDefault()
-      const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
-      selectRange(lastSelectedPath, image.imagePath, allPaths)
+      if (lastSelectedPath) {
+        const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
+        selectRange(lastSelectedPath, image.imagePath, allPaths)
+      } else {
+        // 首次 Shift+click 无锚点：选中当前项并设为锚点
+        toggleSelection(image.imagePath)
+      }
       return
     }
     if (e.ctrlKey || e.metaKey) {
