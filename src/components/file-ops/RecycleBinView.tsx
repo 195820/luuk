@@ -57,6 +57,8 @@ export function RecycleBinView() {
                   {file.original_path}
                 </div>
                 <div className="text-xs text-text-muted mt-1.5 flex items-center gap-2">
+                  <span className="text-text-secondary">{file.library_name || '未知库'}</span>
+                  <span className="text-border">·</span>
                   <span>{new Date(file.deleted_at).toLocaleString()}</span>
                   <span className="text-border">·</span>
                   <span>{formatFileSize(file.file_size)}</span>

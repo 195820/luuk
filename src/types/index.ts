@@ -291,6 +291,7 @@ export interface BatchRenameResult {
 export interface DeletedFileRecord {
   id: number;
   library_id: number;
+  library_name: string;
   original_path: string;
   deleted_at: string;
   file_size: number;

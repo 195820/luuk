@@ -557,9 +557,11 @@ export class MasterDB {
     ).run(libraryId, originalPath.replace(/\\/g, '/'), fileSize);
   }
 
-  getDeletedFiles(limit: number = 100): Array<{ id: number; library_id: number; original_path: string; deleted_at: string; file_size: number }> {
+  getDeletedFiles(limit: number = 100): Array<{ id: number; library_id: number; library_name: string; original_path: string; deleted_at: string; file_size: number }> {
     if (!this.db) return [];
-    return this.db.prepare('SELECT * FROM deleted_files ORDER BY deleted_at DESC LIMIT ?').all(limit) as any[];
+    return this.db.prepare(
+      'SELECT d.*, l.name AS library_name FROM deleted_files d LEFT JOIN libraries l ON d.library_id = l.id ORDER BY d.deleted_at DESC LIMIT ?'
+    ).all(limit) as any[];
   }
 
   removeDeletedFile(id: number): void {
