@@ -51,7 +51,7 @@ export function ImageGrid({
   const scrollRestoreRef = useRef<boolean>(true)
 
   // 多选状态与右键菜单
-  const { selectedPaths, toggleSelection } = useImageStore()
+  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useImageStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
@@ -114,13 +114,19 @@ export function ImageGrid({
 
   // Ctrl/Shift 多选点击处理
   const handleItemClick = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
-    if (e.ctrlKey || e.shiftKey) {
+    if (e.shiftKey && lastSelectedPath && image.imagePath) {
+      e.preventDefault()
+      const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
+      selectRange(lastSelectedPath, image.imagePath, allPaths)
+      return
+    }
+    if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       if (image.imagePath) toggleSelection(image.imagePath)
       return
     }
     onImageClick?.(image)
-  }, [onImageClick, toggleSelection])
+  }, [onImageClick, toggleSelection, selectRange, lastSelectedPath, displayImages])
 
   // 右键菜单处理
   const handleContextMenu = useCallback((image: ImageGridItem, e: React.MouseEvent) => {

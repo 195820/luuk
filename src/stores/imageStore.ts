@@ -128,7 +128,9 @@ interface ImageState {
 
   // 多选状态（文件操作批量选择）
   selectedPaths: Set<string>
+  lastSelectedPath: string | null
   toggleSelection: (path: string) => void
+  selectRange: (fromPath: string, toPath: string, allPaths: string[]) => void
   selectAll: () => void
   clearSelection: () => void
   getSelectedPaths: () => string[]
@@ -178,6 +180,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
     status: 'scanning',
   },
   selectedPaths: new Set<string>(),
+  lastSelectedPath: null,
 
   // 初始化服务
   initialize: async () => {
@@ -692,7 +695,19 @@ export const useImageStore = create<ImageState>((set, get) => ({
   toggleSelection: (path: string) => {
     const next = new Set(get().selectedPaths)
     if (next.has(path)) next.delete(path); else next.add(path)
-    set({ selectedPaths: next })
+    set({ selectedPaths: next, lastSelectedPath: path })
+  },
+
+  selectRange: (fromPath: string, toPath: string, allPaths: string[]) => {
+    const fromIdx = allPaths.indexOf(fromPath)
+    const toIdx = allPaths.indexOf(toPath)
+    if (fromIdx < 0 || toIdx < 0) return
+    const start = Math.min(fromIdx, toIdx)
+    const end = Math.max(fromIdx, toIdx)
+    const rangePaths = allPaths.slice(start, end + 1)
+    const next = new Set(get().selectedPaths)
+    for (const p of rangePaths) next.add(p)
+    set({ selectedPaths: next, lastSelectedPath: toPath })
   },
 
   selectAll: () => {
@@ -700,7 +715,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
     set({ selectedPaths: new Set(allPaths) })
   },
 
-  clearSelection: () => set({ selectedPaths: new Set() }),
+  clearSelection: () => set({ selectedPaths: new Set(), lastSelectedPath: null }),
 
   getSelectedPaths: () => Array.from(get().selectedPaths),
 }))
