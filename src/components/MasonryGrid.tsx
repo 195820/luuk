@@ -1,7 +1,10 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
+import { FileContextMenu } from './file-ops/FileContextMenu'
+import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
+import { useImageStore } from '@/stores/imageStore'
 
 export interface MasonryGridItem extends ImageGridItem {
   aspectRatio?: number
@@ -41,6 +44,11 @@ export function MasonryGrid({
   const [columnHeights, setColumnHeights] = useState<number[]>([])
   const [columnTops, setColumnTops] = useState<number[][]>([])
   const scrollRestoreRef = useRef<boolean>(true)
+
+  // 多选 + 右键菜单
+  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useImageStore()
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
+  const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = useMemo(() => images.filter((img) => {
@@ -138,6 +146,64 @@ export function MasonryGrid({
     }
   }, [handleScroll])
 
+  // 点击处理（Ctrl/Shift 多选）
+  const handleItemClick = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
+    if (e.shiftKey && lastSelectedPath && image.imagePath) {
+      e.preventDefault()
+      const allPaths = displayImages.map(img => img.imagePath || '').filter(Boolean)
+      selectRange(lastSelectedPath, image.imagePath, allPaths)
+      return
+    }
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      if (image.imagePath) toggleSelection(image.imagePath)
+      return
+    }
+    onImageClick?.(image)
+  }, [onImageClick, toggleSelection, selectRange, lastSelectedPath, displayImages])
+
+  // 右键菜单
+  const handleContextMenu = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
+    setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '' })
+  }, [])
+
+  // 菜单动作
+  const handleMenuAction = useCallback(async (action: string) => {
+    if (!contextMenu) return
+    const imagePath = contextMenu.imagePath
+
+    switch (action) {
+      case 'copyPath':
+        await navigator.clipboard.writeText(imagePath)
+        break
+      case 'setWallpaper':
+        await window.electronAPI.setWallpaper(libraryId, imagePath)
+        break
+      case 'showInExplorer':
+        await window.electronAPI.showInExplorer(libraryId, imagePath)
+        break
+      case 'delete': {
+        const pathsToDelete = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        const result = await window.electronAPI.deleteFiles(libraryId, pathsToDelete)
+        if (result.failed.length > 0) {
+          useImageStore.getState().setError(`${result.failed.length} 个文件删除失败：${result.failed[0].error}`)
+        }
+        await useImageStore.getState().loadImages()
+        useImageStore.getState().clearSelection()
+        break
+      }
+      case 'rename': {
+        const pathsToRename = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        setRenameDialog({ paths: pathsToRename })
+        break
+      }
+      // move/copy 待后续实现
+      default:
+        break
+    }
+    setContextMenu(null)
+  }, [contextMenu, libraryId, selectedPaths])
+
   return (
     <div
       ref={parentRef}
@@ -179,9 +245,10 @@ export function MasonryGrid({
                     <ImageGridItemComponent
                       image={image}
                       isSelected={selectedId === image.id}
-                      onClick={onImageClick}
+                      onClick={handleItemClick}
                       onDoubleClick={onImageDoubleClick}
                       onToggleFavorite={onToggleFavorite}
+                      onContextMenu={handleContextMenu}
                       thumbnailSize={thumbnailSize}
                       formatFileSize={formatFileSize}
                       libraryId={libraryId}
@@ -195,6 +262,19 @@ export function MasonryGrid({
           )
         })}
       </div>
+      {contextMenu && (
+        <FileContextMenu
+          x={contextMenu.x} y={contextMenu.y}
+          onAction={handleMenuAction} onClose={() => setContextMenu(null)}
+        />
+      )}
+      {renameDialog && (
+        <BatchRenameDialog
+          libraryId={libraryId}
+          initialPaths={renameDialog.paths}
+          onClose={() => setRenameDialog(null)}
+        />
+      )}
     </div>
   )
 }
