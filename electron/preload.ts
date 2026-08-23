@@ -83,6 +83,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 文件操作
   readFile: (filePath: string) => ipcRenderer.invoke('readFile', filePath),
   fileExists: (filePath: string) => ipcRenderer.invoke('fileExists', filePath),
+  // 文件操作（复制/移动/重命名/删除/壁纸/资源管理器）
+  renameFile: (libraryId: number, oldPath: string, newPath: string) =>
+    ipcRenderer.invoke('renameFile', libraryId, oldPath, newPath),
+  batchRename: (libraryId: number, renames: Array<{ oldPath: string; newPath: string }>) =>
+    ipcRenderer.invoke('batchRename', libraryId, renames),
+  moveFiles: (libraryId: number, paths: string[], targetDir: string) =>
+    ipcRenderer.invoke('moveFiles', libraryId, paths, targetDir),
+  copyFiles: (libraryId: number, paths: string[], targetDir: string) =>
+    ipcRenderer.invoke('copyFiles', libraryId, paths, targetDir),
+  deleteFiles: (libraryId: number, paths: string[]) =>
+    ipcRenderer.invoke('deleteFiles', libraryId, paths),
+  setWallpaper: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('setWallpaper', libraryId, relativePath),
+  showInExplorer: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('showInExplorer', libraryId, relativePath),
+  selectDestinationFolder: (libraryId: number) => ipcRenderer.invoke('selectDestinationFolder', libraryId),
+  getDeletedFiles: (limit?: number) => ipcRenderer.invoke('getDeletedFiles', limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
 

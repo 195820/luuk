@@ -3,6 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/ipc/library-handlers'
+import { registerFileHandlers } from '../src/main/ipc/file-handlers'
 import { closeAllDatabases } from '../src/main/services/database'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken } from '../src/main/services/media-registry'
@@ -188,6 +189,7 @@ app.whenReady().then(async () => {
 
   // 注册 IPC 处理器
   registerLibraryHandlers()
+  registerFileHandlers()
 
   createWindow()
 

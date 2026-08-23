@@ -125,6 +125,15 @@ interface ImageState {
   // 收藏文件夹选中状态
   selectedFavoriteFolder: string | null
   setSelectedFavoriteFolder: (folderPath: string | null) => void
+
+  // 多选状态（文件操作批量选择）
+  selectedPaths: Set<string>
+  lastSelectedPath: string | null
+  toggleSelection: (path: string) => void
+  selectRange: (fromPath: string, toPath: string, allPaths: string[]) => void
+  selectAll: () => void
+  clearSelection: () => void
+  getSelectedPaths: () => string[]
 }
 
 // LRU 缓存淘汰：超出上限时删除最早插入的条目
@@ -170,6 +179,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
     totalCount: 0,
     status: 'scanning',
   },
+  selectedPaths: new Set<string>(),
+  lastSelectedPath: null,
 
   // 初始化服务
   initialize: async () => {
@@ -679,4 +690,32 @@ export const useImageStore = create<ImageState>((set, get) => ({
       get().loadImages()
     }
   },
+
+  // 多选操作
+  toggleSelection: (path: string) => {
+    const next = new Set(get().selectedPaths)
+    if (next.has(path)) next.delete(path); else next.add(path)
+    set({ selectedPaths: next, lastSelectedPath: path })
+  },
+
+  selectRange: (fromPath: string, toPath: string, allPaths: string[]) => {
+    const fromIdx = allPaths.indexOf(fromPath)
+    const toIdx = allPaths.indexOf(toPath)
+    if (fromIdx < 0 || toIdx < 0) return
+    const start = Math.min(fromIdx, toIdx)
+    const end = Math.max(fromIdx, toIdx)
+    const rangePaths = allPaths.slice(start, end + 1)
+    const next = new Set(get().selectedPaths)
+    for (const p of rangePaths) next.add(p)
+    set({ selectedPaths: next, lastSelectedPath: toPath })
+  },
+
+  selectAll: () => {
+    const allPaths = get().images.map(img => img.relative_path)
+    set({ selectedPaths: new Set(allPaths) })
+  },
+
+  clearSelection: () => set({ selectedPaths: new Set(), lastSelectedPath: null }),
+
+  getSelectedPaths: () => Array.from(get().selectedPaths),
 }))
