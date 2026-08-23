@@ -130,6 +130,7 @@ export function ImageGrid({
 
   // 右键菜单处理
   const handleContextMenu = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
+    console.log('[ImageGrid] contextMenu triggered', image.imagePath, e.clientX, e.clientY)
     setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '' })
   }, [])
 
@@ -172,6 +173,10 @@ export function ImageGrid({
       ref={parentRef}
       className="w-full h-full overflow-auto p-4 bg-canvas"
     >
+      {/* DEBUG: 显示 contextMenu 状态 */}
+      <div style={{position: 'fixed', top: 0, left: 0, background: 'red', color: 'white', padding: '4px', zIndex: 9999, fontSize: '10px'}}>
+        contextMenu: {contextMenu ? JSON.stringify(contextMenu) : 'null'}
+      </div>
       <div
         style={{
           height: `${virtualizer.getTotalSize()}px`,

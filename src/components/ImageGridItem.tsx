@@ -133,6 +133,7 @@ export function ImageGridItemComponent({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
+    console.log('[ImageGridItem] handleContextMenu called, onContextMenu exists:', !!onContextMenu)
     onContextMenu?.(image, e)
   }, [onContextMenu, image])
 
