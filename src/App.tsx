@@ -139,6 +139,8 @@ function App() {
     isFavorite: isFavorite(currentLibraryId || 0, img.relative_path),
     mediaType: img.mediaType || 'image',
     duration: img.duration,
+    libraryId: currentLibraryId || undefined,
+    imagePath: img.relative_path,
   }))
 
   // 当前文件夹的音频文件
