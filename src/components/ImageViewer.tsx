@@ -27,6 +27,7 @@ import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { useImageStore } from '@/stores/imageStore'
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -129,10 +130,14 @@ export function ImageViewer({
       case 'showInExplorer':
         await window.electronAPI.showInExplorer(libraryId, imagePath)
         break
-      case 'delete':
-        await window.electronAPI.deleteFiles(libraryId, [imagePath])
+      case 'delete': {
+        const result = await window.electronAPI.deleteFiles(libraryId, [imagePath])
+        if (result.failed.length > 0) {
+          useImageStore.getState().setError(`删除失败：${result.failed[0].error}`)
+        }
         onClose?.()
         break
+      }
       case 'rename':
         setRenameDialog(true)
         break

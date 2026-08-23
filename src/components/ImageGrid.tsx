@@ -144,7 +144,10 @@ export function ImageGrid({
         break
       case 'delete': {
         const pathsToDelete = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
-        await window.electronAPI.deleteFiles(libraryId, pathsToDelete)
+        const result = await window.electronAPI.deleteFiles(libraryId, pathsToDelete)
+        if (result.failed.length > 0) {
+          useImageStore.getState().setError(`${result.failed.length} 个文件删除失败：${result.failed[0].error}`)
+        }
         await useImageStore.getState().loadImages()
         useImageStore.getState().clearSelection()
         break
