@@ -3,6 +3,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { ThumbnailsDB, type Image } from './database';
 import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
+import { computePhash } from '../utils/phash';
 import type { ScanResult } from '../../types';
 import { MEDIA_EXTENSIONS } from '../../types';
 import { logger } from '../../utils/logger';
@@ -278,6 +279,14 @@ export class LibraryScanner {
             const metadata = await getImageMetadata(filePath);
             const fileHash = await this.calculateFileHash(filePath);
 
+            // 计算 pHash（感知哈希），失败不影响扫描
+            let phash: string | null = null;
+            try {
+              phash = await computePhash(filePath);
+            } catch (err) {
+              logger.warn('Scanner', `pHash 计算失败: ${filePath}`, err);
+            }
+
             const newId = this.db.addImage({
               relative_path: relativePath,
               file_hash: fileHash,
@@ -287,6 +296,7 @@ export class LibraryScanner {
               format: metadata.format.toUpperCase(),
               modified_time: modifiedTime,
               media_type: 'image',
+              phash,
             });
             thumbnailQueue.push({ id: newId, filePath, mediaType });
           } else if (mediaType === 'video') {

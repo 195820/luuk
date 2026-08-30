@@ -640,7 +640,8 @@ export class ThumbnailsDB {
         is_deleted INTEGER DEFAULT 0,
         media_type TEXT DEFAULT 'image',
         duration REAL,
-        codec TEXT
+        codec TEXT,
+        phash TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_images_path ON images(relative_path);
       CREATE INDEX IF NOT EXISTS idx_images_hash ON images(file_hash);
@@ -648,6 +649,7 @@ export class ThumbnailsDB {
       CREATE INDEX IF NOT EXISTS idx_images_created_time ON images(created_time);
       CREATE INDEX IF NOT EXISTS idx_images_modified_time ON images(modified_time);
       CREATE INDEX IF NOT EXISTS idx_images_indexed_time ON images(indexed_time);
+      CREATE INDEX IF NOT EXISTS idx_images_phash ON images(phash);
 
       CREATE TABLE IF NOT EXISTS thumbnails (
         image_id INTEGER NOT NULL,
@@ -664,6 +666,8 @@ export class ThumbnailsDB {
 
     // 迁移：为已存在的 images 表添加多媒体字段
     this.migrateMediaColumns();
+    // 迁移：为已存在的 images 表添加 phash 字段
+    this.migratePhashColumn();
   }
 
   /**
@@ -688,6 +692,22 @@ export class ThumbnailsDB {
     }
   }
 
+  /**
+   * 迁移：添加 phash 字段（如果不存在）
+   */
+  private migratePhashColumn(): void {
+    if (!this.db) return;
+    try {
+      const columns = this.db.pragma("table_info('images')") as Array<{ name: string }>;
+      const columnNames = columns.map(c => c.name);
+      if (!columnNames.includes('phash')) {
+        this.db.exec('ALTER TABLE images ADD COLUMN phash TEXT');
+      }
+    } catch (e) {
+      logger.error('ThumbnailsDB', '迁移 phash 字段失败', e);
+    }
+  }
+
   addImages(images: Array<{
     relative_path: string;
     file_hash: string;
@@ -700,14 +720,15 @@ export class ThumbnailsDB {
     media_type?: string;
     duration?: number | null;
     codec?: string | null;
+    phash?: string | null;
   }>): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare(
-      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec, phash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     const insertMany = this.db.transaction((imgs: typeof images) => {
       for (const img of imgs) {
-        stmt.run(img.relative_path, img.file_hash, img.width, img.height, img.file_size, img.format, img.created_time ?? null, img.modified_time, new Date().toISOString(), img.media_type || 'image', img.duration ?? null, img.codec ?? null);
+        stmt.run(img.relative_path, img.file_hash, img.width, img.height, img.file_size, img.format, img.created_time ?? null, img.modified_time, new Date().toISOString(), img.media_type || 'image', img.duration ?? null, img.codec ?? null, img.phash ?? null);
       }
     });
     insertMany(images);
@@ -726,12 +747,13 @@ export class ThumbnailsDB {
     media_type?: string;
     duration?: number | null;
     codec?: string | null;
+    phash?: string | null;
   }): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare(
-      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec, phash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    const result = stmt.run(image.relative_path, image.file_hash, image.width, image.height, image.file_size, image.format, image.created_time ?? null, image.modified_time, new Date().toISOString(), image.media_type || 'image', image.duration ?? null, image.codec ?? null);
+    const result = stmt.run(image.relative_path, image.file_hash, image.width, image.height, image.file_size, image.format, image.created_time ?? null, image.modified_time, new Date().toISOString(), image.media_type || 'image', image.duration ?? null, image.codec ?? null, image.phash ?? null);
     return result.lastInsertRowid as number;
   }
 
@@ -745,6 +767,7 @@ export class ThumbnailsDB {
     duration: number | null;
     codec: string | null;
     media_type: string;
+    phash: string | null;
   }>): void {
     if (!this.db) return;
     const fields: string[] = [];
@@ -758,6 +781,7 @@ export class ThumbnailsDB {
     if (updates.duration !== undefined) { fields.push('duration = ?'); values.push(updates.duration); }
     if (updates.codec !== undefined) { fields.push('codec = ?'); values.push(updates.codec); }
     if (updates.media_type) { fields.push('media_type = ?'); values.push(updates.media_type); }
+    if (updates.phash !== undefined) { fields.push('phash = ?'); values.push(updates.phash); }
     fields.push('indexed_time = ?');
     values.push(new Date().toISOString(), id);
     const stmt = this.db.prepare(`UPDATE images SET ${fields.join(', ')} WHERE id = ?`);
