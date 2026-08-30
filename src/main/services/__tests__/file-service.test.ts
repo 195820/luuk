@@ -95,4 +95,33 @@ describe('FileService', () => {
       expect(masterDB.getFavorites()).toHaveLength(0);
     });
   });
+
+  describe('moveFiles 边界', () => {
+    it('移动到库根目录（空目标路径）不产生 ./ 前缀', async () => {
+      fs.writeFileSync(path.join(libDir, 'photos', 'mv.jpg'), 'x');
+      // 先在 thumbsDB 注册原路径
+      const thumbsDB = getThumbnailsDB(libDir);
+      thumbsDB.addImages([{
+        relative_path: 'photos/mv.jpg', file_hash: 'abc',
+        width: 100, height: 100, file_size: 1, format: 'jpg',
+        modified_time: new Date().toISOString(),
+        media_type: 'image', duration: null, codec: null,
+      }]);
+
+      const result = await fileService.moveFiles(1, ['photos/mv.jpg'], '');
+      expect(result.succeeded).toHaveLength(1);
+      expect(thumbsDB.getImages({ limit: 10, offset: 0 })[0].relative_path).toBe('mv.jpg');
+    });
+  });
+
+  describe('copyFiles 边界', () => {
+    it('目标已存在时不覆盖', async () => {
+      fs.writeFileSync(path.join(libDir, 'src.jpg'), 'source');
+      fs.mkdirSync(path.join(libDir, 'dest'));
+      fs.writeFileSync(path.join(libDir, 'dest', 'src.jpg'), 'existing');
+      const result = await fileService.copyFiles(1, ['src.jpg'], 'dest');
+      expect(result.failed).toHaveLength(1);
+      expect(fs.readFileSync(path.join(libDir, 'dest', 'src.jpg'), 'utf8')).toBe('existing');
+    });
+  });
 });
