@@ -6,6 +6,8 @@ import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
+import { useViewStore } from '@/stores/viewStore'
+import { groupImages } from '../utils/group'
 
 export interface MasonryGridItem extends ImageGridItem {
   aspectRatio?: number
@@ -57,11 +59,20 @@ export function MasonryGrid({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
+  // 分组状态
+  const groupBy = useViewStore(state => state.groupBy)
+
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = useMemo(() => images.filter((img) => {
     const mt = img.mediaType
     return mt !== 'audio'
   }), [images])
+
+  // 分组数据
+  const groupedData = useMemo(() => {
+    if (groupBy === 'none') return null
+    return groupImages(displayImages, groupBy)
+  }, [displayImages, groupBy])
 
   // 计算列数
   useEffect(() => {
@@ -227,59 +238,98 @@ export function MasonryGrid({
       ref={parentRef}
       className="w-full h-full overflow-auto bg-canvas"
     >
-      <div
-        className="relative w-full"
-        style={{
-          height: `${totalHeight}px`,
-          padding: '1rem',
-        }}
-      >
-        {columns.map((column, columnIndex) => {
-          const columnTop = columnTops[columnIndex] || []
+      {groupBy === 'none' || !groupedData ? (
+        // 无分组：使用瀑布流布局
+        <div
+          className="relative w-full"
+          style={{
+            height: `${totalHeight}px`,
+            padding: '1rem',
+          }}
+        >
+          {columns.map((column, columnIndex) => {
+            const columnTop = columnTops[columnIndex] || []
 
-          return (
-            <div
-              key={`column-${columnIndex}`}
-              className="absolute top-0 flex flex-col gap-2 box-border"
-              style={{
-                left: `${columnIndex * (thumbnailSize + 8) + 8}px`,
-                width: `${thumbnailSize}px`,
-              }}
-            >
-              {column.map((image, itemIndex) => {
-                const top = columnTop[itemIndex] || 0
-                const aspectRatio = image.aspectRatio || (image.height && image.width ? image.height / image.width : 1)
-                const itemHeight = thumbnailSize * aspectRatio + 8
+            return (
+              <div
+                key={`column-${columnIndex}`}
+                className="absolute top-0 flex flex-col gap-2 box-border"
+                style={{
+                  left: `${columnIndex * (thumbnailSize + 8) + 8}px`,
+                  width: `${thumbnailSize}px`,
+                }}
+              >
+                {column.map((image, itemIndex) => {
+                  const top = columnTop[itemIndex] || 0
+                  const aspectRatio = image.aspectRatio || (image.height && image.width ? image.height / image.width : 1)
+                  const itemHeight = thumbnailSize * aspectRatio + 8
 
-                return (
-                  <div
-                    key={`${image.id}-${columnIndex}-${itemIndex}`}
-                    className="absolute left-0 w-full"
-                    style={{
-                      height: `${itemHeight}px`,
-                      transform: `translateY(${top}px)`,
-                    }}
-                  >
-                    <ImageGridItemComponent
-                      image={image}
-                      isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
-                      onClick={handleItemClick}
-                      onDoubleClick={onImageDoubleClick}
-                      onToggleFavorite={onToggleFavorite}
-                      onContextMenu={handleContextMenu}
-                      thumbnailSize={thumbnailSize}
-                      formatFileSize={formatFileSize}
-                      libraryId={libraryId}
-                      isFavoriteLibrary={isFavoriteLibrary}
-                      isMasonry={true}
-                    />
-                  </div>
-                )
-              })}
+                  return (
+                    <div
+                      key={`${image.id}-${columnIndex}-${itemIndex}`}
+                      className="absolute left-0 w-full"
+                      style={{
+                        height: `${itemHeight}px`,
+                        transform: `translateY(${top}px)`,
+                      }}
+                    >
+                      <ImageGridItemComponent
+                        image={image}
+                        isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
+                        onClick={handleItemClick}
+                        onDoubleClick={onImageDoubleClick}
+                        onToggleFavorite={onToggleFavorite}
+                        onContextMenu={handleContextMenu}
+                        thumbnailSize={thumbnailSize}
+                        formatFileSize={formatFileSize}
+                        libraryId={libraryId}
+                        isFavoriteLibrary={isFavoriteLibrary}
+                        isMasonry={true}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        // 有分组：简单网格布局
+        <div className="p-4 space-y-6">
+          {groupedData.map((group) => (
+            <div key={group.key}>
+              <div className="sticky top-0 z-10 bg-glass-l1 backdrop-blur-md px-4 py-2 mb-3 rounded-lg border border-border">
+                <h3 className="text-sm font-medium text-text-primary">
+                  {group.label} <span className="text-text-muted">({group.items.length})</span>
+                </h3>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${columnCount}, 1fr)`,
+                  gap: '8px',
+                }}
+              >
+                {group.items.map((image) => (
+                  <ImageGridItemComponent
+                    key={image.id}
+                    image={image}
+                    isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
+                    onClick={handleItemClick}
+                    onDoubleClick={onImageDoubleClick}
+                    onToggleFavorite={onToggleFavorite}
+                    onContextMenu={handleContextMenu}
+                    thumbnailSize={thumbnailSize}
+                    formatFileSize={formatFileSize}
+                    libraryId={libraryId}
+                    isFavoriteLibrary={isFavoriteLibrary}
+                  />
+                ))}
+              </div>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
       {contextMenu && (
         <FileContextMenu
           x={contextMenu.x} y={contextMenu.y}

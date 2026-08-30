@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { GroupBy } from '../utils/group'
 
 interface ViewState {
   // 视图模式（网格/列表/单图）
@@ -13,6 +14,8 @@ interface ViewState {
   favoriteViewMode: 'all' | 'folder' | 'single'
   // 收藏文件夹选中状态
   selectedFavoriteFolder: string | null
+  // 分组方式
+  groupBy: GroupBy
 
   setViewMode: (mode: 'grid' | 'list' | 'single') => void
   toggleSidebar: () => void
@@ -20,6 +23,7 @@ interface ViewState {
   setGridLayoutMode: (mode: 'grid' | 'masonry') => void
   setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => void
   setSelectedFavoriteFolder: (folderPath: string | null) => void
+  setGroupBy: (groupBy: GroupBy) => void
 }
 
 export const useViewStore = create<ViewState>((set) => ({
@@ -29,6 +33,7 @@ export const useViewStore = create<ViewState>((set) => ({
   gridLayoutMode: (localStorage.getItem('gridLayoutMode') as 'grid' | 'masonry') || 'grid',
   favoriteViewMode: 'folder',
   selectedFavoriteFolder: null,
+  groupBy: (localStorage.getItem('groupBy') as GroupBy) || 'none',
 
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -39,4 +44,8 @@ export const useViewStore = create<ViewState>((set) => ({
   },
   setFavoriteViewMode: (mode) => set({ favoriteViewMode: mode }),
   setSelectedFavoriteFolder: (folderPath) => set({ selectedFavoriteFolder: folderPath }),
+  setGroupBy: (groupBy) => {
+    set({ groupBy })
+    localStorage.setItem('groupBy', groupBy)
+  },
 }))
