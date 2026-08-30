@@ -69,6 +69,10 @@ export interface ElectronAPI {
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) => Promise<SearchResult>
+  // pHash 回填
+  startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; error?: string }>
+  stopPhashBackfill: () => Promise<{ success: boolean; error?: string }>
+  onPhashProgress: (callback: (progress: PhashProgress) => void) => () => void
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -332,4 +336,12 @@ export interface SearchResult {
 export interface SearchOptions {
   limit: number
   offset: number
+}
+
+export interface PhashProgress {
+  libraryId: number
+  done: number
+  remaining: number
+  percent: number
+  finished: boolean
 }

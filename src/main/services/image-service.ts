@@ -14,6 +14,7 @@ import {
 import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
 import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
+import { computePhash } from '../utils/phash';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
@@ -46,6 +47,7 @@ export class ImageService {
   private cache: LRUCache;
   private initialized: boolean = false;
   private scanningLibraries: Set<number> = new Set();
+  private backfillRunning: { libraryId: number; stopped: boolean } | null = null;
 
   constructor() {
     this.masterDB = getMasterDB();
@@ -286,6 +288,101 @@ export class ImageService {
     const finalTotal = useJsFilter ? mappedImages.length : total;
 
     return { images: mappedImages, total: finalTotal };
+  }
+
+  /**
+   * 启动 pHash 回填任务（为存量图片计算 pHash）
+   */
+  async startPhashBackfill(libraryId: number): Promise<{ success: boolean; error?: string }> {
+    if (this.backfillRunning) {
+      return { success: false, error: '已有回填任务进行中' };
+    }
+
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      return { success: false, error: `库不存在：${libraryId}` };
+    }
+
+    const db = this.connectLibrary(libraryId);
+    this.backfillRunning = { libraryId, stopped: false };
+
+    // 异步执行回填
+    (async () => {
+      try {
+        let done = 0;
+        const BATCH_SIZE = 100;
+
+        while (true) {
+          if (this.backfillRunning?.stopped) {
+            logger.info('ImageService', 'pHash 回填已停止');
+            break;
+          }
+
+          // 查询无 phash 的图片
+          const imagesWithoutPhash = db.getImagesWithoutPhash(BATCH_SIZE);
+          if (imagesWithoutPhash.length === 0) {
+            // 回填完成
+            sendToRenderer('phashProgress', {
+              libraryId,
+              done,
+              remaining: 0,
+              percent: 100,
+              finished: true,
+            });
+            break;
+          }
+
+          // 逐个计算 pHash
+          for (const img of imagesWithoutPhash) {
+            if (this.backfillRunning?.stopped) break;
+
+            const absPath = path.join(library.rootPath, img.relative_path);
+            try {
+              const phash = await computePhash(absPath);
+              db.updateImagePhash(img.id, phash);
+              done++;
+            } catch (err) {
+              logger.warn('ImageService', `pHash 计算失败: ${absPath}`, err);
+              // 标记为已处理（设为空字符串避免重复处理）
+              db.updateImagePhash(img.id, '');
+              done++;
+            }
+
+            // 每处理 10 张发送进度
+            if (done % 10 === 0) {
+              const remaining = db.countImagesWithoutPhash();
+              const total = done + remaining;
+              const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+              sendToRenderer('phashProgress', {
+                libraryId,
+                done,
+                remaining,
+                percent,
+                finished: false,
+              });
+            }
+
+            // 让出执行权，避免阻塞其他 IPC
+            await new Promise(resolve => setImmediate(resolve));
+          }
+        }
+      } catch (err) {
+        logger.error('ImageService', 'pHash 回填失败', err);
+      } finally {
+        this.backfillRunning = null;
+      }
+    })();
+
+    return { success: true };
+  }
+
+  /**
+   * 停止 pHash 回填任务
+   */
+  stopPhashBackfill(): void {
+    if (this.backfillRunning) {
+      this.backfillRunning.stopped = true;
+    }
   }
 
   /**

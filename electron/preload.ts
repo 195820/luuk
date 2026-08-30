@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ElectronAPI, ThumbnailSize, ImageQueryOptions, SearchCriteria, SearchOptions } from '../src/types'
+import type { ElectronAPI, ThumbnailSize, ImageQueryOptions, SearchCriteria, SearchOptions, PhashProgress } from '../src/types'
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -106,6 +106,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
     ipcRenderer.invoke('searchImages', libraryId, criteria, options),
+
+  // pHash 回填
+  startPhashBackfill: (libraryId: number) =>
+    ipcRenderer.invoke('startPhashBackfill', libraryId),
+  stopPhashBackfill: () =>
+    ipcRenderer.invoke('stopPhashBackfill'),
+  onPhashProgress: (callback: (progress: PhashProgress) => void) => {
+    const subscription = (_event: any, progress: PhashProgress) => callback(progress)
+    ipcRenderer.on('phashProgress', subscription)
+    return () => ipcRenderer.removeListener('phashProgress', subscription)
+  },
 
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),

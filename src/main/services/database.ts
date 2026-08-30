@@ -788,6 +788,37 @@ export class ThumbnailsDB {
     stmt.run(...values);
   }
 
+  /**
+   * 获取无 phash 的图片列表（用于回填）
+   */
+  getImagesWithoutPhash(limit: number): Array<{ id: number; relative_path: string }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(
+      'SELECT id, relative_path FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = ? LIMIT ?'
+    );
+    return stmt.all('image', limit) as Array<{ id: number; relative_path: string }>;
+  }
+
+  /**
+   * 统计无 phash 的图片数量
+   */
+  countImagesWithoutPhash(): number {
+    if (!this.db) return 0;
+    const stmt = this.db.prepare(
+      'SELECT COUNT(*) as count FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = ?'
+    );
+    return (stmt.get('image') as { count: number }).count;
+  }
+
+  /**
+   * 更新图片的 pHash
+   */
+  updateImagePhash(id: number, phash: string): void {
+    if (!this.db) return;
+    const stmt = this.db.prepare('UPDATE images SET phash = ? WHERE id = ?');
+    stmt.run(phash, id);
+  }
+
   getImage(id: number): Image | null {
     if (!this.db) return null;
     const stmt = this.db.prepare('SELECT * FROM images WHERE id = ? AND is_deleted = 0');

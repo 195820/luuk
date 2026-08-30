@@ -5,7 +5,9 @@ import { logger } from '../../utils/logger';
 
 const SEARCH_HANDLER_NAMES = [
   'searchImages',
-  // Task 6/7 补充：findSimilarImages / startPhashBackfill / stopPhashBackfill
+  'startPhashBackfill',
+  'stopPhashBackfill',
+  // Task 8 补充：findSimilarImages
 ] as const;
 
 /**
@@ -26,6 +28,26 @@ export function registerSearchHandlers(): void {
     } catch (err) {
       logger.error('SearchHandlers', 'searchImages 失败', err);
       return { success: false, error: (err as Error).message, images: [], total: 0 };
+    }
+  });
+
+  ipcMain.handle('startPhashBackfill', async (_event, libraryId: number) => {
+    try {
+      const result = await service.startPhashBackfill(libraryId);
+      return result;
+    } catch (err) {
+      logger.error('SearchHandlers', 'startPhashBackfill 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('stopPhashBackfill', async () => {
+    try {
+      service.stopPhashBackfill();
+      return { success: true };
+    } catch (err) {
+      logger.error('SearchHandlers', 'stopPhashBackfill 失败', err);
+      return { success: false, error: (err as Error).message };
     }
   });
 }
