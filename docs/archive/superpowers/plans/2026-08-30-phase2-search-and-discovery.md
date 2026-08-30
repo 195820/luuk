@@ -2,8 +2,9 @@
 title: Phase 2 实施计划 — 搜索与发现
 description: 高级搜索、相似图片查找（pHash）、最近添加/修改、智能分类四项功能的完整实施计划
 type: plan
-status: current
+status: archived
 updated: 2026-08-30
+archived: 2026-08-30
 ---
 
 # Phase 2 实施计划：搜索与发现（Search & Discovery）
