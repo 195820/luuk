@@ -61,6 +61,8 @@ export interface ElectronAPI {
   getDeletedFiles: (libraryId?: number, limit?: number) => Promise<DeletedFileRecord[]>
   // 初始化服务
   initImageService: () => Promise<void>
+  // 库统计
+  getLibraryStats: (libraryId: number) => Promise<{ success: boolean; data?: LibraryStats; error?: string }>
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
@@ -367,4 +369,28 @@ export interface PhashProgress {
   remaining: number
   percent: number
   finished: boolean
+}
+
+// ==================== 库统计类型 ====================
+
+export interface LibraryStats {
+  total: number
+  totalSize: number
+  formats: Array<{ format: string; count: number; size: number }>
+  mediaTypes: Array<{ mediaType: string; count: number; size: number }>
+  timeline: Array<{ month: string; count: number }>
+}
+
+// ==================== EXIF 类型 ====================
+
+export interface ExifInfo {
+  dateTimeOriginal?: string
+  make?: string
+  model?: string
+  lensModel?: string
+  exposureTime?: string
+  fNumber?: number
+  iso?: number
+  focalLength?: number
+  gps?: { latitude: number; longitude: number }
 }

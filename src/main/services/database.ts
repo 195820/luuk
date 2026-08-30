@@ -976,6 +976,49 @@ export class ThumbnailsDB {
   }
 
   /**
+   * 库统计聚合查询：总量/总大小、格式分布、媒体类型分布、月度时间线
+   */
+  getLibraryStats(): {
+    total: number;
+    totalSize: number;
+    formats: Array<{ format: string; count: number; size: number }>;
+    mediaTypes: Array<{ mediaType: string; count: number; size: number }>;
+    timeline: Array<{ month: string; count: number }>;
+  } {
+    if (!this.db) {
+      return { total: 0, totalSize: 0, formats: [], mediaTypes: [], timeline: [] };
+    }
+
+    // 1) 总量 + 总大小
+    const overview = this.db.prepare(
+      'SELECT COUNT(*) as total, COALESCE(SUM(file_size), 0) as totalSize FROM images WHERE is_deleted = 0'
+    ).get() as { total: number; totalSize: number };
+
+    // 2) 格式分布
+    const formats = this.db.prepare(
+      'SELECT format, COUNT(*) as count, COALESCE(SUM(file_size), 0) as size FROM images WHERE is_deleted = 0 GROUP BY format ORDER BY count DESC'
+    ).all() as Array<{ format: string; count: number; size: number }>;
+
+    // 3) 媒体类型分布
+    const mediaTypes = this.db.prepare(
+      'SELECT media_type, COUNT(*) as count, COALESCE(SUM(file_size), 0) as size FROM images WHERE is_deleted = 0 GROUP BY media_type ORDER BY count DESC'
+    ).all() as Array<{ media_type: string; count: number; size: number }>;
+
+    // 4) 月度时间线（取 created_time 前 7 字符 YYYY-MM）
+    const timeline = this.db.prepare(
+      "SELECT SUBSTR(created_time, 1, 7) as month, COUNT(*) as count FROM images WHERE is_deleted = 0 AND created_time IS NOT NULL AND created_time != '' GROUP BY month ORDER BY month"
+    ).all() as Array<{ month: string; count: number }>;
+
+    return {
+      total: overview.total,
+      totalSize: overview.totalSize,
+      formats,
+      mediaTypes: mediaTypes.map(m => ({ mediaType: m.media_type, count: m.count, size: m.size })),
+      timeline,
+    };
+  }
+
+  /**
    * 多条件组合搜索
    * 固定前置条件：is_deleted = 0
    * favoritePaths 语义：

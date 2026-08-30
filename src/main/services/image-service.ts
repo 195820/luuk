@@ -529,6 +529,19 @@ export class ImageService {
   }
 
   /**
+   * 获取库统计信息（总量/大小/格式分布/媒体类型/时间线）
+   */
+  getLibraryStats(libraryId: number) {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    const db = this.connectLibrary(libraryId);
+    return db.getLibraryStats();
+  }
+
+  /**
    * 获取单张图片
    */
   getImage(libraryId: number, imageId: number): any | null {

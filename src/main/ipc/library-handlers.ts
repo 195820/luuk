@@ -451,6 +451,20 @@ export function registerLibraryHandlers(): void {
   ): Promise<string> => {
     return service.generateVideoThumbnail(libraryId, imageId, relativePath);
   });
+
+  // 库统计
+  ipcMain.handle('getLibraryStats', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number
+  ) => {
+    try {
+      const stats = service.getLibraryStats(libraryId);
+      return { success: true, data: stats };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'getLibraryStats 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
 }
 
 /**
@@ -471,6 +485,7 @@ const IPC_HANDLER_NAMES = [
   'getCacheStats', 'clearCache', 'readFile', 'fileExists',
   'loadFullImage', 'getMediaUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',
+  'getLibraryStats',
   'updateScanProgress', 'clearScanProgress',
 ] as const;
 

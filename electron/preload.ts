@@ -141,6 +141,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 
+  // 库统计
+  getLibraryStats: (libraryId: number) =>
+    ipcRenderer.invoke('getLibraryStats', libraryId),
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),
