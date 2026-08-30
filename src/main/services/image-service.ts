@@ -266,7 +266,19 @@ export class ImageService {
       favoritePaths = this.masterDB.getFavoritePathsByMinRating(libraryId, criteria.minRating);
     }
 
-    // 降级策略：收藏集 >5 万条时不传路径集，改为在结果映射阶段用 Set 过滤
+    // 标签路径集（AND 语义）：与收藏路径集取交集
+    if (criteria.tagIds && criteria.tagIds.length > 0) {
+      const tagPaths = this.masterDB.getTaggedPaths(libraryId, criteria.tagIds);
+      if (favoritePaths === null) {
+        favoritePaths = tagPaths;
+      } else {
+        // 两者同时存在取交集
+        const tagSet = new Set(tagPaths);
+        favoritePaths = favoritePaths.filter(p => tagSet.has(p));
+      }
+    }
+
+    // 降级策略：收藏/标签集 >5 万条时不传路径集，改为在结果映射阶段用 Set 过滤
     const useJsFilter = favoritePaths !== null && favoritePaths.length > 50_000;
     const dbCriteria: SearchCriteria = {
       ...criteria,

@@ -21,6 +21,8 @@ interface SearchState {
   setCriteria: (patch: Partial<SearchCriteria>) => void
   /** 执行搜索（重置分页，从 offset=0 开始） */
   search: (libraryId: number) => Promise<void>
+  /** 按标签搜索（清空其他条件，仅按标签筛选） */
+  searchByTags: (libraryId: number, tagIds: number[]) => Promise<void>
   /** 滚动加载下一页 */
   loadMore: (libraryId: number) => Promise<void>
 }
@@ -70,6 +72,14 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       logger.error('SearchStore', '搜索异常', err)
       set({ results: [], total: 0, searching: false })
     }
+  },
+
+  searchByTags: async (libraryId: number, tagIds: number[]) => {
+    set({
+      criteria: { tagIds },
+      active: true,
+    })
+    await get().search(libraryId)
   },
 
   loadMore: async (libraryId: number) => {

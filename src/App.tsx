@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
 import {
   Folder, FolderOpen, Heart, Music, Pause, X,
-  RefreshCw, Trash2, AlertTriangle, Plus,
+  RefreshCw, Trash2, AlertTriangle, Plus, Tag,
   LayoutGrid, Columns3, Image as ImageIcon, Maximize2,
   Database, MonitorPlay,
 } from 'lucide-react'
@@ -14,6 +14,7 @@ import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
 import { SortControl } from './components/SortControl'
 import { SearchPanel } from './components/SearchPanel'
+import { TagCloudPanel } from './components/TagCloudPanel'
 import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
@@ -864,6 +865,7 @@ function App() {
                 onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
               />
               {currentLibraryId > 0 && <SearchPanel libraryId={currentLibraryId} />}
+              {currentLibraryId > 0 && <TagCloudButton libraryId={currentLibraryId} />}
             </>
           )}
 
@@ -1326,6 +1328,46 @@ function App() {
 
       {/* 扫描进度条 */}
       <ScanProgress />
+    </div>
+  )
+}
+
+/** 标签云按钮 + 面板（工具栏内联） */
+function TagCloudButton({ libraryId }: { libraryId: number }) {
+  const [open, setOpen] = useState(false)
+  const hasSearched = useSearchStore(s => s.hasSearched)
+  const tagIds = useSearchStore(s => s.criteria.tagIds)
+  const closePanel = useSearchStore(s => s.closePanel)
+
+  // 搜索关闭时同步关闭面板
+  useEffect(() => {
+    if (!hasSearched || !tagIds?.length) setOpen(false)
+  }, [hasSearched, tagIds])
+
+  const handleToggle = () => {
+    if (open) {
+      setOpen(false)
+      closePanel()
+    } else {
+      setOpen(true)
+    }
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={handleToggle}
+        className={`btn-text ${open || (tagIds && tagIds.length > 0) ? 'text-accent' : ''}`}
+        title="标签筛选"
+      >
+        <Tag size={14} />
+        标签
+      </button>
+      {open && (
+        <div className="absolute top-full mt-2 right-0 w-80 z-40">
+          <TagCloudPanel libraryId={libraryId} onClose={() => { setOpen(false); closePanel() }} />
+        </div>
+      )}
     </div>
   )
 }
