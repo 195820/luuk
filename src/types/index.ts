@@ -307,12 +307,22 @@ export interface DeletedFileRecord {
   file_size: number;
 }
 
+// ==================== 标签类型 ====================
+
+export interface Tag {
+  id: number
+  name: string
+  color: string
+  count?: number
+}
+
 // ==================== 搜索类型 ====================
 
 /**
  * 多条件组合搜索参数
  * favoritePaths 由服务层填充（从 master.db 查收藏/评分路径集），渲染层不传
  * favoritePaths = null：不加该条件；空数组：收藏条件下无命中，直接返回空
+ * tagIds 由服务层查 image_tags 得路径集，与 favoritePaths 取交集后走同一通道
  */
 export interface SearchCriteria {
   fileName?: string          // 文件名模糊匹配（LIKE %keyword%）
@@ -328,6 +338,7 @@ export interface SearchCriteria {
   mediaType?: 'image' | 'video' | 'audio'
   minRating?: number         // 1-5，服务层转为 favoritePaths 路径集
   favoritePaths?: string[] | null  // 服务层填充，渲染层不传
+  tagIds?: number[]          // 标签 ID 数组（AND 语义），服务层查 image_tags 得路径集
 }
 
 export interface SearchResult {

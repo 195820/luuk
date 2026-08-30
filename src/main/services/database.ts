@@ -2,7 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
+import type { Library, ThumbnailSize, SearchCriteria, SearchOptions, Tag } from '../../types';
 import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
@@ -116,6 +116,23 @@ export class MasterDB {
         FOREIGN KEY (library_id) REFERENCES libraries(id)
       );
       CREATE INDEX IF NOT EXISTS idx_deleted_time ON deleted_files(deleted_at DESC);
+
+      CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        color TEXT DEFAULT '#888888',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS image_tags (
+        tag_id INTEGER NOT NULL,
+        library_id INTEGER NOT NULL,
+        image_path TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (tag_id, library_id, image_path),
+        FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_image_tags_path ON image_tags(library_id, image_path);
     `);
   }
 
@@ -174,6 +191,7 @@ export class MasterDB {
       db.prepare('DELETE FROM favorites WHERE library_id = ?').run(id);
       db.prepare('DELETE FROM favorite_folders WHERE library_id = ?').run(id);
       db.prepare('DELETE FROM history WHERE library_id = ?').run(id);
+      db.prepare('DELETE FROM image_tags WHERE library_id = ?').run(id);
       db.prepare('DELETE FROM libraries WHERE id = ?').run(id);
     });
     tx();
@@ -513,6 +531,101 @@ export class MasterDB {
     this.db.prepare('DELETE FROM history').run();
   }
 
+  // ==================== 标签系统 ====================
+
+  createTag(name: string, color: string = '#888888'): Tag {
+    if (!this.db) throw new Error('MasterDB 未初始化');
+    const stmt = this.db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)');
+    const result = stmt.run(name, color);
+    return { id: result.lastInsertRowid as number, name, color };
+  }
+
+  deleteTag(id: number): void {
+    if (!this.db) return;
+    // ON DELETE CASCADE 会自动清理 image_tags
+    this.db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+  }
+
+  renameTag(id: number, name: string, color?: string): void {
+    if (!this.db) return;
+    if (color !== undefined) {
+      this.db.prepare('UPDATE tags SET name = ?, color = ? WHERE id = ?').run(name, color, id);
+    } else {
+      this.db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(name, id);
+    }
+  }
+
+  tagImages(tagIds: number[], libraryId: number, paths: string[]): void {
+    if (!this.db || tagIds.length === 0 || paths.length === 0) return;
+    const normalizedPaths = paths.map(p => p.replace(/\\/g, '/'));
+    const stmt = this.db.prepare(
+      'INSERT OR IGNORE INTO image_tags (tag_id, library_id, image_path) VALUES (?, ?, ?)'
+    );
+    const tx = this.db.transaction(() => {
+      for (const tagId of tagIds) {
+        for (const p of normalizedPaths) {
+          stmt.run(tagId, libraryId, p);
+        }
+      }
+    });
+    tx();
+  }
+
+  untagImages(tagIds: number[], libraryId: number, paths: string[]): void {
+    if (!this.db || tagIds.length === 0 || paths.length === 0) return;
+    const normalizedPaths = paths.map(p => p.replace(/\\/g, '/'));
+    const placeholders = normalizedPaths.map(() => '?').join(',');
+    const tagPlaceholders = tagIds.map(() => '?').join(',');
+    const tx = this.db.transaction(() => {
+      this.db!.prepare(
+        `DELETE FROM image_tags WHERE tag_id IN (${tagPlaceholders}) AND library_id = ? AND image_path IN (${placeholders})`
+      ).run(...tagIds, libraryId, ...normalizedPaths);
+    });
+    tx();
+  }
+
+  getImageTags(libraryId: number, imagePath: string): Tag[] {
+    if (!this.db) return [];
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    const stmt = this.db.prepare(`
+      SELECT t.id, t.name, t.color
+      FROM tags t
+      JOIN image_tags it ON t.id = it.tag_id
+      WHERE it.library_id = ? AND it.image_path = ?
+      ORDER BY t.name
+    `);
+    return stmt.all(libraryId, normalizedPath) as Tag[];
+  }
+
+  getTagsWithCount(libraryId: number): Array<Tag & { count: number }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(`
+      SELECT t.id, t.name, t.color, COUNT(it.image_path) as count
+      FROM tags t
+      LEFT JOIN image_tags it ON t.id = it.tag_id AND it.library_id = ?
+      GROUP BY t.id, t.name, t.color
+      ORDER BY count DESC, t.name
+    `);
+    return stmt.all(libraryId) as Array<Tag & { count: number }>;
+  }
+
+  /**
+   * 获取同时拥有所有指定标签的图片路径（AND 语义）
+   */
+  getTaggedPaths(libraryId: number, tagIds: number[]): string[] {
+    if (!this.db || tagIds.length === 0) return [];
+    const placeholders = tagIds.map(() => '?').join(',');
+    const stmt = this.db.prepare(`
+      SELECT image_path
+      FROM image_tags
+      WHERE tag_id IN (${placeholders}) AND library_id = ?
+      GROUP BY image_path
+      HAVING COUNT(DISTINCT tag_id) = ?
+    `);
+    return (stmt.all(...tagIds, libraryId, tagIds.length) as Array<{ image_path: string }>)
+      .map(r => r.image_path);
+  }
+
   // ==================== 路径级联更新 ====================
 
   updateImagePath(libraryId: number, oldPath: string, newPath: string): void {
@@ -520,7 +633,7 @@ export class MasterDB {
     const normalizedOld = oldPath.replace(/\\/g, '/');
     const normalizedNew = newPath.replace(/\\/g, '/');
 
-    // 事务保证 favorites + history 两条 UPDATE 的原子性
+    // 事务保证 favorites + history + image_tags 三条 UPDATE 的原子性
     const tx = this.db.transaction(() => {
       this.db!.prepare(
         'UPDATE favorites SET image_path = ? WHERE library_id = ? AND image_path = ?'
@@ -528,6 +641,10 @@ export class MasterDB {
 
       this.db!.prepare(
         'UPDATE history SET image_path = ? WHERE library_id = ? AND image_path = ?'
+      ).run(normalizedNew, libraryId, normalizedOld);
+
+      this.db!.prepare(
+        'UPDATE image_tags SET image_path = ? WHERE library_id = ? AND image_path = ?'
       ).run(normalizedNew, libraryId, normalizedOld);
     });
     tx();
@@ -539,7 +656,7 @@ export class MasterDB {
     const normalizedNew = newFolderPath.replace(/\\/g, '/');
     const likePattern = normalizedOld + '/%';
 
-    // 事务保证多表级联更新的原子性（favorite_folders + favorites + history）
+    // 事务保证多表级联更新的原子性（favorite_folders + favorites + history + image_tags）
     const tx = this.db.transaction(() => {
       // favorite_folders 前缀匹配
       const folders = this.db!.prepare(
@@ -553,8 +670,8 @@ export class MasterDB {
         updateFolder.run(newPath, row.id);
       }
 
-      // favorites/history 前缀匹配
-      for (const table of ['favorites', 'history']) {
+      // favorites/history/image_tags 前缀匹配
+      for (const table of ['favorites', 'history', 'image_tags']) {
         this.db!.prepare(
           `UPDATE ${table} SET image_path = ? || SUBSTR(image_path, LENGTH(?) + 1)
            WHERE library_id = ? AND (image_path = ? OR image_path LIKE ?)`
