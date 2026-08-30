@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import fs from 'fs'
 import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/ipc/library-handlers'
 import { registerFileHandlers } from '../src/main/ipc/file-handlers'
+import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ipc/search-handlers'
 import { closeAllDatabases } from '../src/main/services/database'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken } from '../src/main/services/media-registry'
@@ -190,6 +191,7 @@ app.whenReady().then(async () => {
   // 注册 IPC 处理器
   registerLibraryHandlers()
   registerFileHandlers()
+  registerSearchHandlers()
 
   createWindow()
 
@@ -203,8 +205,9 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   // 清理资源
   unregisterLibraryHandlers()
+  unregisterSearchHandlers()
   closeAllDatabases()
-  
+
   if (process.platform !== 'darwin') {
     app.quit()
   }
@@ -213,6 +216,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   // 清理资源
   unregisterLibraryHandlers()
+  unregisterSearchHandlers()
   closeAllDatabases()
 })
 

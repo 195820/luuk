@@ -14,7 +14,7 @@ import {
 import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
 import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
-import type { Library, ThumbnailSize } from '../../types';
+import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
  * 图片查询选项
@@ -241,6 +241,51 @@ export class ImageService {
 
     // 附加库信息 + 修正媒体类型（用扩展名判断），去除 DB 的 snake_case media_type
     return images.map(img => this.mapImageWithLibraryInfo(img, libraryId, library.name));
+  }
+
+  /**
+   * 多条件组合搜索
+   * 收藏/评分交集：先查 master.db 得路径集，再注入 thumbs.db 查询
+   * 路径集 >5 万时降级为 JS Set 过滤（避免 SQL 膨胀）
+   */
+  searchImages(
+    libraryId: number,
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): { images: any[]; total: number } {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    // 收藏/评分交集：从 master.db 获取路径集
+    let favoritePaths: string[] | null = null;
+    if (criteria.minRating !== undefined) {
+      favoritePaths = this.masterDB.getFavoritePathsByMinRating(libraryId, criteria.minRating);
+    }
+
+    // 降级策略：收藏集 >5 万条时不传路径集，改为在结果映射阶段用 Set 过滤
+    const useJsFilter = favoritePaths !== null && favoritePaths.length > 50_000;
+    const dbCriteria: SearchCriteria = {
+      ...criteria,
+      favoritePaths: useJsFilter ? null : favoritePaths,
+    };
+
+    const db = this.connectLibrary(libraryId);
+    const { images, total } = db.searchImages(dbCriteria, options);
+
+    let mappedImages = images.map(img => this.mapImageWithLibraryInfo(img, libraryId, library.name));
+
+    // JS 层降级过滤
+    if (useJsFilter && favoritePaths) {
+      const pathSet = new Set(favoritePaths);
+      mappedImages = mappedImages.filter(img => pathSet.has(img.relative_path));
+    }
+
+    // JS 过滤后 total 需修正（仅降级路径时需要）
+    const finalTotal = useJsFilter ? mappedImages.length : total;
+
+    return { images: mappedImages, total: finalTotal };
   }
 
   /**
