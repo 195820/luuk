@@ -2,8 +2,9 @@
 title: Phase 3 实施计划 — 标签 / 库统计 / EXIF
 description: 标签系统（独立标签表）、库统计面板（recharts）、EXIF 查看器（exifreader）三项功能的完整实施计划
 type: plan
-status: current
+status: archived
 updated: 2026-08-31
+archived: 2026-08-31
 ---
 
 # Phase 3 实施计划：标签 / 库统计 / EXIF
