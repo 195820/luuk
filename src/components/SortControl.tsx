@@ -1,4 +1,6 @@
 import { ArrowUp, ArrowDown } from 'lucide-react'
+import { useViewStore } from '../stores/viewStore'
+import type { GroupBy } from '../utils/group'
 
 export type SortBy = 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating'
 export type SortOrder = 'ASC' | 'DESC'
@@ -18,6 +20,14 @@ export const SORT_OPTIONS: SortOption[] = [
   { value: 'rating', label: '评分' },
 ]
 
+export const GROUP_OPTIONS: Array<{ value: GroupBy; label: string }> = [
+  { value: 'none', label: '不分组' },
+  { value: 'day', label: '按日' },
+  { value: 'month', label: '按月' },
+  { value: 'format', label: '按格式' },
+  { value: 'aspect', label: '按纵横比' },
+]
+
 interface SortControlProps {
   sortBy: SortBy
   sortOrder: SortOrder
@@ -26,6 +36,9 @@ interface SortControlProps {
 }
 
 export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChange }: SortControlProps) {
+  const groupBy = useViewStore(state => state.groupBy)
+  const setGroupBy = useViewStore(state => state.setGroupBy)
+
   const handleSortByChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onSortByChange(e.target.value as SortBy)
   }
@@ -56,6 +69,20 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
       >
         {sortOrder === 'ASC' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
       </button>
+
+      <span className="text-xs text-text-secondary ml-2">分组:</span>
+      <select
+        value={groupBy}
+        onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+        className="h-8 pl-2 pr-6 bg-glass-l1 border border-border rounded-md text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
+        title="选择分组方式"
+      >
+        {GROUP_OPTIONS.map(option => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
     </div>
   )
 }

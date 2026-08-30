@@ -14,7 +14,8 @@ import {
 import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
 import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
-import type { Library, ThumbnailSize } from '../../types';
+import { computePhash, hammingDistance } from '../utils/phash';
+import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
  * 图片查询选项
@@ -22,7 +23,7 @@ import type { Library, ThumbnailSize } from '../../types';
 export interface ImageQueryOptions {
   limit: number;
   offset: number;
-  orderBy?: 'created_time' | 'modified_time' | 'relative_path';
+  orderBy?: 'created_time' | 'modified_time' | 'indexed_time' | 'relative_path';
   order?: 'ASC' | 'DESC';
 }
 
@@ -46,6 +47,7 @@ export class ImageService {
   private cache: LRUCache;
   private initialized: boolean = false;
   private scanningLibraries: Set<number> = new Set();
+  private backfillRunning: { libraryId: number; stopped: boolean } | null = null;
 
   constructor() {
     this.masterDB = getMasterDB();
@@ -241,6 +243,206 @@ export class ImageService {
 
     // 附加库信息 + 修正媒体类型（用扩展名判断），去除 DB 的 snake_case media_type
     return images.map(img => this.mapImageWithLibraryInfo(img, libraryId, library.name));
+  }
+
+  /**
+   * 多条件组合搜索
+   * 收藏/评分交集：先查 master.db 得路径集，再注入 thumbs.db 查询
+   * 路径集 >5 万时降级为 JS Set 过滤（避免 SQL 膨胀）
+   */
+  searchImages(
+    libraryId: number,
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): { images: any[]; total: number } {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+
+    // 收藏/评分交集：从 master.db 获取路径集
+    let favoritePaths: string[] | null = null;
+    if (criteria.minRating !== undefined) {
+      favoritePaths = this.masterDB.getFavoritePathsByMinRating(libraryId, criteria.minRating);
+    }
+
+    // 降级策略：收藏集 >5 万条时不传路径集，改为在结果映射阶段用 Set 过滤
+    const useJsFilter = favoritePaths !== null && favoritePaths.length > 50_000;
+    const dbCriteria: SearchCriteria = {
+      ...criteria,
+      favoritePaths: useJsFilter ? null : favoritePaths,
+    };
+
+    const db = this.connectLibrary(libraryId);
+    const { images, total } = db.searchImages(dbCriteria, options);
+
+    let mappedImages = images.map(img => this.mapImageWithLibraryInfo(img, libraryId, library.name));
+
+    // JS 层降级过滤
+    if (useJsFilter && favoritePaths) {
+      const pathSet = new Set(favoritePaths);
+      mappedImages = mappedImages.filter(img => pathSet.has(img.relative_path));
+    }
+
+    // JS 过滤后 total 需修正（仅降级路径时需要）
+    const finalTotal = useJsFilter ? mappedImages.length : total;
+
+    return { images: mappedImages, total: finalTotal };
+  }
+
+  /**
+   * 启动 pHash 回填任务（为存量图片计算 pHash）
+   */
+  async startPhashBackfill(libraryId: number): Promise<{ success: boolean; error?: string }> {
+    if (this.backfillRunning) {
+      return { success: false, error: '已有回填任务进行中' };
+    }
+
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      return { success: false, error: `库不存在：${libraryId}` };
+    }
+
+    const db = this.connectLibrary(libraryId);
+    this.backfillRunning = { libraryId, stopped: false };
+
+    // 异步执行回填
+    (async () => {
+      try {
+        let done = 0;
+        const BATCH_SIZE = 100;
+
+        while (true) {
+          if (this.backfillRunning?.stopped) {
+            logger.info('ImageService', 'pHash 回填已停止');
+            break;
+          }
+
+          // 查询无 phash 的图片
+          const imagesWithoutPhash = db.getImagesWithoutPhash(BATCH_SIZE);
+          if (imagesWithoutPhash.length === 0) {
+            // 回填完成
+            sendToRenderer('phashProgress', {
+              libraryId,
+              done,
+              remaining: 0,
+              percent: 100,
+              finished: true,
+            });
+            break;
+          }
+
+          // 逐个计算 pHash
+          for (const img of imagesWithoutPhash) {
+            if (this.backfillRunning?.stopped) break;
+
+            const absPath = path.join(library.rootPath, img.relative_path);
+            try {
+              const phash = await computePhash(absPath);
+              db.updateImagePhash(img.id, phash);
+              done++;
+            } catch (err) {
+              logger.warn('ImageService', `pHash 计算失败: ${absPath}`, err);
+              // 标记为已处理（设为空字符串避免重复处理）
+              db.updateImagePhash(img.id, '');
+              done++;
+            }
+
+            // 每处理 10 张发送进度
+            if (done % 10 === 0) {
+              const remaining = db.countImagesWithoutPhash();
+              const total = done + remaining;
+              const percent = total > 0 ? Math.round((done / total) * 100) : 0;
+              sendToRenderer('phashProgress', {
+                libraryId,
+                done,
+                remaining,
+                percent,
+                finished: false,
+              });
+            }
+
+            // 让出执行权，避免阻塞其他 IPC
+            await new Promise(resolve => setImmediate(resolve));
+          }
+        }
+      } catch (err) {
+        logger.error('ImageService', 'pHash 回填失败', err);
+      } finally {
+        this.backfillRunning = null;
+      }
+    })();
+
+    return { success: true };
+  }
+
+  /**
+   * 停止 pHash 回填任务
+   */
+  stopPhashBackfill(): void {
+    if (this.backfillRunning) {
+      this.backfillRunning.stopped = true;
+    }
+  }
+
+  /**
+   * 查找相似图片
+   * @param libraryId 库 ID
+   * @param imagePath 基准图片相对路径
+   * @param threshold 汉明距离阈值（默认 10，越小越相似）
+   * @param limit 返回数量限制（默认 200）
+   */
+  findSimilarImages(
+    libraryId: number,
+    imagePath: string,
+    threshold: number = 10,
+    limit: number = 200
+  ): { success: boolean; images?: any[]; error?: string } {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      return { success: false, error: `库不存在：${libraryId}` };
+    }
+
+    const db = this.connectLibrary(libraryId);
+
+    // 获取基准图片的 pHash
+    const sourceImage = db.getImageByRelativePath(imagePath);
+    if (!sourceImage) {
+      return { success: false, error: '基准图片不存在' };
+    }
+    if (!sourceImage.phash || sourceImage.phash === '') {
+      return { success: false, error: '该图片尚未计算指纹，请先完成回填' };
+    }
+
+    // 获取全库有 pHash 的图片
+    const allImages = db.getImagesWithPhash();
+
+    // 计算汉明距离并过滤
+    const similar: Array<{ image: typeof allImages[0]; distance: number }> = [];
+    for (const img of allImages) {
+      if (img.relative_path === imagePath) continue; // 排除基准图片自身
+      const distance = hammingDistance(sourceImage.phash, img.phash);
+      if (distance <= threshold) {
+        similar.push({ image: img, distance });
+      }
+    }
+
+    // 按距离排序并限制数量
+    similar.sort((a, b) => a.distance - b.distance);
+    const topSimilar = similar.slice(0, limit);
+
+    // 映射为前端格式
+    const images = topSimilar.map(({ image, distance }) => {
+      const fullImage = db.getImage(image.id);
+      if (!fullImage) return null;
+      return {
+        ...this.mapImageWithLibraryInfo(fullImage, libraryId, library.name),
+        phashDistance: distance,
+        similarity: Math.round((1 - distance / 64) * 100), // 相似度百分比
+      };
+    }).filter(Boolean);
+
+    return { success: true, images };
   }
 
   /**

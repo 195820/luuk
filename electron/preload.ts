@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ElectronAPI, ThumbnailSize, ImageQueryOptions } from '../src/types'
+import type { ElectronAPI, ThumbnailSize, ImageQueryOptions, SearchCriteria, SearchOptions, PhashProgress } from '../src/types'
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -102,6 +102,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
+
+  // 搜索
+  searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
+    ipcRenderer.invoke('searchImages', libraryId, criteria, options),
+
+  // pHash 回填
+  startPhashBackfill: (libraryId: number) =>
+    ipcRenderer.invoke('startPhashBackfill', libraryId),
+  stopPhashBackfill: () =>
+    ipcRenderer.invoke('stopPhashBackfill'),
+  onPhashProgress: (callback: (progress: PhashProgress) => void) => {
+    const subscription = (_event: any, progress: PhashProgress) => callback(progress)
+    ipcRenderer.on('phashProgress', subscription)
+    return () => ipcRenderer.removeListener('phashProgress', subscription)
+  },
+
+  // 相似图片查找
+  findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) =>
+    ipcRenderer.invoke('findSimilarImages', libraryId, imagePath, threshold, limit),
 
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
 import {
@@ -13,11 +13,13 @@ import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
 import { SortControl } from './components/SortControl'
+import { SearchPanel } from './components/SearchPanel'
+import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
-import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore, useHistoryStore } from './stores'
+import { useImageStore, FAVORITE_LIBRARY_ID, RECENT_ADDED_ID, RECENT_MODIFIED_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
 import { useViewStore } from './stores/viewStore'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
@@ -687,6 +689,14 @@ function App() {
         return
       }
 
+      // Ctrl+F - 打开/关闭搜索面板
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault()
+        const searchState = useSearchStore.getState()
+        searchState.active ? searchState.closePanel() : searchState.openPanel()
+        return
+      }
+
       // F 键 - 收藏当前图片
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault()
@@ -736,6 +746,32 @@ function App() {
   }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite, currentImage])
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
+  const isRecentView = currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID
+  const isVirtualLibrary = isFavoriteLibrary || isRecentView
+  const isSearching = useSearchStore(s => s.hasSearched)
+  const searchResults = useSearchStore(s => s.results)
+  const closeSearchPanel = useSearchStore(s => s.closePanel)
+
+  // 搜索结果映射为网格项
+  const searchGridImages: ImageGridItem[] = useMemo(() => searchResults.map((img: any) => ({
+    id: img.id,
+    src: '',
+    alt: img.relative_path?.split('/').pop() || img.relative_path || '',
+    width: img.width,
+    height: img.height,
+    fileSize: img.file_size,
+    format: img.format?.toLowerCase(),
+    isFavorite: isFavorite(img.library_id || currentLibraryId || 0, img.relative_path),
+    mediaType: img.mediaType || 'image',
+    duration: img.duration,
+    libraryId: img.library_id || currentLibraryId || undefined,
+    imagePath: img.relative_path,
+  })), [searchResults, currentLibraryId])
+
+  // 切换库时关闭搜索面板，避免跨库残留
+  useEffect(() => {
+    closeSearchPanel()
+  }, [currentLibraryId, closeSearchPanel])
 
   // 查看器评分参数：收藏库中 libraryId 取图片原始库，普通库用当前库
   const viewerLibraryId = isFavoriteLibrary ? (currentImage as any)?.library_id : currentLibraryId
@@ -802,7 +838,7 @@ function App() {
           <div className="w-px h-6 bg-border" />
 
           {/* 组 2: 视图控制 */}
-          {!isFavoriteLibrary && viewMode === 'grid' && currentLibraryId && (
+          {!isVirtualLibrary && viewMode === 'grid' && currentLibraryId && (
             <div className="flex items-center gap-2 text-caption text-text-secondary">
               <label htmlFor="thumbnail-size">缩略图:</label>
               <input
@@ -820,12 +856,15 @@ function App() {
           )}
 
           {viewMode === 'grid' && currentLibraryId && (
-            <SortControl
-              sortBy={imageSortBy}
-              sortOrder={imageSortOrder}
-              onSortByChange={(v) => { setSortBy(v); applySort() }}
-              onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
-            />
+            <>
+              <SortControl
+                sortBy={imageSortBy}
+                sortOrder={imageSortOrder}
+                onSortByChange={(v) => { setSortBy(v); applySort() }}
+                onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
+              />
+              {currentLibraryId > 0 && <SearchPanel libraryId={currentLibraryId} />}
+            </>
           )}
 
           {viewMode === 'grid' && currentLibraryId && (
@@ -1025,6 +1064,38 @@ function App() {
                     onScrollChange={(pos) => { gridScrollRef.current = pos }}
                     libraryId={FAVORITE_LIBRARY_ID}
                     isFavoriteLibrary={true}
+                  />
+                )
+              ) : isSearching ? (
+                gridLayoutMode === 'grid' ? (
+                  <ImageGrid
+                    key="search-results"
+                    images={searchGridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={currentLibraryId!}
+                    onLoadMore={() => currentLibraryId && useSearchStore.getState().loadMore(currentLibraryId)}
+                    hasMore={searchResults.length < useSearchStore.getState().total}
+                  />
+                ) : (
+                  <MasonryGrid
+                    key="search-results-masonry"
+                    images={searchGridImages}
+                    selectedId={currentImage?.id}
+                    onImageClick={handleImageClick}
+                    onImageDoubleClick={handleImageDoubleClick}
+                    onToggleFavorite={handleGridToggleFavorite}
+                    thumbnailSize={thumbnailSize}
+                    scrollPosition={gridScrollRef.current}
+                    onScrollChange={(pos) => { gridScrollRef.current = pos }}
+                    libraryId={currentLibraryId!}
+                    onLoadMore={() => currentLibraryId && useSearchStore.getState().loadMore(currentLibraryId)}
+                    hasMore={searchResults.length < useSearchStore.getState().total}
                   />
                 )
               ) : (
@@ -1242,6 +1313,13 @@ function App() {
           <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Esc</kbd> 关闭
         </span>
       </footer>
+
+      {/* 相似图片查找面板 */}
+      <SimilarImagesPanel
+        libraryId={currentLibraryId || 0}
+        sourceImage={null}
+        onImageClick={handleImageClick}
+      />
 
       {/* 音频播放器 — 必须在 backdrop-filter 容器外部渲染，否则 fixed 定位失效 */}
       <AudioPlayer />

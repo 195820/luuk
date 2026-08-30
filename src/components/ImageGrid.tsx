@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { formatFileSize } from '../utils/format'
 import { ImageGridItemComponent } from './ImageGridItem'
@@ -6,6 +6,9 @@ import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
+import { useViewStore } from '@/stores/viewStore'
+import { useSimilarStore } from '@/stores/similarStore'
+import { groupImages } from '../utils/group'
 
 export interface ImageGridItem {
   id: number | string
@@ -33,6 +36,10 @@ interface ImageGridProps {
   onScrollChange?: (position: number) => void
   libraryId: number
   isFavoriteLibrary?: boolean
+  /** 滚动到底部时触发（用于搜索结果分页加载） */
+  onLoadMore?: () => void
+  /** 是否还有更多数据可加载 */
+  hasMore?: boolean
 }
 
 export function ImageGrid({
@@ -46,6 +53,8 @@ export function ImageGrid({
   onScrollChange,
   libraryId,
   isFavoriteLibrary,
+  onLoadMore,
+  hasMore,
 }: ImageGridProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
@@ -53,15 +62,25 @@ export function ImageGrid({
 
   // 多选状态与右键菜单
   const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string; image?: ImageGridItem } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
+
+  // 分组状态
+  const groupBy = useViewStore(state => state.groupBy)
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = images.filter((img) => {
     const mt = img.mediaType
     return mt !== 'audio'
   })
-  const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 32)))
+
+  // 分组数据
+  const groupedData = useMemo(() => {
+    if (groupBy === 'none') return null
+    return groupImages(displayImages, groupBy)
+  }, [displayImages, groupBy])
+
+  const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 60)))
   const rowCount = Math.ceil(displayImages.length / columns)
 
   // 更新容器宽度
@@ -103,7 +122,14 @@ export function ImageGrid({
     if (parentRef.current && onScrollChange) {
       onScrollChange(parentRef.current.scrollTop)
     }
-  }, [onScrollChange])
+    // 滚动到底部附近时触发加载更多（阈值 200px）
+    if (parentRef.current && onLoadMore && hasMore) {
+      const { scrollTop, scrollHeight, clientHeight } = parentRef.current
+      if (scrollHeight - scrollTop - clientHeight < 200) {
+        onLoadMore()
+      }
+    }
+  }, [onScrollChange, onLoadMore, hasMore])
 
   useEffect(() => {
     const element = parentRef.current
@@ -136,7 +162,7 @@ export function ImageGrid({
 
   // 右键菜单处理
   const handleContextMenu = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
-    setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '' })
+    setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '', image })
   }, [])
 
   // 菜单动作处理
@@ -169,6 +195,12 @@ export function ImageGrid({
         setRenameDialog({ paths: pathsToRename })
         break
       }
+      case 'findSimilar': {
+        if (contextMenu.image && contextMenu.image.imagePath) {
+          useSimilarStore.getState().findSimilar(libraryId, contextMenu.image.imagePath, contextMenu.image)
+        }
+        break
+      }
     }
     setContextMenu(null)
   }, [contextMenu, libraryId, selectedPaths])
@@ -178,54 +210,93 @@ export function ImageGrid({
       ref={parentRef}
       className="w-full h-full overflow-auto p-4 bg-canvas"
     >
-      <div
-        style={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative',
-        }}
-      >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const rowIndex = virtualRow.index
-          const startIndex = rowIndex * columns
-          const endIndex = Math.min(startIndex + columns, displayImages.length)
-          const rowImages = displayImages.slice(startIndex, endIndex)
+      {groupBy === 'none' || !groupedData ? (
+        // 无分组：使用虚拟滚动
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const rowIndex = virtualRow.index
+            const startIndex = rowIndex * columns
+            const endIndex = Math.min(startIndex + columns, displayImages.length)
+            const rowImages = displayImages.slice(startIndex, endIndex)
 
-          return (
-            <div
-              key={`row-${rowIndex}`}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`,
-                display: 'flex',
-                gap: '16px',
-                padding: '0 8px',
-                boxSizing: 'border-box',
-              }}
-            >
-              {rowImages.map((image) => (
-                <ImageGridItemComponent
-                  key={image.id}
-                  image={image}
-                  isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
-                  onClick={handleItemClick}
-                  onDoubleClick={onImageDoubleClick}
-                  onToggleFavorite={onToggleFavorite}
-                  onContextMenu={handleContextMenu}
-                  thumbnailSize={thumbnailSize}
-                  formatFileSize={formatFileSize}
-                  libraryId={libraryId}
-                  isFavoriteLibrary={isFavoriteLibrary}
-                />
-              ))}
+            return (
+              <div
+                key={`row-${rowIndex}`}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                  display: 'flex',
+                  gap: '16px',
+                  padding: '0 8px',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {rowImages.map((image) => (
+                  <ImageGridItemComponent
+                    key={image.id}
+                    image={image}
+                    isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
+                    onClick={handleItemClick}
+                    onDoubleClick={onImageDoubleClick}
+                    onToggleFavorite={onToggleFavorite}
+                    onContextMenu={handleContextMenu}
+                    thumbnailSize={thumbnailSize}
+                    formatFileSize={formatFileSize}
+                    libraryId={libraryId}
+                    isFavoriteLibrary={isFavoriteLibrary}
+                  />
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        // 有分组：直接渲染（非虚拟化）
+        <div className="space-y-6">
+          {groupedData.map((group) => (
+            <div key={group.key}>
+              <div className="sticky top-0 z-10 bg-glass-l1 backdrop-blur-md px-4 py-2 mb-3 rounded-lg border border-border">
+                <h3 className="text-sm font-medium text-text-primary">
+                  {group.label} <span className="text-text-muted">({group.items.length})</span>
+                </h3>
+              </div>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: `repeat(${columns}, 1fr)`,
+                  gap: '16px',
+                }}
+              >
+                {group.items.map((image) => (
+                  <ImageGridItemComponent
+                    key={image.id}
+                    image={image}
+                    isSelected={selectedId === image.id || (image.imagePath ? selectedPaths.has(image.imagePath) : false)}
+                    onClick={handleItemClick}
+                    onDoubleClick={onImageDoubleClick}
+                    onToggleFavorite={onToggleFavorite}
+                    onContextMenu={handleContextMenu}
+                    thumbnailSize={thumbnailSize}
+                    formatFileSize={formatFileSize}
+                    libraryId={libraryId}
+                    isFavoriteLibrary={isFavoriteLibrary}
+                  />
+                ))}
+              </div>
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      )}
       {contextMenu && (
         <FileContextMenu
           x={contextMenu.x}
