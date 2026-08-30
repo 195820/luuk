@@ -18,6 +18,7 @@ import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore, useHistoryStore } from './stores'
+import { useViewStore } from './stores/viewStore'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
 import type { Library, HistoryItem } from './types'
@@ -57,8 +58,6 @@ function App() {
     folderTree,
     selectedFolder,
     setSelectedFolder,
-    toggleFolderSidebar,
-    folderSidebarOpen,
     toggleFavorite,
     getRating,
     setImageRating,
@@ -70,19 +69,25 @@ function App() {
     favoriteFolderTree,
     loadFavoriteFolderTree,
     toggleFavoriteFolder,
-    setSelectedFavoriteFolder,
     singleFavoriteImages,
     loadSingleFavoriteImages,
-    favoriteViewMode,
     imageSortBy,
     imageSortOrder,
     setSortBy,
     setSortOrder,
     applySort,
-    gridLayoutMode,
-    setGridLayoutMode,
     setError,
   } = useImageStore()
+
+  // 视图状态（独立 store）
+  const {
+    toggleFolderSidebar,
+    folderSidebarOpen,
+    setSelectedFavoriteFolder,
+    favoriteViewMode,
+    gridLayoutMode,
+    setGridLayoutMode,
+  } = useViewStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)

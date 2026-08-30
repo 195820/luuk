@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
 import { ChevronRight, Folder, Trash2, Heart } from 'lucide-react'
 import { useImageStore } from '../stores/imageStore'
+import { useViewStore } from '../stores/viewStore'
 
 export interface FolderTreeNode {
   path: string
@@ -34,9 +35,9 @@ export function FolderTree({
   onSwitchToSingleView,
 }: FolderTreeProps) {
   const checkIsFavoriteFolder = useImageStore(state => state.isFavoriteFolder)
-  const favoriteViewMode = useImageStore(state => state.favoriteViewMode)
-  const setFavoriteViewMode = useImageStore(state => state.setFavoriteViewMode)
-  const setSelectedFavoriteFolder = useImageStore(state => state.setSelectedFavoriteFolder)
+  const favoriteViewMode = useViewStore(state => state.favoriteViewMode)
+  const setFavoriteViewMode = useViewStore(state => state.setFavoriteViewMode)
+  const setSelectedFavoriteFolder = useViewStore(state => state.setSelectedFavoriteFolder)
 
   // 点击单图收藏按钮时，清除选中的文件夹并切换到单图视图
   const handleSingleFavoriteClick = useCallback(() => {

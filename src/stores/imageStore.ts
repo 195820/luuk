@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Library, Image, Favorite, ScanResult, ThumbnailSize, FolderTreeNode, FavoriteImage, FavoriteFolder } from '../types'
 import { sortImages, sortFavoriteImages } from '../utils/sort'
 import { logger } from '../utils/logger'
+import { useViewStore } from './viewStore'
 
 // 扫描进度信息
 export interface ScanProgress {
@@ -45,12 +46,6 @@ interface ImageState {
   folderTree: FolderTreeNode[]
   selectedFolder: string | null
 
-  // 收藏视图模式：'all' | 'folder' | 'single'
-  favoriteViewMode: 'all' | 'folder' | 'single'
-
-  // 网格布局模式：'grid' | 'masonry'
-  gridLayoutMode: 'grid' | 'masonry'
-
   // 排序设置
   imageSortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating'
   imageSortOrder: 'ASC' | 'DESC'
@@ -58,10 +53,7 @@ interface ImageState {
   // 缩略图缓存
   thumbnailCache: Map<number, string>
 
-  // UI 状态
-  sidebarOpen: boolean
-  folderSidebarOpen: boolean
-  viewMode: 'grid' | 'list' | 'single'
+  // UI 状态（isLoading/error 与数据加载耦合，保留在此）
   isLoading: boolean
   error: string | null
 
@@ -107,24 +99,15 @@ interface ImageState {
   loadFavoriteFolderTree: () => Promise<void>
   isFavoriteFolder: (libraryId: number, folderPath: string) => boolean
 
-  // UI 操作
-  toggleSidebar: () => void
-  toggleFolderSidebar: () => void
-  setViewMode: (mode: 'grid' | 'list' | 'single') => void
+  // UI 操作（isLoading/error 保留）
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
-  setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => void
-  setGridLayoutMode: (mode: 'grid' | 'masonry') => void
 
   // 排序操作
   setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating') => void
   setSortOrder: (order: 'ASC' | 'DESC') => void
   setSort: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating', order: 'ASC' | 'DESC') => void
   applySort: () => void
-
-  // 收藏文件夹选中状态
-  selectedFavoriteFolder: string | null
-  setSelectedFavoriteFolder: (folderPath: string | null) => void
 }
 
 // LRU 缓存淘汰：超出上限时删除最早插入的条目
@@ -150,17 +133,11 @@ export const useImageStore = create<ImageState>((set, get) => ({
   favoriteFolderTree: [],
   folderTree: [],
   selectedFolder: null,
-  selectedFavoriteFolder: null,
   singleFavoriteImages: [],
   singleFavoriteCount: 0,
-  favoriteViewMode: 'folder', // 默认显示文件夹收藏
-  gridLayoutMode: (localStorage.getItem('gridLayoutMode') as 'grid' | 'masonry') || 'grid', // 从 localStorage 加载布局模式
   imageSortBy: 'relative_path', // 默认按文件名排序
   imageSortOrder: 'ASC', // 默认升序
   thumbnailCache: new Map(),
-  sidebarOpen: true,
-  folderSidebarOpen: true,
-  viewMode: 'grid',
   isLoading: false,
   error: null,
   scanProgress: {
@@ -542,21 +519,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
     return favoriteFolders.some(f => f.library_id === libraryId && f.folder_path === folderPath)
   },
 
-  // 切换侧边栏
-  toggleSidebar: () => {
-    set((state) => ({ sidebarOpen: !state.sidebarOpen }))
-  },
-
-  // 切换文件夹侧边栏
-  toggleFolderSidebar: () => {
-    set((state) => ({ folderSidebarOpen: !state.folderSidebarOpen }))
-  },
-
-  // 设置视图模式
-  setViewMode: (mode: 'grid' | 'list' | 'single') => {
-    set({ viewMode: mode })
-  },
-
   // 设置加载状态
   setLoading: (loading: boolean) => {
     set({ isLoading: loading })
@@ -565,11 +527,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 设置错误
   setError: (error: string | null) => {
     set({ error })
-  },
-
-  // 设置收藏文件夹选中状态
-  setSelectedFavoriteFolder: (folderPath: string | null) => {
-    set({ selectedFavoriteFolder: folderPath })
   },
 
   // 加载收藏文件夹中的图片
@@ -633,17 +590,6 @@ export const useImageStore = create<ImageState>((set, get) => ({
     }
   },
 
-  // 设置收藏视图模式
-  setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => {
-    set({ favoriteViewMode: mode })
-  },
-
-  // 设置网格布局模式
-  setGridLayoutMode: (mode: 'grid' | 'masonry') => {
-    set({ gridLayoutMode: mode })
-    localStorage.setItem('gridLayoutMode', mode)
-  },
-
   // 设置排序字段（纯 setter，需配合 applySort 触发重载）
   setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating') => {
     set({ imageSortBy: sortBy })
@@ -661,12 +607,12 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 根据当前排序设置和库状态，重新加载图片
   applySort: () => {
-    const { currentLibraryId, favoriteViewMode } = get()
+    const { currentLibraryId } = get()
+    const { favoriteViewMode, selectedFavoriteFolder } = useViewStore.getState()
     if (currentLibraryId === FAVORITE_LIBRARY_ID) {
       if (favoriteViewMode === 'single') {
         get().loadSingleFavoriteImages()
       } else if (favoriteViewMode === 'folder') {
-        const { selectedFavoriteFolder } = get()
         if (selectedFavoriteFolder) {
           get().loadFavoriteFolderImages(selectedFavoriteFolder)
         } else {
