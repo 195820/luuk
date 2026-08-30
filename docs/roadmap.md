@@ -185,7 +185,7 @@ CREATE TABLE album_items (
 
 ### 测试完善
 
-- [x] 归档测试方案中的待测试用例：测试记录模板已创建（`archive/文件操作阶段测试执行记录.md`），待手动执行
+- [ ] 归档测试方案中的待测试用例：执行记录模板已创建（`archive/文件操作阶段测试执行记录.md`），9 个用例待手动执行
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
 - [x] 补充自动化单元测试：69 用例（含多选逻辑 + 文件操作边界）
 
@@ -231,7 +231,7 @@ CREATE TABLE album_items (
 | 隐患 | 影响 | 状态 |
 |------|------|------|
 | 收藏/历史以 `image_path` 字符串为主键 | 文件重命名/移动后引用失效 | ✅ 已解决 — 路径级联更新机制（Phase 1） |
-| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | ✅ 已拆分 — `selectionStore`（多选）+ `viewStore`（视图/布局） |
+| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 部分拆分 — 已拆出 `selectionStore`（多选）+ `viewStore`（视图/布局），主体仍有 541 行，后续按需继续拆分 |
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
 | `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
@@ -239,7 +239,7 @@ CREATE TABLE album_items (
 ### 工程化欠账
 
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
-- [ ] 归档测试方案中 `TC-THUMB-004/005`、`TC-GRID-001~004`、`TC-PERF-001~003` 未执行（Phase 1.5 Task 4 进行中）
+- [ ] 归档测试方案中 `TC-THUMB-004/005`、`TC-GRID-001~004`、`TC-PERF-001~003` 未执行（模板已建，待手动执行）
 - [ ] 单元测试（60+ 用例）可持续扩充
 
 ### 性能红线
