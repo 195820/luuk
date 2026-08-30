@@ -63,6 +63,8 @@ export interface ElectronAPI {
   initImageService: () => Promise<void>
   // 库统计
   getLibraryStats: (libraryId: number) => Promise<{ success: boolean; data?: LibraryStats; error?: string }>
+  // EXIF
+  getImageExif: (libraryId: number, relativePath: string) => Promise<{ success: boolean; data?: ExifInfo; error?: string }>
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>

@@ -145,6 +145,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLibraryStats: (libraryId: number) =>
     ipcRenderer.invoke('getLibraryStats', libraryId),
 
+  // EXIF
+  getImageExif: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('getImageExif', libraryId, relativePath),
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),

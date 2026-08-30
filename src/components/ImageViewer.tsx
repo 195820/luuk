@@ -28,6 +28,9 @@ import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { useImageStore } from '@/stores/imageStore'
+import type { ExifInfo } from '@/types'
+
+type ExifData = ExifInfo
 
 export interface SlideshowSettings {
   enabled: boolean
@@ -99,6 +102,11 @@ export function ImageViewer({
   const wrapperRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const pendingErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // EXIF 状态（按 imagePath 缓存）
+  const [exifData, setExifData] = useState<ExifData | null>(null)
+  const [exifLoading, setExifLoading] = useState(false)
+  const exifCacheRef = useRef<Map<string, ExifData>>(new Map())
   // 延迟显示 spinner：快速加载时不显示，消除闪烁
   const [showSpinner, setShowSpinner] = useState(false)
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -112,6 +120,43 @@ export function ImageViewer({
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [renameDialog, setRenameDialog] = useState(false)
+
+  // EXIF 惰性加载（仅在信息面板打开且媒体类型为图片时请求）
+  useEffect(() => {
+    if (!showInfo || mediaType !== 'image' || !libraryId || !imagePath) {
+      if (!showInfo) setExifData(null)
+      return
+    }
+
+    // 检查缓存
+    const cached = exifCacheRef.current.get(imagePath)
+    if (cached) {
+      setExifData(cached)
+      return
+    }
+
+    setExifLoading(true)
+    let cancelled = false
+
+    window.electronAPI.getImageExif(libraryId, imagePath).then(result => {
+      if (cancelled) return
+      if (result.success && result.data) {
+        const data = result.data
+        exifCacheRef.current.set(imagePath, data)
+        setExifData(data)
+      } else {
+        setExifData({})
+      }
+      setExifLoading(false)
+    }).catch(() => {
+      if (!cancelled) {
+        setExifData({})
+        setExifLoading(false)
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [showInfo, mediaType, libraryId, imagePath])
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -654,6 +699,58 @@ export function ImageViewer({
                   <span className="text-text-primary text-sm">{imageInfo.format.toUpperCase()}</span>
                 </div>
               )}
+
+              {/* EXIF 拍摄信息（仅图片显示） */}
+              {mediaType === 'image' && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="text-xs font-medium text-text-secondary mb-2">拍摄信息</div>
+                  {exifLoading && (
+                    <div className="text-xs text-text-dim">加载中...</div>
+                  )}
+                  {!exifLoading && exifData && Object.keys(exifData).length === 0 && (
+                    <div className="text-xs text-text-dim">无 EXIF 信息</div>
+                  )}
+                  {!exifLoading && exifData && Object.keys(exifData).length > 0 && (
+                    <div className="space-y-1.5 text-xs">
+                      {exifData.dateTimeOriginal && (
+                        <ExifRow label="拍摄时间" value={exifData.dateTimeOriginal} />
+                      )}
+                      {(exifData.make || exifData.model) && (
+                        <ExifRow label="相机" value={[exifData.make, exifData.model].filter(Boolean).join(' ')} />
+                      )}
+                      {exifData.lensModel && (
+                        <ExifRow label="镜头" value={exifData.lensModel} />
+                      )}
+                      {exifData.exposureTime && (
+                        <ExifRow label="曝光" value={exifData.exposureTime} />
+                      )}
+                      {exifData.fNumber !== undefined && (
+                        <ExifRow label="光圈" value={`f/${exifData.fNumber}`} />
+                      )}
+                      {exifData.iso !== undefined && (
+                        <ExifRow label="ISO" value={String(exifData.iso)} />
+                      )}
+                      {exifData.focalLength !== undefined && (
+                        <ExifRow label="焦距" value={`${exifData.focalLength}mm`} />
+                      )}
+                      {exifData.gps && (
+                        <div className="flex justify-between py-1">
+                          <span className="text-text-secondary">GPS</span>
+                          <a
+                            href={`https://www.openstreetmap.org/?mlat=${exifData.gps.latitude}&mlon=${exifData.gps.longitude}#map=15/${exifData.gps.latitude}/${exifData.gps.longitude}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-accent hover:underline"
+                            title="在地图中查看"
+                          >
+                            {exifData.gps.latitude.toFixed(4)}, {exifData.gps.longitude.toFixed(4)}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </motion.div>
         )}
@@ -729,6 +826,16 @@ export function ImageViewer({
           onClose={() => setRenameDialog(false)}
         />
       )}
+    </div>
+  )
+}
+
+/** EXIF 键值对行 */
+function ExifRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between py-1">
+      <span className="text-text-secondary">{label}</span>
+      <span className="text-text-primary text-right max-w-[60%] break-all">{value}</span>
     </div>
   )
 }

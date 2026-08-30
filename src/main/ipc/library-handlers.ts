@@ -3,9 +3,11 @@ import path from 'path';
 import { getImageService } from '../services/image-service';
 import { getMimeTypeFromPath } from '../utils/media';
 import { registerMediaUrl } from '../services/media-registry';
+import { readExif } from '../utils/exif';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 import { logger } from '../../utils/logger';
 import { sendToRenderer } from '../utils/ipc';
+import { getMasterDB } from '../services/database';
 
 /**
  * 验证文件路径是否在已注册库目录内
@@ -465,6 +467,33 @@ export function registerLibraryHandlers(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // EXIF 信息
+  ipcMain.handle('getImageExif', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    relativePath: string
+  ) => {
+    try {
+      const masterDB = getMasterDB();
+      const library = masterDB.getLibrary(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const absPath = path.join(library.rootPath, relativePath);
+      // 安全检查：确保路径在库目录内
+      const resolved = path.resolve(absPath);
+      const libRoot = path.resolve(library.rootPath);
+      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+        return { success: false, error: 'Access denied' };
+      }
+      const exif = await readExif(absPath);
+      return { success: true, data: exif };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'getImageExif 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
 }
 
 /**
@@ -485,7 +514,7 @@ const IPC_HANDLER_NAMES = [
   'getCacheStats', 'clearCache', 'readFile', 'fileExists',
   'loadFullImage', 'getMediaUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',
-  'getLibraryStats',
+  'getLibraryStats', 'getImageExif',
   'updateScanProgress', 'clearScanProgress',
 ] as const;
 
