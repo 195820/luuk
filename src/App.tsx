@@ -15,6 +15,7 @@ import { ScanProgress } from './components/ScanProgress'
 import { SortControl } from './components/SortControl'
 import { SearchPanel } from './components/SearchPanel'
 import { TagCloudPanel } from './components/TagCloudPanel'
+import { StatsPanel } from './components/StatsPanel'
 import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
@@ -93,6 +94,7 @@ function App() {
   } = useViewStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
+  const [showStatsPanel, setShowStatsPanel] = useState(false)
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
@@ -1177,7 +1179,18 @@ function App() {
                 <Database size={16} />
                 库管理
               </h3>
-              <button onClick={() => setShowLibraryPanel(false)} className="btn-icon-sm text-xl">×</button>
+              <div className="flex items-center gap-1">
+                {currentLibraryId !== null && currentLibraryId > 0 && (
+                  <button
+                    onClick={() => setShowStatsPanel(true)}
+                    className="btn-icon-sm text-xs"
+                    title="库统计"
+                  >
+                    统计
+                  </button>
+                )}
+                <button onClick={() => setShowLibraryPanel(false)} className="btn-icon-sm text-xl">×</button>
+              </div>
             </div>
             <div className="p-3 max-h-80 overflow-y-auto">
               <button onClick={handleAddLibrary} className="btn-text primary w-full py-3">
@@ -1328,6 +1341,15 @@ function App() {
 
       {/* 扫描进度条 */}
       <ScanProgress />
+
+      {/* 库统计面板 */}
+      {showStatsPanel && currentLibraryId !== null && currentLibraryId > 0 && (
+        <StatsPanel
+          libraryId={currentLibraryId}
+          libraryName={libraries.find(l => l.id === currentLibraryId)?.name || ''}
+          onClose={() => setShowStatsPanel(false)}
+        />
+      )}
     </div>
   )
 }
