@@ -69,6 +69,14 @@ export interface ElectronAPI {
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) => Promise<SearchResult>
+  // 标签
+  createTag: (name: string, color?: string) => Promise<{ success: boolean; data?: Tag; error?: string }>
+  deleteTag: (id: number) => Promise<{ success: boolean; error?: string }>
+  renameTag: (id: number, name: string, color?: string) => Promise<{ success: boolean; error?: string }>
+  tagImages: (tagIds: number[], libraryId: number, paths: string[]) => Promise<{ success: boolean; error?: string }>
+  untagImages: (tagIds: number[], libraryId: number, paths: string[]) => Promise<{ success: boolean; error?: string }>
+  getImageTags: (libraryId: number, imagePath: string) => Promise<{ success: boolean; data?: Tag[]; error?: string }>
+  getAllTags: (libraryId: number) => Promise<{ success: boolean; data?: Array<Tag & { count: number }>; error?: string }>
   // pHash 回填
   startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; error?: string }>
   stopPhashBackfill: () => Promise<{ success: boolean; error?: string }>

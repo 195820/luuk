@@ -107,6 +107,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
     ipcRenderer.invoke('searchImages', libraryId, criteria, options),
 
+  // 标签
+  createTag: (name: string, color?: string) =>
+    ipcRenderer.invoke('createTag', name, color),
+  deleteTag: (id: number) =>
+    ipcRenderer.invoke('deleteTag', id),
+  renameTag: (id: number, name: string, color?: string) =>
+    ipcRenderer.invoke('renameTag', id, name, color),
+  tagImages: (tagIds: number[], libraryId: number, paths: string[]) =>
+    ipcRenderer.invoke('tagImages', tagIds, libraryId, paths),
+  untagImages: (tagIds: number[], libraryId: number, paths: string[]) =>
+    ipcRenderer.invoke('untagImages', tagIds, libraryId, paths),
+  getImageTags: (libraryId: number, imagePath: string) =>
+    ipcRenderer.invoke('getImageTags', libraryId, imagePath),
+  getAllTags: (libraryId: number) =>
+    ipcRenderer.invoke('getAllTags', libraryId),
+
   // pHash 回填
   startPhashBackfill: (libraryId: number) =>
     ipcRenderer.invoke('startPhashBackfill', libraryId),
