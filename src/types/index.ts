@@ -73,6 +73,8 @@ export interface ElectronAPI {
   startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; error?: string }>
   stopPhashBackfill: () => Promise<{ success: boolean; error?: string }>
   onPhashProgress: (callback: (progress: PhashProgress) => void) => () => void
+  // 相似图片查找
+  findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) => Promise<{ success: boolean; images?: any[]; error?: string }>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -197,6 +199,8 @@ export interface Image {
   mediaType: MediaType
   duration: number | null  // 时长（秒），仅视频/音频
   codec: string | null     // 编码格式
+  // pHash 感知哈希（用于相似图片查找）
+  phash?: string
   // 附加字段 (非数据库)
   library_id?: number
   library_name?: string

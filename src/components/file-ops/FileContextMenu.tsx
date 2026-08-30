@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy } from 'lucide-react'
+import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface FileContextMenuProps {
@@ -34,6 +34,7 @@ export function FileContextMenu({ x, y, onAction, onClose }: FileContextMenuProp
     { id: 'showInExplorer', label: '在资源管理器中显示', icon: FolderSearch },
     { id: 'copyPath', label: '复制路径', icon: ClipboardCopy },
     { id: 'setWallpaper', label: '设为壁纸', icon: WallpaperIcon },
+    { id: 'findSimilar', label: '查找相似图片', icon: ScanSearch },
     { type: 'separator' as const },
     { id: 'delete', label: '移入回收站', icon: Trash2, shortcut: 'Delete', variant: 'destructive' },
   ]

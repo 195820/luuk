@@ -7,6 +7,7 @@ import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useViewStore } from '@/stores/viewStore'
+import { useSimilarStore } from '@/stores/similarStore'
 import { groupImages } from '../utils/group'
 
 export interface ImageGridItem {
@@ -61,7 +62,7 @@ export function ImageGrid({
 
   // 多选状态与右键菜单
   const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string; image?: ImageGridItem } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
   // 分组状态
@@ -161,7 +162,7 @@ export function ImageGrid({
 
   // 右键菜单处理
   const handleContextMenu = useCallback((image: ImageGridItem, e: React.MouseEvent) => {
-    setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '' })
+    setContextMenu({ x: e.clientX, y: e.clientY, imagePath: image.imagePath || '', image })
   }, [])
 
   // 菜单动作处理
@@ -192,6 +193,12 @@ export function ImageGrid({
       case 'rename': {
         const pathsToRename = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
         setRenameDialog({ paths: pathsToRename })
+        break
+      }
+      case 'findSimilar': {
+        if (contextMenu.image && contextMenu.image.imagePath) {
+          useSimilarStore.getState().findSimilar(libraryId, contextMenu.image.imagePath, contextMenu.image)
+        }
         break
       }
     }

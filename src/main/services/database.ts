@@ -32,6 +32,8 @@ export interface Image {
   media_type: string;  // 'image' | 'video' | 'audio'
   duration: number | null;
   codec: string | null;
+  // pHash 感知哈希（用于相似图片查找）
+  phash?: string | null;
 }
 
 /**
@@ -817,6 +819,17 @@ export class ThumbnailsDB {
     if (!this.db) return;
     const stmt = this.db.prepare('UPDATE images SET phash = ? WHERE id = ?');
     stmt.run(phash, id);
+  }
+
+  /**
+   * 获取所有有 pHash 的图片（用于相似图查找）
+   */
+  getImagesWithPhash(): Array<{ id: number; relative_path: string; phash: string }> {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(
+      'SELECT id, relative_path, phash FROM images WHERE phash IS NOT NULL AND phash != \'\' AND is_deleted = 0 AND media_type = ?'
+    );
+    return stmt.all('image') as Array<{ id: number; relative_path: string; phash: string }>;
   }
 
   getImage(id: number): Image | null {

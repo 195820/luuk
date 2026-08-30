@@ -118,6 +118,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('phashProgress', subscription)
   },
 
+  // 相似图片查找
+  findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) =>
+    ipcRenderer.invoke('findSimilarImages', libraryId, imagePath, threshold, limit),
+
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 

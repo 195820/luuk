@@ -14,6 +14,7 @@ import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
 import { SortControl } from './components/SortControl'
 import { SearchPanel } from './components/SearchPanel'
+import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
@@ -1312,6 +1313,13 @@ function App() {
           <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Esc</kbd> 关闭
         </span>
       </footer>
+
+      {/* 相似图片查找面板 */}
+      <SimilarImagesPanel
+        libraryId={currentLibraryId || 0}
+        sourceImage={null}
+        onImageClick={handleImageClick}
+      />
 
       {/* 音频播放器 — 必须在 backdrop-filter 容器外部渲染，否则 fixed 定位失效 */}
       <AudioPlayer />

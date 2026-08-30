@@ -7,7 +7,7 @@ const SEARCH_HANDLER_NAMES = [
   'searchImages',
   'startPhashBackfill',
   'stopPhashBackfill',
-  // Task 8 补充：findSimilarImages
+  'findSimilarImages',
 ] as const;
 
 /**
@@ -47,6 +47,22 @@ export function registerSearchHandlers(): void {
       return { success: true };
     } catch (err) {
       logger.error('SearchHandlers', 'stopPhashBackfill 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('findSimilarImages', async (
+    _event,
+    libraryId: number,
+    imagePath: string,
+    threshold: number,
+    limit: number
+  ) => {
+    try {
+      const result = service.findSimilarImages(libraryId, imagePath, threshold, limit);
+      return result;
+    } catch (err) {
+      logger.error('SearchHandlers', 'findSimilarImages 失败', err);
       return { success: false, error: (err as Error).message };
     }
   });
