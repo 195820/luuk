@@ -33,6 +33,10 @@ interface ImageGridProps {
   onScrollChange?: (position: number) => void
   libraryId: number
   isFavoriteLibrary?: boolean
+  /** 滚动到底部时触发（用于搜索结果分页加载） */
+  onLoadMore?: () => void
+  /** 是否还有更多数据可加载 */
+  hasMore?: boolean
 }
 
 export function ImageGrid({
@@ -46,6 +50,8 @@ export function ImageGrid({
   onScrollChange,
   libraryId,
   isFavoriteLibrary,
+  onLoadMore,
+  hasMore,
 }: ImageGridProps) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(0)
@@ -103,7 +109,14 @@ export function ImageGrid({
     if (parentRef.current && onScrollChange) {
       onScrollChange(parentRef.current.scrollTop)
     }
-  }, [onScrollChange])
+    // 滚动到底部附近时触发加载更多（阈值 200px）
+    if (parentRef.current && onLoadMore && hasMore) {
+      const { scrollTop, scrollHeight, clientHeight } = parentRef.current
+      if (scrollHeight - scrollTop - clientHeight < 200) {
+        onLoadMore()
+      }
+    }
+  }, [onScrollChange, onLoadMore, hasMore])
 
   useEffect(() => {
     const element = parentRef.current
