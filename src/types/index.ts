@@ -58,7 +58,7 @@ export interface ElectronAPI {
   setWallpaper: (libraryId: number, relativePath: string) => Promise<FileOperationResult>
   showInExplorer: (libraryId: number, relativePath: string) => Promise<FileOperationResult>
   selectDestinationFolder: (libraryId: number) => Promise<string | null | { error: string }>
-  getDeletedFiles: (limit?: number) => Promise<DeletedFileRecord[]>
+  getDeletedFiles: (libraryId?: number, limit?: number) => Promise<DeletedFileRecord[]>
   // 初始化服务
   initImageService: () => Promise<void>
   // 媒体相关
