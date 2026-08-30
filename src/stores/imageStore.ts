@@ -306,9 +306,9 @@ export const useImageStore = create<ImageState>((set, get) => ({
         set({ images: [], totalImages: 0 })
         return
       }
-      // RECENT_ADDED_ID 按 created_time 近似（indexed_time 不在 DB 排序白名单中）
-      // RECENT_MODIFIED_ID 按 modified_time
-      const recentOrderBy = currentLibraryId === RECENT_ADDED_ID ? 'created_time' : 'modified_time'
+      // RECENT_ADDED_ID 按入库时间（indexed_time）
+      // RECENT_MODIFIED_ID 按修改时间（modified_time）
+      const recentOrderBy = currentLibraryId === RECENT_ADDED_ID ? 'indexed_time' : 'modified_time'
       try {
         set({ isLoading: true, error: null })
         const limit = options?.limit || 100

@@ -5,7 +5,7 @@ import { app } from 'electron';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 import { logger } from '../../utils/logger';
 
-const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time'] as const;
+const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
 const ALLOWED_ORDER = ['ASC', 'DESC'] as const;
 
 function validateOrderBy(orderBy: string, order: string): { orderBy: string; order: string } {

@@ -149,7 +149,7 @@ export interface ScanResult {
 export interface ImageQueryOptions {
   limit: number
   offset: number
-  orderBy?: 'created_time' | 'modified_time' | 'relative_path'
+  orderBy?: 'created_time' | 'modified_time' | 'indexed_time' | 'relative_path'
   order?: 'ASC' | 'DESC'
 }
 
