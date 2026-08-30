@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ElectronAPI, ThumbnailSize, ImageQueryOptions } from '../src/types'
+import type { ElectronAPI, ThumbnailSize, ImageQueryOptions, SearchCriteria, SearchOptions } from '../src/types'
 
 // 暴露安全的 API 给渲染进程
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -102,6 +102,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
+
+  // 搜索
+  searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
+    ipcRenderer.invoke('searchImages', libraryId, criteria, options),
 
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),

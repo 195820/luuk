@@ -67,6 +67,8 @@ export interface ElectronAPI {
   getMediaPath: (libraryId: number, imageId: number) => Promise<string>
   extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) => Promise<{ duration: number; codec: string; width: number; height: number }>
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
+  // 搜索
+  searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) => Promise<SearchResult>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -295,4 +297,39 @@ export interface DeletedFileRecord {
   original_path: string;
   deleted_at: string;
   file_size: number;
+}
+
+// ==================== 搜索类型 ====================
+
+/**
+ * 多条件组合搜索参数
+ * favoritePaths 由服务层填充（从 master.db 查收藏/评分路径集），渲染层不传
+ * favoritePaths = null：不加该条件；空数组：收藏条件下无命中，直接返回空
+ */
+export interface SearchCriteria {
+  fileName?: string          // 文件名模糊匹配（LIKE %keyword%）
+  formats?: string[]         // 小写无点，如 ['jpg', 'png']
+  minWidth?: number
+  maxWidth?: number
+  minHeight?: number
+  maxHeight?: number
+  minFileSize?: number       // 字节
+  maxFileSize?: number
+  createdFrom?: string       // ISO 日期 'YYYY-MM-DD'
+  createdTo?: string
+  mediaType?: 'image' | 'video' | 'audio'
+  minRating?: number         // 1-5，服务层转为 favoritePaths 路径集
+  favoritePaths?: string[] | null  // 服务层填充，渲染层不传
+}
+
+export interface SearchResult {
+  success: boolean
+  images: Image[]
+  total: number
+  error?: string
+}
+
+export interface SearchOptions {
+  limit: number
+  offset: number
 }

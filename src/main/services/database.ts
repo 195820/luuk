@@ -2,7 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import type { Library, ThumbnailSize } from '../../types';
+import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time'] as const;
@@ -259,6 +259,18 @@ export class MasterDB {
     if (!this.db) return 0;
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM favorites');
     return (stmt.get() as { count: number }).count;
+  }
+
+  /**
+   * 获取指定库中评分 >= minRating 的收藏图片路径集合
+   * 供搜索服务的收藏/评分交集逻辑使用
+   */
+  getFavoritePathsByMinRating(libraryId: number, minRating: number): string[] {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(
+      'SELECT image_path FROM favorites WHERE library_id = ? AND rating >= ?'
+    );
+    return (stmt.all(libraryId, minRating) as Array<{ image_path: string }>).map(r => r.image_path);
   }
 
   /**
@@ -633,6 +645,9 @@ export class ThumbnailsDB {
       CREATE INDEX IF NOT EXISTS idx_images_path ON images(relative_path);
       CREATE INDEX IF NOT EXISTS idx_images_hash ON images(file_hash);
       CREATE INDEX IF NOT EXISTS idx_images_deleted ON images(is_deleted);
+      CREATE INDEX IF NOT EXISTS idx_images_created_time ON images(created_time);
+      CREATE INDEX IF NOT EXISTS idx_images_modified_time ON images(modified_time);
+      CREATE INDEX IF NOT EXISTS idx_images_indexed_time ON images(indexed_time);
 
       CREATE TABLE IF NOT EXISTS thumbnails (
         image_id INTEGER NOT NULL,
@@ -681,17 +696,18 @@ export class ThumbnailsDB {
     file_size: number;
     format: string;
     modified_time: string;
+    created_time?: string;
     media_type?: string;
     duration?: number | null;
     codec?: string | null;
   }>): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare(
-      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     const insertMany = this.db.transaction((imgs: typeof images) => {
       for (const img of imgs) {
-        stmt.run(img.relative_path, img.file_hash, img.width, img.height, img.file_size, img.format, img.modified_time, new Date().toISOString(), img.media_type || 'image', img.duration ?? null, img.codec ?? null);
+        stmt.run(img.relative_path, img.file_hash, img.width, img.height, img.file_size, img.format, img.created_time ?? null, img.modified_time, new Date().toISOString(), img.media_type || 'image', img.duration ?? null, img.codec ?? null);
       }
     });
     insertMany(images);
@@ -706,15 +722,16 @@ export class ThumbnailsDB {
     file_size: number;
     format: string;
     modified_time: string;
+    created_time?: string;
     media_type?: string;
     duration?: number | null;
     codec?: string | null;
   }): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare(
-      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO images (relative_path, file_hash, width, height, file_size, format, created_time, modified_time, indexed_time, media_type, duration, codec) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    const result = stmt.run(image.relative_path, image.file_hash, image.width, image.height, image.file_size, image.format, image.modified_time, new Date().toISOString(), image.media_type || 'image', image.duration ?? null, image.codec ?? null);
+    const result = stmt.run(image.relative_path, image.file_hash, image.width, image.height, image.file_size, image.format, image.created_time ?? null, image.modified_time, new Date().toISOString(), image.media_type || 'image', image.duration ?? null, image.codec ?? null);
     return result.lastInsertRowid as number;
   }
 
@@ -723,6 +740,7 @@ export class ThumbnailsDB {
     width: number;
     height: number;
     file_size: number;
+    created_time: string;
     modified_time: string;
     duration: number | null;
     codec: string | null;
@@ -735,6 +753,7 @@ export class ThumbnailsDB {
     if (updates.width) { fields.push('width = ?'); values.push(updates.width); }
     if (updates.height) { fields.push('height = ?'); values.push(updates.height); }
     if (updates.file_size !== undefined) { fields.push('file_size = ?'); values.push(updates.file_size); }
+    if (updates.created_time) { fields.push('created_time = ?'); values.push(updates.created_time); }
     if (updates.modified_time) { fields.push('modified_time = ?'); values.push(updates.modified_time); }
     if (updates.duration !== undefined) { fields.push('duration = ?'); values.push(updates.duration); }
     if (updates.codec !== undefined) { fields.push('codec = ?'); values.push(updates.codec); }
@@ -769,6 +788,124 @@ export class ThumbnailsDB {
     if (!this.db) return 0;
     const stmt = this.db.prepare('SELECT COUNT(*) as count FROM images WHERE is_deleted = 0');
     return (stmt.get() as { count: number }).count;
+  }
+
+  /**
+   * 多条件组合搜索
+   * 固定前置条件：is_deleted = 0
+   * favoritePaths 语义：
+   *   - null / undefined：不加收藏条件
+   *   - 空数组 []：收藏条件下无命中，直接返回空
+   *   - 非空数组：按 900 条/批拆分为多个 IN (...) 子句，OR 拼接
+   */
+  searchImages(
+    criteria: SearchCriteria,
+    options: SearchOptions
+  ): { images: Image[]; total: number } {
+    if (!this.db) return { images: [], total: 0 };
+
+    // 空收藏路径集 → 收藏条件下无命中
+    if (criteria.favoritePaths !== null && criteria.favoritePaths !== undefined
+        && criteria.favoritePaths.length === 0) {
+      return { images: [], total: 0 };
+    }
+
+    const { where, params } = this.buildSearchWhere(criteria);
+    const sql = `SELECT * FROM images WHERE is_deleted = 0${where} ORDER BY created_time DESC LIMIT ? OFFSET ?`;
+    const countSql = `SELECT COUNT(*) as count FROM images WHERE is_deleted = 0${where}`;
+
+    const allParams = [...params, options.limit, options.offset];
+    const countParams = [...params];
+
+    const stmt = this.db.prepare(sql);
+    const countStmt = this.db.prepare(countSql);
+    const images = stmt.all(...allParams) as Image[];
+    const total = (countStmt.get(...countParams) as { count: number }).count;
+
+    return { images, total };
+  }
+
+  /**
+   * 构造搜索 WHERE 子句（不含 is_deleted 前置条件）
+   * 返回 { where, params }：where 为带前导 AND 的字符串片段，params 为对应参数数组
+   */
+  private buildSearchWhere(criteria: SearchCriteria): { where: string; params: any[] } {
+    const clauses: string[] = [];
+    const params: any[] = [];
+
+    // 文件名模糊匹配：LIKE %keyword%，前缀 % 无法走索引，百万级实测 <1s 可接受
+    if (criteria.fileName && criteria.fileName.trim()) {
+      clauses.push('relative_path LIKE ?');
+      params.push(`%${criteria.fileName.trim()}%`);
+    }
+
+    // 格式过滤：formats 为小写无点扩展名数组
+    if (criteria.formats && criteria.formats.length > 0) {
+      const placeholders = criteria.formats.map(() => '?').join(',');
+      clauses.push(`LOWER(format) IN (${placeholders})`);
+      params.push(...criteria.formats);
+    }
+
+    // 尺寸范围
+    if (criteria.minWidth !== undefined) {
+      clauses.push('width >= ?');
+      params.push(criteria.minWidth);
+    }
+    if (criteria.maxWidth !== undefined) {
+      clauses.push('width <= ?');
+      params.push(criteria.maxWidth);
+    }
+    if (criteria.minHeight !== undefined) {
+      clauses.push('height >= ?');
+      params.push(criteria.minHeight);
+    }
+    if (criteria.maxHeight !== undefined) {
+      clauses.push('height <= ?');
+      params.push(criteria.maxHeight);
+    }
+
+    // 文件大小范围（字节）
+    if (criteria.minFileSize !== undefined) {
+      clauses.push('file_size >= ?');
+      params.push(criteria.minFileSize);
+    }
+    if (criteria.maxFileSize !== undefined) {
+      clauses.push('file_size <= ?');
+      params.push(criteria.maxFileSize);
+    }
+
+    // 拍摄日期范围（ISO 日期字符串直接比较，格式固定 YYYY-MM-DD）
+    if (criteria.createdFrom) {
+      clauses.push('created_time >= ?');
+      params.push(criteria.createdFrom);
+    }
+    if (criteria.createdTo) {
+      clauses.push('created_time <= ?');
+      params.push(criteria.createdTo + 'T23:59:59');
+    }
+
+    // 媒体类型
+    if (criteria.mediaType) {
+      clauses.push('media_type = ?');
+      params.push(criteria.mediaType);
+    }
+
+    // 收藏路径交集：按 900 条/批拆分，多批 OR 拼接
+    const favPaths = criteria.favoritePaths;
+    if (favPaths !== null && favPaths !== undefined && favPaths.length > 0) {
+      const BATCH_SIZE = 900;
+      const batchClauses: string[] = [];
+      for (let i = 0; i < favPaths.length; i += BATCH_SIZE) {
+        const batch = favPaths.slice(i, i + BATCH_SIZE);
+        const placeholders = batch.map(() => '?').join(',');
+        batchClauses.push(`relative_path IN (${placeholders})`);
+        params.push(...batch);
+      }
+      clauses.push(`(${batchClauses.join(' OR ')})`);
+    }
+
+    const where = clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '';
+    return { where, params };
   }
 
   saveThumbnail(imageId: number, size: ThumbnailSize, data: Buffer, width?: number, height?: number): void {
