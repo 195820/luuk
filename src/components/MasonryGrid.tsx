@@ -5,6 +5,7 @@ import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
 import { useImageStore } from '@/stores/imageStore'
+import { useSelectionStore } from '@/stores/selectionStore'
 
 export interface MasonryGridItem extends ImageGridItem {
   aspectRatio?: number
@@ -46,7 +47,7 @@ export function MasonryGrid({
   const scrollRestoreRef = useRef<boolean>(true)
 
   // 多选 + 右键菜单
-  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useImageStore()
+  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
@@ -193,7 +194,7 @@ export function MasonryGrid({
           useImageStore.getState().setError(`${result.failed.length} 个文件删除失败：${result.failed[0].error}`)
         }
         await useImageStore.getState().loadImages()
-        useImageStore.getState().clearSelection()
+        useSelectionStore.getState().clearSelection()
         break
       }
       case 'rename': {
