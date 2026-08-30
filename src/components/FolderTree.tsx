@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
-import { ChevronRight, Folder, Trash2, Heart } from 'lucide-react'
-import { useImageStore } from '../stores/imageStore'
+import { ChevronRight, Folder, Trash2, Heart, Clock, History } from 'lucide-react'
+import { useImageStore, RECENT_ADDED_ID, RECENT_MODIFIED_ID } from '../stores/imageStore'
 import { useViewStore } from '../stores/viewStore'
 
 export interface FolderTreeNode {
@@ -38,6 +38,8 @@ export function FolderTree({
   const favoriteViewMode = useViewStore(state => state.favoriteViewMode)
   const setFavoriteViewMode = useViewStore(state => state.setFavoriteViewMode)
   const setSelectedFavoriteFolder = useViewStore(state => state.setSelectedFavoriteFolder)
+  const setCurrentLibrary = useImageStore(state => state.setCurrentLibrary)
+  const currentLibraryId = useImageStore(state => state.currentLibraryId)
 
   // 点击单图收藏按钮时，清除选中的文件夹并切换到单图视图
   const handleSingleFavoriteClick = useCallback(() => {
@@ -100,9 +102,31 @@ export function FolderTree({
       ) : (
         /* 普通库模式 - 显示文件夹树 */
         <>
+          {/* 最近视图虚拟入口 */}
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 font-medium bg-glass-l1 text-text-primary hover:bg-glass-l2 ${selectedFolder === null ? 'bg-overlay-selected' : ''}`}
-            onClick={() => onFolderSelect?.(null)}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-1 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_ADDED_ID ? 'bg-overlay-selected' : ''}`}
+            onClick={() => setCurrentLibrary(RECENT_ADDED_ID)}
+          >
+            <Clock size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-accent" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body">最近添加</span>
+          </div>
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_MODIFIED_ID ? 'bg-overlay-selected' : ''}`}
+            onClick={() => setCurrentLibrary(RECENT_MODIFIED_ID)}
+          >
+            <History size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-accent" />
+            <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body">最近修改</span>
+          </div>
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 font-medium bg-glass-l1 text-text-primary hover:bg-glass-l2 ${selectedFolder === null && currentLibraryId !== RECENT_ADDED_ID && currentLibraryId !== RECENT_MODIFIED_ID ? 'bg-overlay-selected' : ''}`}
+            onClick={() => {
+              // 如果当前在最近视图，需要先切回真实库
+              if (currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID) {
+                const lastRealId = useImageStore.getState().lastRealLibraryId
+                if (lastRealId) setCurrentLibrary(lastRealId)
+              }
+              onFolderSelect?.(null)
+            }}
           >
             <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted" />
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body text-text-primary">全部图片</span>

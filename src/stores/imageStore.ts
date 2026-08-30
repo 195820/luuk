@@ -15,6 +15,9 @@ export interface ScanProgress {
 
 // 虚拟收藏库 ID
 export const FAVORITE_LIBRARY_ID = -1
+// 虚拟最近视图 ID
+export const RECENT_ADDED_ID = -2
+export const RECENT_MODIFIED_ID = -3
 
 // 缩略图缓存上限，超出时淘汰最早的条目
 const THUMBNAIL_CACHE_MAX = 500
@@ -25,6 +28,8 @@ interface ImageState {
   libraries: Library[]
   currentLibraryId: number | null
   isInitialized: boolean
+  // 最近视图依附的真实库 ID（切换到负 ID 前保存）
+  lastRealLibraryId: number | null
 
   // 图片相关
   images: Image[]
@@ -123,6 +128,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   libraries: [],
   currentLibraryId: null,
   isInitialized: false,
+  lastRealLibraryId: null,
   images: [],
   totalImages: 0,
   currentImage: null,
@@ -216,8 +222,13 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 设置当前库
   setCurrentLibrary: (id: number | null) => {
+    const currentId = get().currentLibraryId
+    // 切换到负 ID 前保存真实库 ID（用于最近视图）
+    const lastRealLibraryId = (currentId !== null && currentId > 0) ? currentId : get().lastRealLibraryId
+
     set({
       currentLibraryId: id,
+      lastRealLibraryId,
       images: [],
       thumbnailCache: new Map(),
       folderTree: [],
@@ -257,8 +268,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadFolderTree: async () => {
     const { currentLibraryId } = get()
 
-    // 收藏库没有文件夹树
-    if (!currentLibraryId || currentLibraryId === FAVORITE_LIBRARY_ID) {
+    // 收藏库、最近视图没有文件夹树
+    if (!currentLibraryId || currentLibraryId < 0) {
       set({ folderTree: [] })
       return
     }
@@ -281,11 +292,36 @@ export const useImageStore = create<ImageState>((set, get) => ({
 
   // 加载图片列表
   loadImages: async (options?: { limit?: number; offset?: number }) => {
-    const { currentLibraryId, selectedFolder, imageSortBy, imageSortOrder } = get()
+    const { currentLibraryId, lastRealLibraryId, selectedFolder, imageSortBy, imageSortOrder } = get()
 
     // 收藏库不加载普通图片
     if (!currentLibraryId || currentLibraryId === FAVORITE_LIBRARY_ID) {
       set({ images: [], totalImages: 0 })
+      return
+    }
+
+    // 最近视图：使用 lastRealLibraryId 与固定排序
+    if (currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID) {
+      if (!lastRealLibraryId) {
+        set({ images: [], totalImages: 0 })
+        return
+      }
+      // RECENT_ADDED_ID 按 created_time 近似（indexed_time 不在 DB 排序白名单中）
+      // RECENT_MODIFIED_ID 按 modified_time
+      const recentOrderBy = currentLibraryId === RECENT_ADDED_ID ? 'created_time' : 'modified_time'
+      try {
+        set({ isLoading: true, error: null })
+        const limit = options?.limit || 100
+        const offset = options?.offset || 0
+        const [images, total] = await Promise.all([
+          window.electronAPI.getImages(lastRealLibraryId, { limit, offset, orderBy: recentOrderBy, order: 'DESC' }),
+          window.electronAPI.getImageCount(lastRealLibraryId),
+        ])
+        set({ images, totalImages: total, isLoading: false })
+      } catch (error) {
+        logger.error('Store', '加载最近视图失败', error)
+        set({ error: '加载失败', isLoading: false })
+      }
       return
     }
 

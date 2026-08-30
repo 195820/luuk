@@ -18,7 +18,7 @@ import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
-import { useImageStore, FAVORITE_LIBRARY_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
+import { useImageStore, FAVORITE_LIBRARY_ID, RECENT_ADDED_ID, RECENT_MODIFIED_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
 import { useViewStore } from './stores/viewStore'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
@@ -745,6 +745,8 @@ function App() {
   }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite, currentImage])
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
+  const isRecentView = currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID
+  const isVirtualLibrary = isFavoriteLibrary || isRecentView
   const isSearching = useSearchStore(s => s.hasSearched)
   const searchResults = useSearchStore(s => s.results)
   const closeSearchPanel = useSearchStore(s => s.closePanel)
@@ -835,7 +837,7 @@ function App() {
           <div className="w-px h-6 bg-border" />
 
           {/* 组 2: 视图控制 */}
-          {!isFavoriteLibrary && viewMode === 'grid' && currentLibraryId && (
+          {!isVirtualLibrary && viewMode === 'grid' && currentLibraryId && (
             <div className="flex items-center gap-2 text-caption text-text-secondary">
               <label htmlFor="thumbnail-size">缩略图:</label>
               <input
