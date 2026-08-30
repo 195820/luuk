@@ -4,10 +4,12 @@ import { formatFileSize } from '../utils/format'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { TagDialog } from './TagDialog'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useViewStore } from '@/stores/viewStore'
 import { useSimilarStore } from '@/stores/similarStore'
+import { useTagStore } from '@/stores/tagStore'
 import { groupImages } from '../utils/group'
 
 export interface ImageGridItem {
@@ -201,6 +203,11 @@ export function ImageGrid({
         }
         break
       }
+      case 'tag': {
+        const pathsToTag = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        useTagStore.getState().openDialog(pathsToTag)
+        break
+      }
     }
     setContextMenu(null)
   }, [contextMenu, libraryId, selectedPaths])
@@ -312,6 +319,15 @@ export function ImageGrid({
           onClose={() => setRenameDialog(null)}
         />
       )}
+      <TagDialogMount libraryId={libraryId} />
     </div>
   )
+}
+
+/** 标签对话框挂载点（读取全局 store 状态） */
+function TagDialogMount({ libraryId }: { libraryId: number }) {
+  const dialogOpen = useTagStore(s => s.dialogOpen)
+  const closeDialog = useTagStore(s => s.closeDialog)
+  if (!dialogOpen) return null
+  return <TagDialog libraryId={libraryId} onClose={closeDialog} />
 }

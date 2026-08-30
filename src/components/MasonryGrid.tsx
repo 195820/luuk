@@ -2,12 +2,14 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { TagDialog } from './TagDialog'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
 import { useViewStore } from '@/stores/viewStore'
 import { useSimilarStore } from '@/stores/similarStore'
+import { useTagStore } from '@/stores/tagStore'
 import { groupImages } from '../utils/group'
 
 export interface MasonryGridItem extends ImageGridItem {
@@ -233,6 +235,11 @@ export function MasonryGrid({
         }
         break
       }
+      case 'tag': {
+        const pathsToTag = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        useTagStore.getState().openDialog(pathsToTag)
+        break
+      }
       // move/copy 待后续实现
       default:
         break
@@ -350,6 +357,15 @@ export function MasonryGrid({
           onClose={() => setRenameDialog(null)}
         />
       )}
+      <TagDialogMount libraryId={libraryId} />
     </div>
   )
+}
+
+/** 标签对话框挂载点（读取全局 store 状态） */
+function TagDialogMount({ libraryId }: { libraryId: number }) {
+  const dialogOpen = useTagStore(s => s.dialogOpen)
+  const closeDialog = useTagStore(s => s.closeDialog)
+  if (!dialogOpen) return null
+  return <TagDialog libraryId={libraryId} onClose={closeDialog} />
 }
