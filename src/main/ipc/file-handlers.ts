@@ -7,41 +7,40 @@ import { getSetting } from '../services/settings-service';
 
 const fileService = new FileService();
 
-/** 校验 libraryId 对应的库是否存在 */
-function validateLibraryAccess(libraryId: number): boolean {
-  const library = getMasterDB().getLibrary(libraryId);
-  return library !== null;
+/** 获取并校验库记录，不存在返回 null */
+function getValidLibrary(libraryId: number) {
+  return getMasterDB().getLibrary(libraryId);
 }
 
 export function registerFileHandlers(): void {
   ipcMain.handle('renameFile', async (_e, libraryId: number, oldPath: string, newPath: string) => {
-    if (!validateLibraryAccess(libraryId)) return { success: false, error: '库不存在' };
+    if (!getValidLibrary(libraryId)) return { success: false, error: '库不存在' };
     return fileService.renameFile(libraryId, oldPath, newPath);
   });
 
   ipcMain.handle('batchRename', async (_e, libraryId: number, renames: Array<{ oldPath: string; newPath: string }>) => {
-    if (!validateLibraryAccess(libraryId)) {
+    if (!getValidLibrary(libraryId)) {
       return { succeeded: [], failed: renames.map(r => ({ ...r, error: '库不存在' })) };
     }
     return fileService.batchRename(libraryId, renames);
   });
 
   ipcMain.handle('moveFiles', async (_e, libraryId: number, paths: string[], targetDir: string) => {
-    if (!validateLibraryAccess(libraryId)) {
+    if (!getValidLibrary(libraryId)) {
       return { succeeded: [], failed: paths.map(p => ({ path: p, error: '库不存在' })) };
     }
     return fileService.moveFiles(libraryId, paths, targetDir);
   });
 
   ipcMain.handle('copyFiles', async (_e, libraryId: number, paths: string[], targetDir: string) => {
-    if (!validateLibraryAccess(libraryId)) {
+    if (!getValidLibrary(libraryId)) {
       return { succeeded: [], failed: paths.map(p => ({ path: p, error: '库不存在' })) };
     }
     return fileService.copyFiles(libraryId, paths, targetDir);
   });
 
   ipcMain.handle('deleteFiles', async (_e, libraryId: number, paths: string[]) => {
-    if (!validateLibraryAccess(libraryId)) {
+    if (!getValidLibrary(libraryId)) {
       return { succeeded: [], failed: paths.map(p => ({ path: p, error: '库不存在' })) };
     }
 
@@ -62,19 +61,18 @@ export function registerFileHandlers(): void {
   });
 
   ipcMain.handle('setWallpaper', async (_e, libraryId: number, relativePath: string) => {
-    if (!validateLibraryAccess(libraryId)) return { success: false, error: '库不存在' };
+    if (!getValidLibrary(libraryId)) return { success: false, error: '库不存在' };
     return fileService.setWallpaper(libraryId, relativePath);
   });
 
   ipcMain.handle('showInExplorer', async (_e, libraryId: number, relativePath: string) => {
-    if (!validateLibraryAccess(libraryId)) return { success: false, error: '库不存在' };
+    if (!getValidLibrary(libraryId)) return { success: false, error: '库不存在' };
     return fileService.showInExplorer(libraryId, relativePath);
   });
 
   // 弹出文件夹选择对话框，限制目标必须在库目录内
   ipcMain.handle('selectDestinationFolder', async (_e, libraryId: number) => {
-    if (!validateLibraryAccess(libraryId)) return null;
-    const library = getMasterDB().getLibrary(libraryId);
+    const library = getValidLibrary(libraryId);
     if (!library) return null;
 
     const result = await dialog.showOpenDialog({
@@ -93,7 +91,7 @@ export function registerFileHandlers(): void {
     return relativePath;
   });
 
-  ipcMain.handle('getDeletedFiles', async (_e, limit?: number) => {
-    return getMasterDB().getDeletedFiles(limit);
+  ipcMain.handle('getDeletedFiles', async (_e, libraryId?: number, limit?: number) => {
+    return getMasterDB().getDeletedFiles(limit, libraryId);
   });
 }

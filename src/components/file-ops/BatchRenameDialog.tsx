@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { X, Check, Pencil } from 'lucide-react'
 import { useImageStore } from '@/stores/imageStore'
+import { useSelectionStore } from '@/stores/selectionStore'
 import type { BatchRenameResult } from '@/types'
 
 interface BatchRenameDialogProps {
@@ -33,7 +34,7 @@ function generateNewName(baseName: string, pattern: string, counter: number): st
 }
 
 export function BatchRenameDialog({ libraryId, initialPaths, onClose }: BatchRenameDialogProps) {
-  const selectedPaths = useImageStore(s => s.selectedPaths)
+  const selectedPaths = useSelectionStore(s => s.selectedPaths)
   const [pattern, setPattern] = useState(DEFAULT_PATTERN)
   const [startCounter, setStartCounter] = useState(1)
   const [renames, setRenames] = useState<Array<{ oldPath: string; newPath: string }>>([])
@@ -71,7 +72,7 @@ export function BatchRenameDialog({ libraryId, initialPaths, onClose }: BatchRen
       setResult(res)
       // 刷新数据
       await useImageStore.getState().loadImages()
-      useImageStore.getState().clearSelection()
+      useSelectionStore.getState().clearSelection()
       // 延迟关闭，让用户看到结果
       setTimeout(() => onClose(), 1200)
     } catch (err) {

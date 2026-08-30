@@ -5,6 +5,7 @@ import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { useImageStore } from '@/stores/imageStore'
+import { useSelectionStore } from '@/stores/selectionStore'
 
 export interface ImageGridItem {
   id: number | string
@@ -51,7 +52,7 @@ export function ImageGrid({
   const scrollRestoreRef = useRef<boolean>(true)
 
   // 多选状态与右键菜单
-  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useImageStore()
+  const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
 
@@ -160,7 +161,7 @@ export function ImageGrid({
           useImageStore.getState().setError(`${result.failed.length} 个文件删除失败：${result.failed[0].error}`)
         }
         await useImageStore.getState().loadImages()
-        useImageStore.getState().clearSelection()
+        useSelectionStore.getState().clearSelection()
         break
       }
       case 'rename': {

@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { Trash2 } from 'lucide-react'
 import { formatFileSize } from '@/utils/format'
+import { useImageStore } from '@/stores/imageStore'
 import type { DeletedFileRecord } from '@/types'
 
+/** 收藏库虚拟 ID，回收站不按此过滤 */
+const FAVORITE_LIBRARY_ID = -1
 /** 回收站查询上限 */
 const RECYCLE_BIN_LIMIT = 500
 
@@ -10,13 +13,18 @@ const RECYCLE_BIN_LIMIT = 500
 export function RecycleBinView() {
   const [files, setFiles] = useState<DeletedFileRecord[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const currentLibraryId = useImageStore(s => s.currentLibraryId)
 
   useEffect(() => {
     let cancelled = false
     const load = async () => {
       setIsLoading(true)
       try {
-        const data = await window.electronAPI.getDeletedFiles(RECYCLE_BIN_LIMIT)
+        // 收藏库或无选中库时显示全部，否则按当前库过滤
+        const filterId = (currentLibraryId && currentLibraryId !== FAVORITE_LIBRARY_ID)
+          ? currentLibraryId
+          : undefined
+        const data = await window.electronAPI.getDeletedFiles(filterId, RECYCLE_BIN_LIMIT)
         if (!cancelled) setFiles(data)
       } catch (err) {
         console.error('[RecycleBinView] 加载回收站数据失败:', err)
@@ -26,7 +34,7 @@ export function RecycleBinView() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [currentLibraryId])
 
   return (
     <div className="flex flex-col h-full">

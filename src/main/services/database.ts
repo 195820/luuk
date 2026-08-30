@@ -506,6 +506,7 @@ export class MasterDB {
     const normalizedOld = oldPath.replace(/\\/g, '/');
     const normalizedNew = newPath.replace(/\\/g, '/');
 
+    // 事务保证 favorites + history 两条 UPDATE 的原子性
     const tx = this.db.transaction(() => {
       this.db!.prepare(
         'UPDATE favorites SET image_path = ? WHERE library_id = ? AND image_path = ?'
@@ -524,6 +525,7 @@ export class MasterDB {
     const normalizedNew = newFolderPath.replace(/\\/g, '/');
     const likePattern = normalizedOld + '/%';
 
+    // 事务保证多表级联更新的原子性（favorite_folders + favorites + history）
     const tx = this.db.transaction(() => {
       // favorite_folders 前缀匹配
       const folders = this.db!.prepare(
@@ -557,8 +559,13 @@ export class MasterDB {
     ).run(libraryId, originalPath.replace(/\\/g, '/'), fileSize);
   }
 
-  getDeletedFiles(limit: number = 100): Array<{ id: number; library_id: number; library_name: string; original_path: string; deleted_at: string; file_size: number }> {
+  getDeletedFiles(limit: number = 100, libraryId?: number): Array<{ id: number; library_id: number; library_name: string; original_path: string; deleted_at: string; file_size: number }> {
     if (!this.db) return [];
+    if (libraryId !== undefined) {
+      return this.db.prepare(
+        'SELECT d.*, l.name AS library_name FROM deleted_files d LEFT JOIN libraries l ON d.library_id = l.id WHERE d.library_id = ? ORDER BY d.deleted_at DESC LIMIT ?'
+      ).all(libraryId, limit) as any[];
+    }
     return this.db.prepare(
       'SELECT d.*, l.name AS library_name FROM deleted_files d LEFT JOIN libraries l ON d.library_id = l.id ORDER BY d.deleted_at DESC LIMIT ?'
     ).all(limit) as any[];

@@ -83,6 +83,32 @@ describe('路径级联更新', () => {
     expect(files[0].original_path).toBe('photos/deleted.jpg');
   });
 
+  it('getDeletedFiles 按 libraryId 过滤', () => {
+    // 添加第二个库
+    const libDir2 = path.join(tempDir, 'library2');
+    fs.mkdirSync(libDir2, { recursive: true });
+    masterDB.addLibrary('测试库2', libDir2);
+    masterDB.updateLibraryStatus(2, 'online');
+
+    masterDB.addDeletedFile(1, 'lib1/deleted.jpg', 1024);
+    masterDB.addDeletedFile(2, 'lib2/deleted.jpg', 2048);
+    masterDB.addDeletedFile(1, 'lib1/another.jpg', 512);
+
+    // 按库 1 过滤
+    const lib1Files = masterDB.getDeletedFiles(100, 1);
+    expect(lib1Files).toHaveLength(2);
+    expect(lib1Files.every(f => f.library_id === 1)).toBe(true);
+
+    // 按库 2 过滤
+    const lib2Files = masterDB.getDeletedFiles(100, 2);
+    expect(lib2Files).toHaveLength(1);
+    expect(lib2Files[0].library_id).toBe(2);
+
+    // 不过滤返回全部
+    const allFiles = masterDB.getDeletedFiles();
+    expect(allFiles).toHaveLength(3);
+  });
+
   it('路径不存在时幂等（不抛错）', () => {
     expect(() => masterDB.updateImagePath(1, 'nonexistent.jpg', 'new.jpg')).not.toThrow();
   });

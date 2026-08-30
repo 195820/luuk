@@ -99,7 +99,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showInExplorer: (libraryId: number, relativePath: string) =>
     ipcRenderer.invoke('showInExplorer', libraryId, relativePath),
   selectDestinationFolder: (libraryId: number) => ipcRenderer.invoke('selectDestinationFolder', libraryId),
-  getDeletedFiles: (limit?: number) => ipcRenderer.invoke('getDeletedFiles', limit),
+  getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
 

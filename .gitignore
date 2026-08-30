@@ -66,4 +66,8 @@ test-data/
 
 # Library internal
 *.ivlib/thumbs.db
+**/.ivlib/
 test-results/
+
+# SDD process files
+.superpowers/

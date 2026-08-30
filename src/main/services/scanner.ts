@@ -391,13 +391,16 @@ export class LibraryScanner {
   }
 
   /**
-   * 计算文件 Hash (用于去重)
-   * 只计算前 1MB 用于快速比较
+   * 计算文件哈希（用于未来重复图查找 #17）
+   * 只计算前 64KB 用于快速指纹提取
+   *
+   * 注意：存量库已有记录的 file_hash 口径为 1MB，未来做重复图查找时需全量重算，
+   * 不可跨口径比较。
    */
   private async calculateFileHash(filePath: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const hash = createHash('sha256');
-      const stream = fs.createReadStream(filePath, { start: 0, end: 1024 * 1024 });
+      const stream = fs.createReadStream(filePath, { start: 0, end: 64 * 1024 });
 
       stream.on('data', (data: string | Buffer) => {
         hash.update(data);
