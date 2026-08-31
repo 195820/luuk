@@ -240,12 +240,24 @@ export function MasonryGrid({
         useTagStore.getState().openDialog(pathsToTag)
         break
       }
+      case 'compare': {
+        const paths = selectedPaths.size === 2 ? Array.from(selectedPaths) : []
+        if (paths.length === 2) {
+          const imgs = paths.map(p => displayImages.find(img => img.imagePath === p)).filter(Boolean) as ImageGridItem[]
+          if (imgs.length === 2 && imgs.every(img => img.mediaType === 'image')) {
+            const urls = await Promise.all(imgs.map(img => window.electronAPI.getMediaUrl(img.imagePath!)))
+            const labels = imgs.map(img => (img.imagePath || '').split('/').pop() || '')
+            window.dispatchEvent(new CustomEvent('compare-open', { detail: { images: urls, labels } }))
+          }
+        }
+        break
+      }
       // move/copy 待后续实现
       default:
         break
     }
     setContextMenu(null)
-  }, [contextMenu, libraryId, selectedPaths])
+  }, [contextMenu, libraryId, selectedPaths, displayImages])
 
   return (
     <div
@@ -348,6 +360,14 @@ export function MasonryGrid({
         <FileContextMenu
           x={contextMenu.x} y={contextMenu.y}
           onAction={handleMenuAction} onClose={() => setContextMenu(null)}
+          compareEnabled={(() => {
+            if (selectedPaths.size !== 2) return false
+            const paths = Array.from(selectedPaths)
+            return paths.every(p => {
+              const img = displayImages.find(img => img.imagePath === p)
+              return img?.mediaType === 'image'
+            })
+          })()}
         />
       )}
       {renameDialog && (

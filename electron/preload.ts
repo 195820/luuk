@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 缓存
   getCacheStats: () => ipcRenderer.invoke('getCacheStats'),
+  getCacheConfig: () => ipcRenderer.invoke('getCacheConfig'),
+  setCacheLimit: (maxMemoryMB: number) => ipcRenderer.invoke('setCacheLimit', maxMemoryMB),
   clearCache: () => ipcRenderer.invoke('clearCache'),
 
   // 文件操作
@@ -176,4 +178,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   windowMaximize: () => ipcRenderer.send('window-maximize'),
   windowClose: () => ipcRenderer.send('window-close'),
   windowIsMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  toggleFullscreen: () => ipcRenderer.send('window-toggle-fullscreen'),
+  isFullscreen: () => ipcRenderer.invoke('window-is-fullscreen'),
+  onFullscreenChanged: (callback: (isFullscreen: boolean) => void) => {
+    const subscription = (_event: any, value: boolean) => callback(value)
+    ipcRenderer.on('fullscreen-changed', subscription)
+    return () => ipcRenderer.removeListener('fullscreen-changed', subscription)
+  },
 } as ElectronAPI)

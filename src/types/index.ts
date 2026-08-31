@@ -44,7 +44,12 @@ export interface ElectronAPI {
   getHistory: (limit?: number) => Promise<HistoryItem[]>
   clearHistory: () => Promise<void>
   // 缓存
-  getCacheStats: () => Promise<{ count: number; sizeMB: number; utilization: number }>
+  getCacheStats: () => Promise<{
+    memory: { count: number; sizeMB: number; maxSizeMB: number; utilization: number }
+    disk: { thumbsDbSizeMB: number }
+  }>
+  getCacheConfig: () => Promise<{ maxMemoryMB: number }>
+  setCacheLimit: (maxMemoryMB: number) => Promise<void>
   clearCache: () => Promise<void>
   // 文件操作
   readFile: (filePath: string) => Promise<Buffer>
@@ -95,6 +100,9 @@ export interface ElectronAPI {
   windowMaximize: () => void
   windowClose: () => void
   windowIsMaximized: () => Promise<boolean>
+  toggleFullscreen: () => void
+  isFullscreen: () => Promise<boolean>
+  onFullscreenChanged: (callback: (isFullscreen: boolean) => void) => () => void
 }
 
 // 收藏文件夹

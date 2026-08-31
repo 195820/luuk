@@ -5,9 +5,10 @@ import {
   Folder, FolderOpen, Heart, Music, Pause, X,
   RefreshCw, Trash2, AlertTriangle, Plus, Tag,
   LayoutGrid, Columns3, Image as ImageIcon, Maximize2,
-  Database, MonitorPlay,
+  Database, MonitorPlay, HardDrive,
 } from 'lucide-react'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
+import { CompareViewer } from './components/CompareViewer'
 import { ImageGrid } from './components/ImageGrid'
 import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
@@ -16,6 +17,7 @@ import { SortControl } from './components/SortControl'
 import { SearchPanel } from './components/SearchPanel'
 import { TagCloudPanel } from './components/TagCloudPanel'
 import { StatsPanel } from './components/StatsPanel'
+import { CachePanel } from './components/CachePanel'
 import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
@@ -23,6 +25,7 @@ import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, RECENT_ADDED_ID, RECENT_MODIFIED_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
 import { useViewStore } from './stores/viewStore'
+import { useAdjacentPreload, getPreloadedUrl } from './hooks/useAdjacentPreload'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
 import type { Library, HistoryItem } from './types'
@@ -91,13 +94,17 @@ function App() {
     favoriteViewMode,
     gridLayoutMode,
     setGridLayoutMode,
+    immersiveFullscreen,
   } = useViewStore()
 
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
+  const [showCachePanel, setShowCachePanel] = useState(false)
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
+  // 对比模式状态
+  const [compareData, setCompareData] = useState<{ images: [string, string]; labels: [string, string] } | null>(null)
 
   const { history, loadHistory, clearHistory } = useHistoryStore()
 
@@ -118,6 +125,28 @@ function App() {
       useImageStore.setState({ folderTree: [], selectedFolder: null })
     }
     init()
+  }, [])
+
+  // 对比模式：监听网格层发出的 compare-open 事件
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { images, labels } = (e as CustomEvent).detail
+      setCompareData({ images, labels })
+    }
+    window.addEventListener('compare-open', handler)
+    return () => window.removeEventListener('compare-open', handler)
+  }, [])
+
+  // 全屏状态同步：主进程转发系统级全屏变化（外接显示器、Alt+Enter 等）
+  useEffect(() => {
+    const unsub = window.electronAPI.onFullscreenChanged((value) => {
+      useViewStore.getState().setImmersiveFullscreen(value)
+    })
+    // 初始化时读取一次当前状态
+    window.electronAPI.isFullscreen().then(v => {
+      useViewStore.getState().setImmersiveFullscreen(v)
+    })
+    return unsub
   }, [])
 
   // 加载当前库的图片
@@ -642,7 +671,9 @@ function App() {
     const loadMedia = async (filePath: string) => {
       if (!filePath || cancelled) return
       try {
-        const url = await window.electronAPI.getMediaUrl(filePath)
+        // 优先复用预加载的 media:// URL（避免重复注册令牌，命中解码缓存）
+        const preloaded = getPreloadedUrl(filePath)
+        const url = preloaded ?? await window.electronAPI.getMediaUrl(filePath)
         if (!cancelled) setCurrentImageSrc(url)
       } catch (err) {
         logger.error('App', '获取媒体 URL 失败', err)
@@ -689,6 +720,12 @@ function App() {
       if (e.key === 'F6') {
         e.preventDefault()
         toggleFolderSidebar()
+        return
+      }
+
+      if (e.key === 'F11') {
+        e.preventDefault()
+        window.electronAPI.toggleFullscreen()
         return
       }
 
@@ -781,8 +818,18 @@ function App() {
   const viewerImagePath = (currentImage as any)?.relative_path
   const viewerRating = viewerLibraryId && viewerImagePath ? getRating(viewerLibraryId, viewerImagePath) : 0
 
+  // 查看器相邻图预加载
+  useAdjacentPreload({
+    currentIndex: viewMode === 'viewer' ? currentIndex : -1,
+    images,
+    libraryId: currentLibraryId,
+    isFavoriteLibrary,
+    currentMediaType: (currentImage as any)?.mediaType,
+  })
+
   return (
     <div className="w-full h-full flex flex-col">
+      {!immersiveFullscreen && (
       <header className="h-14 px-5 flex items-center justify-between glass-l1 [-webkit-app-region:drag]">
         <h1
           className="text-heading font-semibold tracking-tight"
@@ -905,6 +952,15 @@ function App() {
               音频
             </button>
           )}
+
+          <button
+            onClick={() => setShowCachePanel(true)}
+            className="btn-text"
+            title="缓存管理"
+          >
+            <HardDrive size={14} />
+            缓存
+          </button>
         </div>
 
         {/* 窗口控制按钮 */}
@@ -920,10 +976,11 @@ function App() {
           </button>
         </div>
       </header>
+      )}
 
       <div className="flex-1 flex overflow-hidden">
         {/* 左侧文件夹边栏 */}
-        {folderSidebarOpen && currentLibraryId && (
+        {!immersiveFullscreen && folderSidebarOpen && currentLibraryId && (
           <aside className="w-60 min-w-[200px] max-w-80 glass-l1 flex flex-col overflow-hidden transition-all duration-200">
             <div className="flex items-center justify-between px-4 py-3">
               <span className="flex items-center gap-2 text-text-primary text-body font-medium">
@@ -1295,6 +1352,7 @@ function App() {
         </div>
       )}
 
+      {!immersiveFullscreen && (
       <footer className="h-8 px-5 flex items-center justify-center gap-4 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
         <span className="[-webkit-app-region:no-drag]">
           <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">←→</kbd> 翻页
@@ -1328,6 +1386,7 @@ function App() {
           <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Esc</kbd> 关闭
         </span>
       </footer>
+      )}
 
       {/* 相似图片查找面板 */}
       <SimilarImagesPanel
@@ -1350,6 +1409,22 @@ function App() {
           onClose={() => setShowStatsPanel(false)}
         />
       )}
+
+      {/* 缓存管理面板 */}
+      {showCachePanel && (
+        <CachePanel onClose={() => setShowCachePanel(false)} />
+      )}
+
+      {/* 对比模式覆盖层 */}
+      <AnimatePresence>
+        {compareData && (
+          <CompareViewer
+            images={compareData.images}
+            labels={compareData.labels}
+            onClose={() => setCompareData(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

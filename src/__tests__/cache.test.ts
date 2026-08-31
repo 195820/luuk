@@ -84,4 +84,25 @@ describe('LRUCache', () => {
     expect(cache.get(1, 's')).toBe('new')
     expect(cache.getStats().count).toBe(1)
   })
+
+  it('setMaxSize 动态调整上限并修剪超限条目', () => {
+    const cache = new LRUCache(1) // 1 MB
+    cache.set(1, 's', 'a'.repeat(400_000)) // ~300 KB
+    cache.set(2, 's', 'b'.repeat(400_000)) // ~300 KB
+    expect(cache.getStats().count).toBe(2)
+
+    // 缩至 0.5 MB，应修剪掉至少一条
+    cache.setMaxSize(0.5)
+    expect(cache.getStats().maxSizeMB).toBe(0.5)
+    expect(cache.getStats().count).toBeLessThan(2)
+  })
+
+  it('setMaxSize 扩大上限后保留所有条目', () => {
+    const cache = new LRUCache(0.5)
+    cache.set(1, 's', 'a'.repeat(100_000))
+    cache.set(2, 's', 'b'.repeat(100_000))
+    const countBefore = cache.getStats().count
+    cache.setMaxSize(2)
+    expect(cache.getStats().count).toBe(countBefore)
+  })
 })

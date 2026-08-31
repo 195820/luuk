@@ -341,9 +341,22 @@ export function registerLibraryHandlers(): void {
     service.clearHistory();
   });
 
-  // 获取缓存统计
-  ipcMain.handle('getCacheStats', async (): Promise<{ count: number; sizeMB: number; utilization: number }> => {
+  // 获取缓存统计（内存 + 磁盘）
+  ipcMain.handle('getCacheStats', async (): Promise<{
+    memory: { count: number; sizeMB: number; maxSizeMB: number; utilization: number };
+    disk: { thumbsDbSizeMB: number };
+  }> => {
     return service.getCacheStats();
+  });
+
+  // 获取缓存配置
+  ipcMain.handle('getCacheConfig', async (): Promise<{ maxMemoryMB: number }> => {
+    return service.getCacheConfig();
+  });
+
+  // 设置缓存上限
+  ipcMain.handle('setCacheLimit', async (_event, maxMemoryMB: number): Promise<void> => {
+    service.setCacheLimit(maxMemoryMB);
   });
 
   // 清空缓存
@@ -511,7 +524,7 @@ const IPC_HANDLER_NAMES = [
   'getSingleFavoriteImages', 'getSingleFavoriteCount',
   'getThumbnail', 'getThumbnails', 'toggleFavorite', 'getFavorites',
   'setFavoriteRating', 'addHistory', 'getHistory', 'clearHistory',
-  'getCacheStats', 'clearCache', 'readFile', 'fileExists',
+  'getCacheStats', 'getCacheConfig', 'setCacheLimit', 'clearCache', 'readFile', 'fileExists',
   'loadFullImage', 'getMediaUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',
   'getLibraryStats', 'getImageExif',

@@ -15,6 +15,7 @@ import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumb
 import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
 import { computePhash, hammingDistance } from '../utils/phash';
+import { getSetting, setSetting } from './settings-service';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
@@ -51,7 +52,8 @@ export class ImageService {
 
   constructor() {
     this.masterDB = getMasterDB();
-    this.cache = getLRUCache(200);
+    const maxMemoryMB = getSetting('cache.maxMemoryMB');
+    this.cache = getLRUCache(maxMemoryMB);
   }
 
   /**
@@ -1103,14 +1105,55 @@ export class ImageService {
   }
 
   /**
-   * 获取缓存统计
+   * 获取缓存统计（内存 LRU + 磁盘 thumbs.db）
    */
   getCacheStats(): {
-    count: number;
-    sizeMB: number;
-    utilization: number;
+    memory: { count: number; sizeMB: number; maxSizeMB: number; utilization: number };
+    disk: { thumbsDbSizeMB: number };
   } {
-    return this.cache.getStats();
+    const memStats = this.cache.getStats();
+
+    // 磁盘：遍历各库 .ivlib/thumbs.db 文件大小之和
+    let diskBytes = 0;
+    try {
+      const libraries = this.masterDB.getLibraries();
+      for (const lib of libraries) {
+        const thumbsPath = path.join(lib.rootPath, '.ivlib', 'thumbs.db');
+        try {
+          const stat = fs.statSync(thumbsPath);
+          diskBytes += stat.size;
+        } catch {
+          // 文件不存在或无法访问，跳过
+        }
+      }
+    } catch {
+      // 库列表获取失败，磁盘统计置零
+    }
+
+    return {
+      memory: {
+        count: memStats.count,
+        sizeMB: memStats.sizeMB,
+        maxSizeMB: memStats.maxSizeMB,
+        utilization: memStats.utilization,
+      },
+      disk: { thumbsDbSizeMB: diskBytes / 1024 / 1024 },
+    };
+  }
+
+  /**
+   * 获取缓存配置
+   */
+  getCacheConfig(): { maxMemoryMB: number } {
+    return { maxMemoryMB: getSetting('cache.maxMemoryMB') };
+  }
+
+  /**
+   * 设置缓存上限（持久化 + 立即生效）
+   */
+  setCacheLimit(maxMemoryMB: number): void {
+    setSetting('cache.maxMemoryMB', maxMemoryMB);
+    this.cache.setMaxSize(maxMemoryMB);
   }
 
   /**

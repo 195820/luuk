@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch, Tag } from 'lucide-react'
+import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch, Tag, Columns2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface FileContextMenuProps {
@@ -7,9 +7,11 @@ interface FileContextMenuProps {
   y: number
   onAction: (action: string) => void
   onClose: () => void
+  /** 对比项是否可用（恰好选中 2 张图片时） */
+  compareEnabled?: boolean
 }
 
-export function FileContextMenu({ x, y, onAction, onClose }: FileContextMenuProps) {
+export function FileContextMenu({ x, y, onAction, onClose, compareEnabled }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export function FileContextMenu({ x, y, onAction, onClose }: FileContextMenuProp
     }
   }, [onClose])
 
-  const items = [
+  const allItems = [
     { id: 'rename', label: '重命名', icon: Pencil, shortcut: 'F2' },
     { id: 'move', label: '移动到...', icon: FolderInput },
     { id: 'copy', label: '复制到...', icon: Copy },
@@ -36,9 +38,16 @@ export function FileContextMenu({ x, y, onAction, onClose }: FileContextMenuProp
     { id: 'setWallpaper', label: '设为壁纸', icon: WallpaperIcon },
     { id: 'findSimilar', label: '查找相似图片', icon: ScanSearch },
     { id: 'tag', label: '标签...', icon: Tag },
+    { id: 'compare', label: '对比', icon: Columns2, shortcut: '' },
     { type: 'separator' as const },
     { id: 'delete', label: '移入回收站', icon: Trash2, shortcut: 'Delete', variant: 'destructive' },
   ]
+
+  // 过滤对比项：仅在 compareEnabled 时显示
+  const items = allItems.filter(item => {
+    if ('id' in item && item.id === 'compare') return compareEnabled
+    return true
+  })
 
   return (
     <div

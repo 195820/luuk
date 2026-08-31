@@ -160,6 +160,22 @@ function createWindow() {
   ipcMain.on('window-close', () => mainWindow?.close())
   ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false)
 
+  // 全屏控制
+  ipcMain.on('window-toggle-fullscreen', () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen())
+    }
+  })
+  ipcMain.handle('window-is-fullscreen', () => mainWindow?.isFullScreen() ?? false)
+
+  // 全屏状态变化 → 转发给渲染进程（涵盖系统途径如外接显示器切换）
+  mainWindow?.on('enter-full-screen', () => {
+    mainWindow?.webContents.send('fullscreen-changed', true)
+  })
+  mainWindow?.on('leave-full-screen', () => {
+    mainWindow?.webContents.send('fullscreen-changed', false)
+  })
+
   // 加载应用
   const devUrl = process.env.VITE_DEV_SERVER_URL
   if (devUrl) {

@@ -6,6 +6,7 @@ interface SettingsSchema {
   'theme.mode': 'dark' | 'light' | 'system';
   'theme.accentColor': string;
   'performance.lowEffectsMode': boolean;
+  'cache.maxMemoryMB': number;
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -14,6 +15,7 @@ const DEFAULTS: SettingsSchema = {
   'theme.mode': 'dark',
   'theme.accentColor': '#7c6ef0',
   'performance.lowEffectsMode': false,
+  'cache.maxMemoryMB': 200,
 };
 
 let instance: Store<SettingsSchema> | null = null;

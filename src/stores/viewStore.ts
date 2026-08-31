@@ -16,6 +16,8 @@ interface ViewState {
   selectedFavoriteFolder: string | null
   // 分组方式
   groupBy: GroupBy
+  // 沉浸式全屏
+  immersiveFullscreen: boolean
 
   setViewMode: (mode: 'grid' | 'list' | 'single') => void
   toggleSidebar: () => void
@@ -24,6 +26,7 @@ interface ViewState {
   setFavoriteViewMode: (mode: 'all' | 'folder' | 'single') => void
   setSelectedFavoriteFolder: (folderPath: string | null) => void
   setGroupBy: (groupBy: GroupBy) => void
+  setImmersiveFullscreen: (value: boolean) => void
 }
 
 export const useViewStore = create<ViewState>((set) => ({
@@ -34,6 +37,7 @@ export const useViewStore = create<ViewState>((set) => ({
   favoriteViewMode: 'folder',
   selectedFavoriteFolder: null,
   groupBy: (localStorage.getItem('groupBy') as GroupBy) || 'none',
+  immersiveFullscreen: false,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
@@ -48,4 +52,5 @@ export const useViewStore = create<ViewState>((set) => ({
     set({ groupBy })
     localStorage.setItem('groupBy', groupBy)
   },
+  setImmersiveFullscreen: (value) => set({ immersiveFullscreen: value }),
 }))
