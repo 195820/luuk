@@ -655,6 +655,80 @@ export function registerLibraryHandlers(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // ==================== 导出功能 ====================
+  let exportService: any = null;
+
+  // 导出单张图片
+  ipcMain.handle('exportSingleImage', async (_event, libraryId: number, relativePath: string, options: any, taskId: string) => {
+    try {
+      if (!exportService) {
+        const { ExportService } = await import('../services/export-service');
+        exportService = new ExportService();
+      }
+      const library = service.getLibraryById(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const absPath = path.join(library.rootPath, relativePath);
+      // 安全检查：确保路径在库目录内
+      const resolved = path.resolve(absPath);
+      const libRoot = path.resolve(library.rootPath);
+      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+        return { success: false, error: 'Access denied' };
+      }
+      const outputPath = await exportService.exportSingle(absPath, options, taskId);
+      return { success: true, outputPath };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'exportSingleImage 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 批量导出为 ZIP
+  ipcMain.handle('exportBatchImages', async (_event, libraryId: number, relativePaths: string[], options: any, taskId: string) => {
+    try {
+      if (!exportService) {
+        const { ExportService } = await import('../services/export-service');
+        exportService = new ExportService();
+      }
+      const library = service.getLibraryById(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const libRoot = path.resolve(library.rootPath);
+      const absPaths = relativePaths.map(rp => {
+        const absPath = path.join(library.rootPath, rp);
+        const resolved = path.resolve(absPath);
+        if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+          throw new Error('Access denied');
+        }
+        return resolved;
+      });
+      await exportService.exportBatch(absPaths, options, taskId, (done, total) => {
+        sendToRenderer('export-progress', { taskId, done, total, finished: false });
+      });
+      sendToRenderer('export-progress', { taskId, done: relativePaths.length, total: relativePaths.length, finished: true });
+      return { success: true };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'exportBatchImages 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 取消导出任务
+  ipcMain.handle('cancelExport', async (_event, taskId: string) => {
+    try {
+      if (!exportService) {
+        return { success: true }; // 服务未初始化，无需取消
+      }
+      exportService.cancel(taskId);
+      return { success: true };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'cancelExport 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
 }
 
 /**
@@ -681,6 +755,7 @@ const IPC_HANDLER_NAMES = [
   'getSearchPresets', 'saveSearchPreset', 'deleteSearchPreset',
   'setFolderCover', 'removeFolderCover', 'getFolderCovers',
   'getImageHistogram',
+  'exportSingleImage', 'exportBatchImages', 'cancelExport',
 ] as const;
 
 /**

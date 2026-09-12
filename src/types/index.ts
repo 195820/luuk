@@ -76,6 +76,11 @@ export interface ElectronAPI {
     data?: HistogramData
     error?: string
   }>
+  // 导出
+  exportSingleImage: (libraryId: number, relativePath: string, options: ExportOptions, taskId: string) => Promise<{ success: boolean; outputPath?: string; error?: string }>
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; error?: string }>
+  cancelExport: (taskId: string) => Promise<{ success: boolean }>
+  onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   // 文件夹封面
   setFolderCover: (libraryId: number, folderPath: string, coverPath: string) => Promise<{ success: boolean; error?: string }>
   removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
@@ -435,4 +440,28 @@ export interface HistogramData {
   luminance: number[]
   /** 总像素数 */
   totalPixels: number
+}
+
+// ==================== 导出类型 ====================
+
+export interface ExportOptions {
+  /** 导出格式 */
+  format: 'jpg' | 'png' | 'webp' | 'original'
+  /** 最大宽度（可选，保持宽高比） */
+  maxWidth?: number
+  /** 质量（1-100，仅 JPG/WEBP） */
+  quality?: number
+  /** 输出路径（单图为目录，批量为 ZIP 文件路径） */
+  outputPath: string
+}
+
+export interface ExportProgress {
+  /** 任务 ID */
+  taskId: string
+  /** 已完成数量 */
+  done: number
+  /** 总数量 */
+  total: number
+  /** 是否已完成 */
+  finished: boolean
 }

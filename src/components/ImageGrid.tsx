@@ -4,6 +4,7 @@ import { formatFileSize } from '../utils/format'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { ExportDialog } from './file-ops/ExportDialog'
 import { TagDialog } from './TagDialog'
 import { useImageStore } from '@/stores/imageStore'
 import { useSelectionStore } from '@/stores/selectionStore'
@@ -66,6 +67,7 @@ export function ImageGrid({
   const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string; image?: ImageGridItem } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
+  const [exportDialog, setExportDialog] = useState<{ paths: string[] } | null>(null)
 
   // 分组状态
   const groupBy = useViewStore(state => state.groupBy)
@@ -221,6 +223,11 @@ export function ImageGrid({
         }
         break
       }
+      case 'export': {
+        const pathsToExport = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        setExportDialog({ paths: pathsToExport })
+        break
+      }
     }
     setContextMenu(null)
   }, [contextMenu, libraryId, selectedPaths, displayImages])
@@ -338,6 +345,14 @@ export function ImageGrid({
           libraryId={libraryId}
           initialPaths={renameDialog.paths}
           onClose={() => setRenameDialog(null)}
+        />
+      )}
+      {exportDialog && (
+        <ExportDialog
+          isOpen={true}
+          onClose={() => setExportDialog(null)}
+          libraryId={libraryId}
+          selectedPaths={exportDialog.paths}
         />
       )}
       <TagDialogMount libraryId={libraryId} />

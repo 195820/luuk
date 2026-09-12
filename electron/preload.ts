@@ -170,6 +170,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFolderCovers: (libraryId: number) =>
     ipcRenderer.invoke('getFolderCovers', libraryId),
 
+  // 导出
+  exportSingleImage: (libraryId: number, relativePath: string, options: any, taskId: string) =>
+    ipcRenderer.invoke('exportSingleImage', libraryId, relativePath, options, taskId),
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: any, taskId: string) =>
+    ipcRenderer.invoke('exportBatchImages', libraryId, relativePaths, options, taskId),
+  cancelExport: (taskId: string) =>
+    ipcRenderer.invoke('cancelExport', taskId),
+  onExportProgress: (callback: (progress: any) => void) => {
+    const subscription = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on('export-progress', subscription)
+    return () => ipcRenderer.removeListener('export-progress', subscription)
+  },
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),

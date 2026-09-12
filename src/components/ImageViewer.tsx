@@ -27,6 +27,7 @@ import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { ExportDialog } from './file-ops/ExportDialog'
 import { HistogramChart } from './HistogramChart'
 import { useImageStore } from '@/stores/imageStore'
 import type { ExifInfo } from '@/types'
@@ -124,6 +125,7 @@ export function ImageViewer({
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [renameDialog, setRenameDialog] = useState(false)
+  const [exportDialog, setExportDialog] = useState(false)
 
   // EXIF 惰性加载（仅在信息面板打开且媒体类型为图片时请求）
   useEffect(() => {
@@ -189,6 +191,9 @@ export function ImageViewer({
       }
       case 'rename':
         setRenameDialog(true)
+        break
+      case 'export':
+        setExportDialog(true)
         break
     }
     setContextMenu(null)
@@ -858,6 +863,16 @@ export function ImageViewer({
           libraryId={libraryId}
           initialPaths={[imagePath]}
           onClose={() => setRenameDialog(false)}
+        />
+      )}
+
+      {/* 导出对话框 */}
+      {exportDialog && libraryId && imagePath && (
+        <ExportDialog
+          isOpen={true}
+          onClose={() => setExportDialog(false)}
+          libraryId={libraryId}
+          selectedPaths={[imagePath]}
         />
       )}
     </div>
