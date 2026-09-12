@@ -882,3 +882,37 @@ body {
   .glass-l2 { background: var(--color-canvas-tertiary); }
   .glass-l3 { background: var(--color-dialog); }
 }
+
+/* ═══════════════════════════════════════════════════════
+   幻灯片过渡动画
+   ═══════════════════════════════════════════════════════ */
+@keyframes slideshow-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideshow-slide {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideshow-zoom {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

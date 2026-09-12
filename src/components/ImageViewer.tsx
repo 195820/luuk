@@ -30,6 +30,7 @@ import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { ExportDialog } from './file-ops/ExportDialog'
 import { HistogramChart } from './HistogramChart'
 import { useImageStore } from '@/stores/imageStore'
+import { useSlideshowStore } from '@/stores/slideshowStore'
 import type { ExifInfo } from '@/types'
 
 type ExifData = ExifInfo
@@ -359,6 +360,16 @@ export function ImageViewer({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return
       }
+
+      // Ctrl+R: 切换幻灯片随机播放模式
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault()
+        const { toggleMode, mode } = useSlideshowStore.getState()
+        toggleMode()
+        logger.info('ImageViewer', `幻灯片模式: ${mode === 'sequential' ? '随机' : '顺序'}`)
+        return
+      }
+
       switch (e.key) {
         case 'r':
         case 'R':
@@ -589,13 +600,7 @@ export function ImageViewer({
         ) : mediaType === 'audio' ? (
           <AudioViewer src={src} filename={alt || ''} />
         ) : (
-          <div
-            className="w-full h-full transition-opacity transition-transform duration-250 ease-out"
-            style={{
-              opacity: imageTransition === 'entering' ? 0 : 1,
-              transform: imageTransition === 'entering' ? 'scale(0.9)' : 'scale(1)',
-            }}
-          >
+          <SlideshowTransitionWrapper transition={useSlideshowStore.getState().transition}>
             <ImageLightbox
               src={src}
               alt={alt || '图片'}
@@ -621,7 +626,7 @@ export function ImageViewer({
               }}
               paused={!isGifPlaying}
             />
-          </div>
+          </SlideshowTransitionWrapper>
         )}
       </div>
 
@@ -885,6 +890,39 @@ function ExifRow({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between py-1">
       <span className="text-text-secondary">{label}</span>
       <span className="text-text-primary text-right max-w-[60%] break-all">{value}</span>
+    </div>
+  )
+}
+
+/** 幻灯片过渡动画包装器 */
+function SlideshowTransitionWrapper({
+  children,
+  transition
+}: {
+  children: React.ReactNode
+  transition: 'fade' | 'slide' | 'zoom'
+}) {
+  const transitionStyles: Record<'fade' | 'slide' | 'zoom', React.CSSProperties> = {
+    fade: {
+      transition: 'opacity 500ms ease-in-out',
+    },
+    slide: {
+      transition: 'transform 500ms ease-in-out, opacity 500ms ease-in-out',
+    },
+    zoom: {
+      transition: 'transform 500ms ease-in-out, opacity 500ms ease-in-out',
+    },
+  }
+
+  return (
+    <div
+      className="w-full h-full"
+      style={{
+        ...transitionStyles[transition],
+        animation: `slideshow-${transition} 500ms ease-in-out`,
+      }}
+    >
+      {children}
     </div>
   )
 }

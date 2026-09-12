@@ -23,25 +23,25 @@ import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
+import { SlideshowBar } from './components/layout/SlideshowBar'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, RECENT_ADDED_ID, RECENT_MODIFIED_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
 import { useViewStore } from './stores/viewStore'
 import { useThemeStore, watchSystemTheme } from './stores/themeStore'
+import { useSlideshowStore } from './stores/slideshowStore'
 import { useAdjacentPreload, getPreloadedUrl } from './hooks/useAdjacentPreload'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
 import type { Library, HistoryItem } from './types'
 import { logger } from './utils/logger'
 
-const SLIDESHOW_INTERVALS = [3, 5, 10, 30]
-
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
   const [appView, setAppView] = useState<'main' | 'recycleBin'>('main')
   const [thumbnailSize, setThumbnailSize] = useState(200)
-  const [slideshow, setSlideshow] = useState<SlideshowSettings>({ enabled: false, interval: 5 })
-  const [selectedInterval, setSelectedInterval] = useState(5)
+  // 幻灯片状态现在由 slideshowStore 管理，这里只保留 enabled 的本地副本用于定时器
+  const [slideshowEnabled, setSlideshowEnabled] = useState(false)
   const gridScrollRef = useRef<number>(0)
   const slideshowTimerRef = useRef<NodeJS.Timeout | null>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
@@ -416,7 +416,8 @@ function App() {
   const handleClose = useCallback(() => {
     setViewMode('grid')
     setCurrentImage(null)
-    setSlideshow(prev => ({ ...prev, enabled: false }))
+    setSlideshowEnabled(false)
+    useSlideshowStore.getState().stop()
   }, [])
 
   // 切换库：查看器打开时先退出，避免残留上一库的图片/索引
@@ -424,7 +425,8 @@ function App() {
     if (viewMode === 'viewer') {
       setViewMode('grid')
       setCurrentImage(null)
-      setSlideshow(prev => ({ ...prev, enabled: false }))
+      setSlideshowEnabled(false)
+      useSlideshowStore.getState().stop()
       setIsVideoPlaying(false)
     }
     setCurrentIndex(0)
@@ -439,20 +441,72 @@ function App() {
   }, [viewMode, setCurrentImage, setCurrentLibrary, loadFavoriteImages])
 
   const toggleSlideshow = useCallback(() => {
-    setSlideshow(prev => ({ ...prev, enabled: !prev.enabled }))
-  }, [])
-
-  const changeSlideshowInterval = useCallback((interval: number) => {
-    setSlideshow(prev => ({ ...prev, interval }))
-    setSelectedInterval(interval)
-  }, [])
+    setSlideshowEnabled(prev => !prev)
+    if (!slideshowEnabled) {
+      useSlideshowStore.getState().start()
+    } else {
+      useSlideshowStore.getState().stop()
+    }
+  }, [slideshowEnabled])
 
   // 幻灯片定时器（视频播放中暂停定时器，视频播完后通过 onVideoEnded 触发前进）
+  // 支持随机播放模式和自定义播放列表
+  const intervalSec = useSlideshowStore(s => s.intervalSec)
+  const slideshowMode = useSlideshowStore(s => s.mode)
+  const slideshowPlaylist = useSlideshowStore(s => s.playlist)
+
   useEffect(() => {
-    if (slideshow.enabled && viewMode === 'viewer' && !isVideoPlaying) {
+    if (slideshowEnabled && viewMode === 'viewer' && !isVideoPlaying) {
       slideshowTimerRef.current = setInterval(() => {
-        handleNext()
-      }, slideshow.interval * 1000)
+        // 如果有自定义播放列表，使用它；否则使用当前库的图片
+        if (slideshowPlaylist.length > 0) {
+          // 自定义播放列表模式
+          const currentIndex = useSlideshowStore.getState().playlist.findIndex(
+            item => item.libraryId === currentLibraryId && item.imagePath === currentImage?.relative_path
+          )
+          let nextIndex: number
+          if (slideshowMode === 'random') {
+            // 随机模式：从播放列表中选择一张不同的图片
+            nextIndex = Math.floor(Math.random() * slideshowPlaylist.length)
+            if (nextIndex === currentIndex && slideshowPlaylist.length > 1) {
+              nextIndex = (nextIndex + 1) % slideshowPlaylist.length
+            }
+          } else {
+            // 顺序模式
+            nextIndex = (currentIndex + 1) % slideshowPlaylist.length
+          }
+          const nextItem = slideshowPlaylist[nextIndex]
+          if (nextItem && (nextItem.libraryId !== currentLibraryId || nextItem.imagePath !== currentImage?.relative_path)) {
+            // 切换库（如果需要）
+            if (nextItem.libraryId !== currentLibraryId) {
+              setCurrentLibrary(nextItem.libraryId)
+            }
+            // 查找图片并跳转
+            const targetImages = useImageStore.getState().images
+            const imgIndex = targetImages.findIndex(img => img.relative_path === nextItem.imagePath)
+            if (imgIndex >= 0) {
+              setCurrentIndex(imgIndex)
+              setCurrentImage(targetImages[imgIndex])
+            }
+          }
+        } else {
+          // 使用当前库的图片
+          if (slideshowMode === 'random') {
+            // 随机模式：选择一张不同的图片
+            const totalImages = images.length
+            if (totalImages > 1) {
+              let newIndex = Math.floor(Math.random() * totalImages)
+              if (newIndex === currentIndex) {
+                newIndex = (newIndex + 1) % totalImages
+              }
+              setCurrentIndex(newIndex)
+            }
+          } else {
+            // 顺序模式
+            handleNext()
+          }
+        }
+      }, intervalSec * 1000)
     } else {
       if (slideshowTimerRef.current) {
         clearInterval(slideshowTimerRef.current)
@@ -465,15 +519,15 @@ function App() {
         clearInterval(slideshowTimerRef.current)
       }
     }
-  }, [slideshow.enabled, slideshow.interval, viewMode, handleNext, currentLibraryId, isVideoPlaying])
+  }, [slideshowEnabled, intervalSec, slideshowMode, slideshowPlaylist, viewMode, handleNext, currentLibraryId, currentIndex, images, currentImage, isVideoPlaying])
 
   // 视频播完回调（幻灯片模式下自动前进）
   const handleVideoEnded = useCallback(() => {
     setIsVideoPlaying(false)
-    if (slideshow.enabled && viewMode === 'viewer') {
+    if (slideshowEnabled && viewMode === 'viewer') {
       handleNext()
     }
-  }, [slideshow.enabled, viewMode, handleNext])
+  }, [slideshowEnabled, viewMode, handleNext])
 
   // 切换收藏状态
   const handleToggleFavorite = useCallback(async () => {
@@ -1222,8 +1276,15 @@ function App() {
                 onNext={handleNext}
                 onClose={handleClose}
                 imageInfo={getCurrentImageInfo() || undefined}
-                slideshowSettings={slideshow}
-                onSlideshowChange={(enabled) => setSlideshow(prev => ({ ...prev, enabled }))}
+                slideshowSettings={{ enabled: slideshowEnabled, interval: intervalSec }}
+                onSlideshowChange={(enabled) => {
+                  setSlideshowEnabled(enabled)
+                  if (enabled) {
+                    useSlideshowStore.getState().start()
+                  } else {
+                    useSlideshowStore.getState().stop()
+                  }
+                }}
                 mediaType={(currentImage as any).mediaType || 'image'}
                 libraryId={viewerLibraryId || undefined}
                 imagePath={viewerImagePath}
@@ -1314,30 +1375,16 @@ function App() {
         )}
       </AnimatePresence>
 
-      {viewMode === 'viewer' && slideshow.enabled && (
-        <div className="h-11 px-5 flex items-center justify-between bg-[rgba(255,255,255,0.08)] border-b border-border text-text-primary text-sm [-webkit-app-region:drag]">
-          <span className="flex items-center gap-2">
-            <MonitorPlay size={16} />
-            幻灯片播放中
-          </span>
-          <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
-            <span>间隔:</span>
-            <select
-              value={selectedInterval}
-              onChange={(e) => changeSlideshowInterval(Number(e.target.value))}
-              className="h-8 pl-2 pr-4 bg-glass-l1 border border-border rounded-md text-sm text-text-secondary cursor-pointer transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              {SLIDESHOW_INTERVALS.map(interval => (
-                <option key={interval} value={interval}>{interval}秒</option>
-              ))}
-            </select>
-            <button onClick={toggleSlideshow} className="btn-pill">
-              <Pause size={14} />
-              暂停
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 幻灯片控制栏（使用新的 SlideshowBar 组件） */}
+      <AnimatePresence>
+        {viewMode === 'viewer' && slideshowEnabled && currentLibraryId && (
+          <SlideshowBar
+            libraryId={currentLibraryId}
+            isPlaying={slideshowEnabled}
+            onToggle={toggleSlideshow}
+          />
+        )}
+      </AnimatePresence>
 
       {/* 收藏视图媒体筛选 */}
       {isFavoriteLibrary && viewMode === 'grid' && (

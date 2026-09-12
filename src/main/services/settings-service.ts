@@ -17,6 +17,9 @@ interface SettingsSchema {
   'cache.maxMemoryMB': number;
   'search.history': string[];
   'search.presets': SearchPreset[];
+  'slideshow.mode': 'sequential' | 'random';
+  'slideshow.transition': 'fade' | 'slide' | 'zoom';
+  'slideshow.intervalSec': number;
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -28,6 +31,9 @@ const DEFAULTS: SettingsSchema = {
   'cache.maxMemoryMB': 200,
   'search.history': [],
   'search.presets': [],
+  'slideshow.mode': 'sequential',
+  'slideshow.transition': 'fade',
+  'slideshow.intervalSec': 5,
 };
 
 let instance: Store<SettingsSchema> | null = null;

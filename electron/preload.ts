@@ -183,6 +183,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('export-progress', subscription)
   },
 
+  // 幻灯片：选择音频文件
+  selectAudioFile: () => ipcRenderer.invoke('selectAudioFile'),
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),

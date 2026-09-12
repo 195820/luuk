@@ -729,6 +729,32 @@ export function registerLibraryHandlers(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // ==================== 幻灯片 ====================
+
+  // 选择音频文件（用于幻灯片背景音乐）
+  ipcMain.handle('selectAudioFile', async () => {
+    try {
+      const windows = BrowserWindow.getAllWindows();
+      if (windows.length === 0) {
+        return { success: false, error: 'No window available' };
+      }
+      const result = await dialog.showOpenDialog(windows[0], {
+        title: '选择背景音乐',
+        filters: [
+          { name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'] }
+        ],
+        properties: ['openFile']
+      });
+      if (result.canceled || result.filePaths.length === 0) {
+        return { success: false, error: 'User cancelled' };
+      }
+      return { success: true, data: { path: result.filePaths[0] } };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'selectAudioFile 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
 }
 
 /**
@@ -756,6 +782,7 @@ const IPC_HANDLER_NAMES = [
   'setFolderCover', 'removeFolderCover', 'getFolderCovers',
   'getImageHistogram',
   'exportSingleImage', 'exportBatchImages', 'cancelExport',
+  'selectAudioFile',
 ] as const;
 
 /**

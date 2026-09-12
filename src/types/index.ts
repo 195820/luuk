@@ -81,6 +81,8 @@ export interface ElectronAPI {
   exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; error?: string }>
   cancelExport: (taskId: string) => Promise<{ success: boolean }>
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
+  // 幻灯片
+  selectAudioFile: () => Promise<{ success: boolean; data?: { path: string }; error?: string }>
   // 文件夹封面
   setFolderCover: (libraryId: number, folderPath: string, coverPath: string) => Promise<{ success: boolean; error?: string }>
   removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
