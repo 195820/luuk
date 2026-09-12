@@ -1,31 +1,6 @@
 import { ipcMain } from 'electron'
 import { logger } from '../../utils/logger'
-import type { PluginInfo } from '../../types'
-
-/**
- * PluginManager 占位接口
- * Task 12 实现后替换为真实导入
- */
-interface PluginManagerStub {
-  getAllPlugins(): PluginInfo[]
-  getPlugin(pluginId: string): PluginInfo | undefined
-  setEnabled(pluginId: string, enabled: boolean): Promise<void>
-  executeOp(pluginId: string, opId: string, input: unknown): Promise<unknown>
-  getMenuItems(context?: string): Array<{ pluginId: string; op: string; label: string; context: string[] }>
-}
-
-/** 延迟获取 PluginManager（Task 12 完成后自动接入） */
-function getPluginManager(): PluginManagerStub {
-  // TODO: Task 12 完成后替换为真实导入
-  // return (await import('../services/plugin-manager')).getPluginManager()
-  return {
-    getAllPlugins: () => [],
-    getPlugin: () => undefined,
-    setEnabled: async () => { throw new Error('PluginManager 未就绪（Task 12 待实现）') },
-    executeOp: async () => { throw new Error('PluginManager 未就绪（Task 12 待实现）') },
-    getMenuItems: () => [],
-  }
-}
+import { getPluginManager } from '../services/plugin-manager'
 
 /** 注册插件相关 IPC 处理器 */
 export function registerPluginHandlers(): void {
@@ -33,7 +8,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:list', async () => {
     try {
       const pm = getPluginManager()
-      return { success: true, data: pm.getAllPlugins() }
+      return { success: true, data: pm.getPluginInfos() }
     } catch (err) {
       logger.error('PluginHandlers', 'plugins:list 失败', err)
       return { success: false, error: (err as Error).message }
@@ -44,7 +19,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:get', async (_event, pluginId: string) => {
     try {
       const pm = getPluginManager()
-      const plugin = pm.getPlugin(pluginId)
+      const plugin = pm.getPluginInfo(pluginId)
       if (!plugin) {
         return { success: false, error: `插件不存在: ${pluginId}` }
       }
@@ -79,11 +54,11 @@ export function registerPluginHandlers(): void {
     }
   })
 
-  // 获取菜单项（可按上下文过滤）
-  ipcMain.handle('plugins:getMenuItems', async (_event, context?: string) => {
+  // 获取菜单项（来自已启用插件）
+  ipcMain.handle('plugins:getMenuItems', async () => {
     try {
       const pm = getPluginManager()
-      return { success: true, data: pm.getMenuItems(context) }
+      return { success: true, data: pm.getAvailableMenuItems() }
     } catch (err) {
       logger.error('PluginHandlers', 'plugins:getMenuItems 失败', err)
       return { success: false, error: (err as Error).message }
