@@ -185,18 +185,7 @@ export class JobRunner {
         })
       )
 
-      // 中止信号检查：当前批次已完成，不更新状态（保留外部 pause/cancel 设置的 paused/cancelled）
-      // 也不开始下一批
-      if (abortController.signal.aborted) {
-        // 将本批已处理但未落库的 items 重置为 pending，以便 resume 时重新处理
-        this.db.updateJobItemState(
-          pendingItems.map(i => i.id),
-          'pending' as JobItemState
-        )
-        break
-      }
-
-      // 更新 item 状态（仅在未中止时）
+      // 先处理结果（保留已完成的 done/failed 状态）
       let batchDone = 0
       let batchFailed = 0
       for (const result of results) {
@@ -225,6 +214,12 @@ export class JobRunner {
 
       this.emitProgress(jobId)
 
+      // 中止信号检查：当前批次结果已落库，仅重置仍在 running 的项（实际不应存在）
+      // 不开始下一批
+      if (abortController.signal.aborted) {
+        break
+      }
+
       // 让出执行权，避免阻塞主线程
       await new Promise(resolve => setImmediate(resolve))
     }
@@ -234,11 +229,10 @@ export class JobRunner {
     const pendingRemaining = this.db.getJobItems(jobId, 'pending' as JobItemState)
 
     if (pendingRemaining.length === 0) {
-      // 所有 items 已处理完
-      if (job?.state === 'cancelled') {
-        // 取消状态优先保留（外部意图）
+      // 所有 items 已处理完 — 保留外部意图状态（pause/cancel）
+      if (job?.state === 'cancelled' || job?.state === 'paused') {
+        // 不覆盖
       } else {
-        // 正常完成或暂停后恰好完成
         this.db.updateJobState(jobId, 'done' as JobState)
         this.emitProgress(jobId)
       }
