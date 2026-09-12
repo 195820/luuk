@@ -18,6 +18,7 @@ import { SearchPanel } from './components/SearchPanel'
 import { TagCloudPanel } from './components/TagCloudPanel'
 import { StatsPanel } from './components/StatsPanel'
 import { CachePanel } from './components/CachePanel'
+import { SettingsPanel } from './components/SettingsPanel'
 import { SimilarImagesPanel } from './components/SimilarImagesPanel'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
@@ -25,6 +26,7 @@ import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
 import type { ImageGridItem } from './components/ImageGrid'
 import { useImageStore, FAVORITE_LIBRARY_ID, RECENT_ADDED_ID, RECENT_MODIFIED_ID, useAudioStore, useHistoryStore, useSearchStore } from './stores'
 import { useViewStore } from './stores/viewStore'
+import { useThemeStore, watchSystemTheme } from './stores/themeStore'
 import { useAdjacentPreload, getPreloadedUrl } from './hooks/useAdjacentPreload'
 import { RecentHistory } from './components/RecentHistory'
 import { RecycleBinView } from './components/file-ops/RecycleBinView'
@@ -100,6 +102,7 @@ function App() {
   const [showLibraryPanel, setShowLibraryPanel] = useState(false)
   const [showStatsPanel, setShowStatsPanel] = useState(false)
   const [showCachePanel, setShowCachePanel] = useState(false)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false)
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
@@ -125,6 +128,17 @@ function App() {
       useImageStore.setState({ folderTree: [], selectedFolder: null })
     }
     init()
+  }, [])
+
+  // 初始化主题
+  useEffect(() => {
+    const { applyTheme, mode } = useThemeStore.getState()
+    applyTheme()
+
+    // 如果 mode='system'，监听系统主题变化
+    if (mode === 'system') {
+      return watchSystemTheme(applyTheme)
+    }
   }, [])
 
   // 对比模式：监听网格层发出的 compare-open 事件
@@ -961,6 +975,14 @@ function App() {
             <HardDrive size={14} />
             缓存
           </button>
+
+          <button
+            onClick={() => setShowSettingsPanel(true)}
+            className="btn-text"
+            title="外观设置"
+          >
+            🎨
+          </button>
         </div>
 
         {/* 窗口控制按钮 */}
@@ -1413,6 +1435,11 @@ function App() {
       {/* 缓存管理面板 */}
       {showCachePanel && (
         <CachePanel onClose={() => setShowCachePanel(false)} />
+      )}
+
+      {/* 外观设置面板 */}
+      {showSettingsPanel && (
+        <SettingsPanel onClose={() => setShowSettingsPanel(false)} />
       )}
 
       {/* 对比模式覆盖层 */}

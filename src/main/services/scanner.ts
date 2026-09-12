@@ -363,6 +363,10 @@ export class LibraryScanner {
     // 预生成缩略图
     await this.preGenerateThumbnails(thumbnailQueue);
 
+    // 输出扫描统计日志
+    const libName = path.basename(this.libraryPath);
+    logger.info('Scanner', `库 "${libName}" 扫描完成 | 总计: ${result.total} | 新增: ${result.added} | 更新: ${result.updated} | 跳过: ${result.skipped} | 删除: ${result.deleted}`);
+
     // 发送完成状态
     this.sendComplete();
 

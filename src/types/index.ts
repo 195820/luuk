@@ -70,6 +70,12 @@ export interface ElectronAPI {
   getLibraryStats: (libraryId: number) => Promise<{ success: boolean; data?: LibraryStats; error?: string }>
   // EXIF
   getImageExif: (libraryId: number, relativePath: string) => Promise<{ success: boolean; data?: ExifInfo; error?: string }>
+  // 直方图
+  getImageHistogram: (libraryId: number, relativePath: string) => Promise<{
+    success: boolean
+    data?: HistogramData
+    error?: string
+  }>
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
@@ -78,6 +84,12 @@ export interface ElectronAPI {
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) => Promise<SearchResult>
+  getSearchHistory: () => Promise<string[]>
+  addSearchHistory: (query: string) => Promise<void>
+  clearSearchHistory: () => Promise<void>
+  getSearchPresets: () => Promise<Array<{ id: string; name: string; criteria: SearchCriteria; createdAt: string }>>
+  saveSearchPreset: (name: string, criteria: SearchCriteria) => Promise<{ id: string }>
+  deleteSearchPreset: (id: string) => Promise<void>
   // 标签
   createTag: (name: string, color?: string) => Promise<{ success: boolean; data?: Tag; error?: string }>
   deleteTag: (id: number) => Promise<{ success: boolean; error?: string }>
@@ -95,6 +107,7 @@ export interface ElectronAPI {
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
+  onLibraryStatusChanged: (callback: (data: { id: number; status: 'online' | 'offline' }) => void) => () => void
   // 窗口控制
   windowMinimize: () => void
   windowMaximize: () => void
@@ -403,4 +416,19 @@ export interface ExifInfo {
   iso?: number
   focalLength?: number
   gps?: { latitude: number; longitude: number }
+}
+
+// ==================== 直方图类型 ====================
+
+export interface HistogramData {
+  /** 红色通道（256 个 bin） */
+  r: number[]
+  /** 绿色通道（256 个 bin） */
+  g: number[]
+  /** 蓝色通道（256 个 bin） */
+  b: number[]
+  /** 亮度（256 个 bin） */
+  luminance: number[]
+  /** 总像素数 */
+  totalPixels: number
 }

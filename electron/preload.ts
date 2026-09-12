@@ -108,6 +108,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
     ipcRenderer.invoke('searchImages', libraryId, criteria, options),
+  getSearchHistory: () => ipcRenderer.invoke('getSearchHistory'),
+  addSearchHistory: (query: string) => ipcRenderer.invoke('addSearchHistory', query),
+  clearSearchHistory: () => ipcRenderer.invoke('clearSearchHistory'),
+  getSearchPresets: () => ipcRenderer.invoke('getSearchPresets'),
+  saveSearchPreset: (name: string, criteria: SearchCriteria) =>
+    ipcRenderer.invoke('saveSearchPreset', name, criteria),
+  deleteSearchPreset: (id: string) => ipcRenderer.invoke('deleteSearchPreset', id),
 
   // 标签
   createTag: (name: string, color?: string) =>
@@ -151,6 +158,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getImageExif: (libraryId: number, relativePath: string) =>
     ipcRenderer.invoke('getImageExif', libraryId, relativePath),
 
+  // 直方图
+  getImageHistogram: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('getImageHistogram', libraryId, relativePath),
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),
@@ -171,6 +182,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (_event: any, data: any) => callback(data)
     ipcRenderer.on('library-scan-started', subscription)
     return () => ipcRenderer.removeListener('library-scan-started', subscription)
+  },
+
+  // 库状态变更事件（在线/离线）
+  onLibraryStatusChanged: (callback: (data: { id: number; status: 'online' | 'offline' }) => void) => {
+    const subscription = (_event: any, data: { id: number; status: 'online' | 'offline' }) => callback(data)
+    ipcRenderer.on('library-status-changed', subscription)
+    return () => ipcRenderer.removeListener('library-status-changed', subscription)
   },
 
   // 窗口控制

@@ -122,6 +122,42 @@
   --sidebar-accent-foreground: var(--color-text-primary);
   --sidebar-border: var(--color-border);
   --sidebar-ring: rgba(255, 255, 255, 0.15);
+
+  /* 默认密度 */
+  --density-padding: 12px;
+  --density-gap: 8px;
+}
+
+/* ═══════════════════════════════════════════════════════
+   浅色主题变量（data-theme="light"）
+   ═══════════════════════════════════════════════════════ */
+[data-theme="light"] {
+  --background:       #ffffff;
+  --foreground:       #1a1a1a;
+  --card:             #f5f5f5;
+  --card-foreground:  #1a1a1a;
+  --popover:          #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary:          var(--color-accent);
+  --primary-foreground: #ffffff;
+  --secondary:        rgba(0, 0, 0, 0.05);
+  --secondary-foreground: #1a1a1a;
+  --muted:            rgba(0, 0, 0, 0.03);
+  --muted-foreground: rgba(0, 0, 0, 0.6);
+  --accent:           rgba(0, 0, 0, 0.05);
+  --accent-foreground: #1a1a1a;
+  --destructive:      #DC2626;
+  --border:           rgba(0, 0, 0, 0.1);
+  --input:            rgba(0, 0, 0, 0.1);
+  --ring:             rgba(0, 0, 0, 0.15);
+  --sidebar: #f5f5f5;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: var(--color-accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(0, 0, 0, 0.05);
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: rgba(0, 0, 0, 0.1);
+  --sidebar-ring: rgba(0, 0, 0, 0.15);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -170,14 +206,15 @@ html, body {
 }
 
 body {
-  background-color: var(--color-canvas);
-  color: var(--color-text-primary);
+  background-color: var(--background);
+  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-image:
-    radial-gradient(ellipse at 20% 0%, rgba(255,255,255,0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 100%, rgba(255,255,255,0.02) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.01) 0%, transparent 70%);
+    radial-gradient(ellipse at 20% 0%, rgba(128,128,128,0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(128,128,128,0.02) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(128,128,128,0.01) 0%, transparent 70%);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 #root {

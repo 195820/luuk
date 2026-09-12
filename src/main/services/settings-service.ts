@@ -1,4 +1,12 @@
 import Store from 'electron-store';
+import type { SearchCriteria } from '../../types';
+
+interface SearchPreset {
+  id: string;
+  name: string;
+  criteria: SearchCriteria;
+  createdAt: string;
+}
 
 interface SettingsSchema {
   'fileOps.lastRenamePattern': string;
@@ -7,6 +15,8 @@ interface SettingsSchema {
   'theme.accentColor': string;
   'performance.lowEffectsMode': boolean;
   'cache.maxMemoryMB': number;
+  'search.history': string[];
+  'search.presets': SearchPreset[];
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -16,6 +26,8 @@ const DEFAULTS: SettingsSchema = {
   'theme.accentColor': '#7c6ef0',
   'performance.lowEffectsMode': false,
   'cache.maxMemoryMB': 200,
+  'search.history': [],
+  'search.presets': [],
 };
 
 let instance: Store<SettingsSchema> | null = null;

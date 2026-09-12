@@ -8,6 +8,7 @@ import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } 
 import { logger } from '../../utils/logger';
 import { sendToRenderer } from '../utils/ipc';
 import { getMasterDB } from '../services/database';
+import { libraryMonitor } from '../services/library-monitor';
 
 /**
  * 验证文件路径是否在已注册库目录内
@@ -39,6 +40,16 @@ function validateLibraryAccess(filePath: string): string {
 export function registerLibraryHandlers(): void {
   const service = getImageService();
 
+  // 初始化库监控
+  const masterDB = getMasterDB();
+  const libraries = masterDB.getLibraries();
+  libraryMonitor.setLibraries(libraries.map(lib => ({ id: lib.id, rootPath: lib.rootPath })));
+  libraryMonitor.onStatusChanged((libraryId, status) => {
+    masterDB.updateLibraryStatus(libraryId, status);
+    sendToRenderer('library-status-changed', { id: libraryId, status });
+  });
+  libraryMonitor.start();
+
   // 初始化服务
   ipcMain.handle('initImageService', async () => {
     await service.initialize();
@@ -58,14 +69,18 @@ export function registerLibraryHandlers(): void {
     autoScan?: boolean
   ): Promise<Library> => {
     const library = await service.addLibrary({ name, rootPath, autoScan });
-    
+
+    // 更新库监控列表
+    const libs = masterDB.getLibraries();
+    libraryMonitor.setLibraries(libs.map(lib => ({ id: lib.id, rootPath: lib.rootPath })));
+
     // 如果需要等待扫描完成，在这里等待
     if (autoScan !== false) {
       // 返回库信息，前端可以轮询或通过事件监听扫描完成
       // 通知前端扫描开始
       sendToRenderer('library-scan-started', { libraryId: library.id });
     }
-    
+
     return library;
   });
 
@@ -89,7 +104,10 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     id: number
   ): Promise<void> => {
-    return service.removeLibrary(id);
+    await service.removeLibrary(id);
+    // 更新库监控列表
+    const libs = masterDB.getLibraries();
+    libraryMonitor.setLibraries(libs.map(lib => ({ id: lib.id, rootPath: lib.rootPath })));
   });
 
   // 扫描库
@@ -507,6 +525,92 @@ export function registerLibraryHandlers(): void {
       return { success: false, error: (err as Error).message };
     }
   });
+
+  // ==================== 搜索历史与预设 ====================
+
+  // 获取搜索历史
+  ipcMain.handle('getSearchHistory', async (): Promise<string[]> => {
+    const { getSetting } = await import('../services/settings-service');
+    return getSetting('search.history');
+  });
+
+  // 添加搜索历史
+  ipcMain.handle('addSearchHistory', async (
+    _event: Electron.IpcMainInvokeEvent,
+    query: string
+  ): Promise<void> => {
+    const { getSetting, setSetting } = await import('../services/settings-service');
+    const history = getSetting('search.history');
+    // 去重并保留最近 10 条
+    const newHistory = [query, ...history.filter(h => h !== query)].slice(0, 10);
+    setSetting('search.history', newHistory);
+  });
+
+  // 清空搜索历史
+  ipcMain.handle('clearSearchHistory', async (): Promise<void> => {
+    const { setSetting } = await import('../services/settings-service');
+    setSetting('search.history', []);
+  });
+
+  // 获取搜索预设
+  ipcMain.handle('getSearchPresets', async () => {
+    const { getSetting } = await import('../services/settings-service');
+    return getSetting('search.presets');
+  });
+
+  // 保存搜索预设
+  ipcMain.handle('saveSearchPreset', async (
+    _event: Electron.IpcMainInvokeEvent,
+    name: string,
+    criteria: any
+  ): Promise<{ id: string }> => {
+    const { getSetting, setSetting } = await import('../services/settings-service');
+    const presets = getSetting('search.presets');
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const newPreset = { id, name, criteria, createdAt: new Date().toISOString() };
+    setSetting('search.presets', [...presets, newPreset]);
+    return { id };
+  });
+
+  // 删除搜索预设
+  ipcMain.handle('deleteSearchPreset', async (
+    _event: Electron.IpcMainInvokeEvent,
+    id: string
+  ): Promise<void> => {
+    const { getSetting, setSetting } = await import('../services/settings-service');
+    const presets = getSetting('search.presets');
+    setSetting('search.presets', presets.filter(p => p.id !== id));
+  });
+
+  // ==================== 直方图 ====================
+
+  // 计算图片直方图
+  ipcMain.handle('getImageHistogram', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    relativePath: string
+  ) => {
+    try {
+      const masterDB = getMasterDB();
+      const library = masterDB.getLibrary(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const absPath = path.join(library.rootPath, relativePath);
+      // 安全检查：确保路径在库目录内
+      const resolved = path.resolve(absPath);
+      const libRoot = path.resolve(library.rootPath);
+      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+        return { success: false, error: 'Access denied' };
+      }
+      const { calculateHistogram } = await import('../utils/histogram');
+      const histogram = await calculateHistogram(absPath);
+      return { success: true, data: histogram };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'getImageHistogram 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
 }
 
 /**
@@ -529,6 +633,9 @@ const IPC_HANDLER_NAMES = [
   'extractVideoMetadata', 'generateVideoThumbnail',
   'getLibraryStats', 'getImageExif',
   'updateScanProgress', 'clearScanProgress',
+  'getSearchHistory', 'addSearchHistory', 'clearSearchHistory',
+  'getSearchPresets', 'saveSearchPreset', 'deleteSearchPreset',
+  'getImageHistogram',
 ] as const;
 
 /**

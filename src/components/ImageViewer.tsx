@@ -27,6 +27,7 @@ import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { HistogramChart } from './HistogramChart'
 import { useImageStore } from '@/stores/imageStore'
 import type { ExifInfo } from '@/types'
 
@@ -107,6 +108,9 @@ export function ImageViewer({
   const [exifData, setExifData] = useState<ExifData | null>(null)
   const [exifLoading, setExifLoading] = useState(false)
   const exifCacheRef = useRef<Map<string, ExifData>>(new Map())
+  // 信息面板标签页（图片切回时重置到 EXIF）
+  const [infoTab, setInfoTab] = useState<'exif' | 'histogram'>('exif')
+  useEffect(() => { setInfoTab('exif') }, [imagePath])
   // 延迟显示 spinner：快速加载时不显示，消除闪烁
   const [showSpinner, setShowSpinner] = useState(false)
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -700,54 +704,84 @@ export function ImageViewer({
                 </div>
               )}
 
-              {/* EXIF 拍摄信息（仅图片显示） */}
+              {/* EXIF / 直方图（仅图片显示） */}
               {mediaType === 'image' && (
                 <div className="mt-3 pt-3 border-t border-border">
-                  <div className="text-xs font-medium text-text-secondary mb-2">拍摄信息</div>
-                  {exifLoading && (
-                    <div className="text-xs text-text-dim">加载中...</div>
-                  )}
-                  {!exifLoading && exifData && Object.keys(exifData).length === 0 && (
-                    <div className="text-xs text-text-dim">无 EXIF 信息</div>
-                  )}
-                  {!exifLoading && exifData && Object.keys(exifData).length > 0 && (
-                    <div className="space-y-1.5 text-xs">
-                      {exifData.dateTimeOriginal && (
-                        <ExifRow label="拍摄时间" value={exifData.dateTimeOriginal} />
+                  <div className="flex items-center gap-1 mb-2">
+                    <button
+                      onClick={() => setInfoTab('exif')}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        infoTab === 'exif'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-text-dim hover:text-text-secondary hover:bg-overlay-lighter'
+                      }`}
+                    >
+                      拍摄信息
+                    </button>
+                    <button
+                      onClick={() => setInfoTab('histogram')}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        infoTab === 'histogram'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-text-dim hover:text-text-secondary hover:bg-overlay-lighter'
+                      }`}
+                    >
+                      直方图
+                    </button>
+                  </div>
+
+                  {infoTab === 'exif' && (
+                    <>
+                      {exifLoading && (
+                        <div className="text-xs text-text-dim">加载中...</div>
                       )}
-                      {(exifData.make || exifData.model) && (
-                        <ExifRow label="相机" value={[exifData.make, exifData.model].filter(Boolean).join(' ')} />
+                      {!exifLoading && exifData && Object.keys(exifData).length === 0 && (
+                        <div className="text-xs text-text-dim">无 EXIF 信息</div>
                       )}
-                      {exifData.lensModel && (
-                        <ExifRow label="镜头" value={exifData.lensModel} />
-                      )}
-                      {exifData.exposureTime && (
-                        <ExifRow label="曝光" value={exifData.exposureTime} />
-                      )}
-                      {exifData.fNumber !== undefined && (
-                        <ExifRow label="光圈" value={`f/${exifData.fNumber}`} />
-                      )}
-                      {exifData.iso !== undefined && (
-                        <ExifRow label="ISO" value={String(exifData.iso)} />
-                      )}
-                      {exifData.focalLength !== undefined && (
-                        <ExifRow label="焦距" value={`${exifData.focalLength}mm`} />
-                      )}
-                      {exifData.gps && (
-                        <div className="flex justify-between py-1">
-                          <span className="text-text-secondary">GPS</span>
-                          <a
-                            href={`https://www.openstreetmap.org/?mlat=${exifData.gps.latitude}&mlon=${exifData.gps.longitude}#map=15/${exifData.gps.latitude}/${exifData.gps.longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent hover:underline"
-                            title="在地图中查看"
-                          >
-                            {exifData.gps.latitude.toFixed(4)}, {exifData.gps.longitude.toFixed(4)}
-                          </a>
+                      {!exifLoading && exifData && Object.keys(exifData).length > 0 && (
+                        <div className="space-y-1.5 text-xs">
+                          {exifData.dateTimeOriginal && (
+                            <ExifRow label="拍摄时间" value={exifData.dateTimeOriginal} />
+                          )}
+                          {(exifData.make || exifData.model) && (
+                            <ExifRow label="相机" value={[exifData.make, exifData.model].filter(Boolean).join(' ')} />
+                          )}
+                          {exifData.lensModel && (
+                            <ExifRow label="镜头" value={exifData.lensModel} />
+                          )}
+                          {exifData.exposureTime && (
+                            <ExifRow label="曝光" value={exifData.exposureTime} />
+                          )}
+                          {exifData.fNumber !== undefined && (
+                            <ExifRow label="光圈" value={`f/${exifData.fNumber}`} />
+                          )}
+                          {exifData.iso !== undefined && (
+                            <ExifRow label="ISO" value={String(exifData.iso)} />
+                          )}
+                          {exifData.focalLength !== undefined && (
+                            <ExifRow label="焦距" value={`${exifData.focalLength}mm`} />
+                          )}
+                          {exifData.gps && (
+                            <div className="flex justify-between py-1">
+                              <span className="text-text-secondary">GPS</span>
+                              <a
+                                href={`https://www.openstreetmap.org/?mlat=${exifData.gps.latitude}&mlon=${exifData.gps.longitude}#map=15/${exifData.gps.latitude}/${exifData.gps.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent hover:underline"
+                                title="在地图中查看"
+                              >
+                                {exifData.gps.latitude.toFixed(4)}, {exifData.gps.longitude.toFixed(4)}
+                              </a>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
+                  )}
+
+                  {infoTab === 'histogram' && libraryId && imagePath && (
+                    <HistogramChart libraryId={libraryId} imagePath={imagePath} />
                   )}
                 </div>
               )}

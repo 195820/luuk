@@ -20,6 +20,7 @@ interface AppHeaderProps {
   onSortOrderChange: (order: 'ASC' | 'DESC') => void
   onGridLayoutChange: () => void
   onViewModeChange: () => void
+  onOpenSettings?: () => void
 }
 
 export function AppHeader({
@@ -41,6 +42,7 @@ export function AppHeader({
   onSortOrderChange,
   onGridLayoutChange,
   onViewModeChange,
+  onOpenSettings,
 }: AppHeaderProps) {
   return (
     <header className="app-header">
@@ -119,6 +121,16 @@ export function AppHeader({
         >
           {viewMode === 'grid' ? '▶ 查看' : '▦ 网格'}
         </button>
+
+        {onOpenSettings && (
+          <button
+            onClick={onOpenSettings}
+            className="header-action-btn"
+            title="外观设置"
+          >
+            🎨
+          </button>
+        )}
       </div>
     </header>
   )
