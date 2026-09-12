@@ -162,6 +162,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getImageHistogram: (libraryId: number, relativePath: string) =>
     ipcRenderer.invoke('getImageHistogram', libraryId, relativePath),
 
+  // 文件夹封面
+  setFolderCover: (libraryId: number, folderPath: string, coverPath: string) =>
+    ipcRenderer.invoke('setFolderCover', libraryId, folderPath, coverPath),
+  removeFolderCover: (libraryId: number, folderPath: string) =>
+    ipcRenderer.invoke('removeFolderCover', libraryId, folderPath),
+  getFolderCovers: (libraryId: number) =>
+    ipcRenderer.invoke('getFolderCovers', libraryId),
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),

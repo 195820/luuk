@@ -582,6 +582,50 @@ export function registerLibraryHandlers(): void {
     setSetting('search.presets', presets.filter(p => p.id !== id));
   });
 
+  // ==================== 文件夹封面 ====================
+
+  // 设置文件夹封面
+  ipcMain.handle('setFolderCover', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string,
+    coverPath: string
+  ) => {
+    try {
+      const masterDB = getMasterDB();
+      masterDB.setFolderCover(libraryId, folderPath, coverPath);
+      return { success: true };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'setFolderCover 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 移除文件夹封面
+  ipcMain.handle('removeFolderCover', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    folderPath: string
+  ) => {
+    try {
+      const masterDB = getMasterDB();
+      masterDB.removeFolderCover(libraryId, folderPath);
+      return { success: true };
+    } catch (err) {
+      logger.error('LibraryHandlers', 'removeFolderCover 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 获取库的所有文件夹封面
+  ipcMain.handle('getFolderCovers', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number
+  ) => {
+    const masterDB = getMasterDB();
+    return masterDB.getFolderCovers(libraryId);
+  });
+
   // ==================== 直方图 ====================
 
   // 计算图片直方图
@@ -635,6 +679,7 @@ const IPC_HANDLER_NAMES = [
   'updateScanProgress', 'clearScanProgress',
   'getSearchHistory', 'addSearchHistory', 'clearSearchHistory',
   'getSearchPresets', 'saveSearchPreset', 'deleteSearchPreset',
+  'setFolderCover', 'removeFolderCover', 'getFolderCovers',
   'getImageHistogram',
 ] as const;
 

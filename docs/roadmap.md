@@ -117,7 +117,7 @@ updated: 2026-08-30
 | 20 | 全屏沉浸式模式（F11，自动隐藏 UI）✅ F11 切换 + 主进程事件转发 + 隐藏 chrome（Phase 4 Task 3） | 0.5 天 |
 | 21 | 主题/皮肤系统（深色浅色/强调色/密度）✅ themeStore + SettingsPanel + data-theme + CSS 变量（Phase 6 Task 6.1） | 1 天 |
 | 22 | 幻灯片增强（过渡动画/随机播放/自定义列表） | 1 天 |
-| 23 | 文件夹封面设置 | 1 天 |
+| 23 | 文件夹封面设置 ✅ folder_covers 表 + 路径级联 + 右键菜单 + 封面缩略图（Phase 6 Task 6.3） | 1 天 |
 | 24 | 图片直方图（RGB/亮度/可选显示）✅ calculateHistogram + HistogramChart + 查看器信息面板标签页（Phase 6 Task 6.2） | 1 天 |
 
 ---

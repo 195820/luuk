@@ -133,6 +133,17 @@ export class MasterDB {
         FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_image_tags_path ON image_tags(library_id, image_path);
+
+      CREATE TABLE IF NOT EXISTS folder_covers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL,
+        folder_path TEXT NOT NULL,
+        cover_path TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(library_id, folder_path),
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_folder_covers_lib ON folder_covers(library_id);
     `);
   }
 
@@ -633,7 +644,7 @@ export class MasterDB {
     const normalizedOld = oldPath.replace(/\\/g, '/');
     const normalizedNew = newPath.replace(/\\/g, '/');
 
-    // 事务保证 favorites + history + image_tags 三条 UPDATE 的原子性
+    // 事务保证 favorites + history + image_tags + folder_covers 四条 UPDATE 的原子性
     const tx = this.db.transaction(() => {
       this.db!.prepare(
         'UPDATE favorites SET image_path = ? WHERE library_id = ? AND image_path = ?'
@@ -645,6 +656,11 @@ export class MasterDB {
 
       this.db!.prepare(
         'UPDATE image_tags SET image_path = ? WHERE library_id = ? AND image_path = ?'
+      ).run(normalizedNew, libraryId, normalizedOld);
+
+      // 封面图片路径也需要级联更新
+      this.db!.prepare(
+        'UPDATE folder_covers SET cover_path = ? WHERE library_id = ? AND cover_path = ?'
       ).run(normalizedNew, libraryId, normalizedOld);
     });
     tx();
@@ -677,6 +693,18 @@ export class MasterDB {
            WHERE library_id = ? AND (image_path = ? OR image_path LIKE ?)`
         ).run(normalizedNew, normalizedOld, libraryId, normalizedOld, likePattern);
       }
+
+      // folder_covers 文件夹路径级联
+      const covers = this.db!.prepare(
+        'SELECT id, folder_path FROM folder_covers WHERE library_id = ? AND (folder_path = ? OR folder_path LIKE ?)'
+      ).all(libraryId, normalizedOld, likePattern) as Array<{ id: number; folder_path: string }>;
+      const updateCover = this.db!.prepare('UPDATE folder_covers SET folder_path = ? WHERE id = ?');
+      for (const row of covers) {
+        const newPath = row.folder_path === normalizedOld
+          ? normalizedNew
+          : normalizedNew + row.folder_path.slice(normalizedOld.length);
+        updateCover.run(newPath, row.id);
+      }
     });
     tx();
   }
@@ -705,6 +733,57 @@ export class MasterDB {
   removeDeletedFile(id: number): void {
     if (!this.db) return;
     this.db.prepare('DELETE FROM deleted_files WHERE id = ?').run(id);
+  }
+
+  // ==================== 文件夹封面 ====================
+
+  /**
+   * 设置文件夹封面图片
+   */
+  setFolderCover(libraryId: number, folderPath: string, coverPath: string): void {
+    if (!this.db) return;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    const normalizedCover = coverPath.replace(/\\/g, '/');
+    this.db.prepare(
+      'INSERT OR REPLACE INTO folder_covers (library_id, folder_path, cover_path) VALUES (?, ?, ?)'
+    ).run(libraryId, normalizedFolder, normalizedCover);
+  }
+
+  /**
+   * 移除文件夹封面
+   */
+  removeFolderCover(libraryId: number, folderPath: string): void {
+    if (!this.db) return;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    this.db.prepare('DELETE FROM folder_covers WHERE library_id = ? AND folder_path = ?')
+      .run(libraryId, normalizedFolder);
+  }
+
+  /**
+   * 获取库的所有文件夹封面映射
+   */
+  getFolderCovers(libraryId: number): Record<string, string> {
+    if (!this.db) return {};
+    const rows = this.db.prepare(
+      'SELECT folder_path, cover_path FROM folder_covers WHERE library_id = ?'
+    ).all(libraryId) as Array<{ folder_path: string; cover_path: string }>;
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.folder_path] = row.cover_path;
+    }
+    return result;
+  }
+
+  /**
+   * 获取单个文件夹的封面路径
+   */
+  getFolderCover(libraryId: number, folderPath: string): string | null {
+    if (!this.db) return null;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    const row = this.db.prepare(
+      'SELECT cover_path FROM folder_covers WHERE library_id = ? AND folder_path = ?'
+    ).get(libraryId, normalizedFolder) as { cover_path: string } | undefined;
+    return row?.cover_path ?? null;
   }
 
   close(): void {

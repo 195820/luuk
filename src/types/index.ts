@@ -76,6 +76,10 @@ export interface ElectronAPI {
     data?: HistogramData
     error?: string
   }>
+  // 文件夹封面
+  setFolderCover: (libraryId: number, folderPath: string, coverPath: string) => Promise<{ success: boolean; error?: string }>
+  removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
+  getFolderCovers: (libraryId: number) => Promise<Record<string, string>>
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
