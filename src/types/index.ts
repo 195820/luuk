@@ -90,6 +90,7 @@ export interface ElectronAPI {
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
+  getAudioUrl: (filePath: string) => Promise<string>
   getMediaPath: (libraryId: number, imageId: number) => Promise<string>
   extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) => Promise<{ duration: number; codec: string; width: number; height: number }>
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
@@ -433,15 +434,17 @@ export interface ExifInfo {
 
 export interface HistogramData {
   /** 红色通道（256 个 bin） */
-  r: number[]
+  r: Uint32Array | number[]
   /** 绿色通道（256 个 bin） */
-  g: number[]
+  g: Uint32Array | number[]
   /** 蓝色通道（256 个 bin） */
-  b: number[]
+  b: Uint32Array | number[]
   /** 亮度（256 个 bin） */
-  luminance: number[]
-  /** 总像素数 */
+  luminance: Uint32Array | number[]
+  /** 总像素数（降采样前） */
   totalPixels: number
+  /** 是否已降采样至 200 万像素 */
+  downsampled: boolean
 }
 
 // ==================== 导出类型 ====================
@@ -467,3 +470,15 @@ export interface ExportProgress {
   /** 是否已完成 */
   finished: boolean
 }
+
+// ==================== 插件系统类型 ====================
+
+export type {
+  PluginKind, PluginPermission, PluginManifest, PluginState, PluginInfo,
+  ModelRequirement, OpDefinition, MenuItemDefinition,
+  SettingDefinition, PanelDefinition,
+  JobState, JobItemState, Job, JobItem, JobProgress,
+  Edit, MemoryLevel, MemoryStatus,
+  ModelInfo, ModelDownloadState, InferenceSessionInfo,
+  WorkerRpcRequest, WorkerRpcResponse,
+} from './plugin'
