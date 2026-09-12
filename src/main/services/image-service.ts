@@ -100,6 +100,9 @@ export class ImageService {
       }
     }
 
+    // Phase 8: 恢复中断的作业
+    this.masterDB.recoverInterruptedJobs()
+
     this.initialized = true;
   }
 
@@ -199,6 +202,13 @@ export class ImageService {
    */
   getLibraries(): Library[] {
     return this.masterDB.getLibraries();
+  }
+
+  /**
+   * 根据 ID 获取单个库信息
+   */
+  getLibraryById(libraryId: number): Library | null {
+    return this.masterDB.getLibrary(libraryId);
   }
 
   /**
@@ -1034,7 +1044,7 @@ export class ImageService {
   getFavoriteFolderImageCount(folderPath: string): number {
     const favoriteFolders = this.masterDB.getFavoriteFolders();
     let count = 0;
-    
+
     for (const fav of favoriteFolders) {
       if (fav.folder_path === folderPath || fav.folder_path.startsWith(folderPath + '/')) {
         try {
@@ -1048,8 +1058,46 @@ export class ImageService {
         }
       }
     }
-    
+
     return count;
+  }
+
+  // ==================== 文件夹封面 ====================
+
+  /**
+   * 设置文件夹封面
+   * @param libraryId 库 ID
+   * @param folderPath 文件夹相对路径（正斜杠格式）
+   * @param coverPath 封面图片相对路径
+   */
+  setFolderCover(libraryId: number, folderPath: string, coverPath: string): void {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+    this.masterDB.setFolderCover(libraryId, folderPath, coverPath);
+  }
+
+  /**
+   * 移除文件夹封面
+   */
+  removeFolderCover(libraryId: number, folderPath: string): void {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+    this.masterDB.removeFolderCover(libraryId, folderPath);
+  }
+
+  /**
+   * 获取库的所有文件夹封面映射（folderPath → coverPath）
+   */
+  getFolderCovers(libraryId: number): Record<string, string> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) {
+      throw new Error(`库不存在：${libraryId}`);
+    }
+    return this.masterDB.getFolderCovers(libraryId);
   }
 
   /**
