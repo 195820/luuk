@@ -259,8 +259,18 @@ describe('JobRunner', () => {
       })),
     })
 
+    // 使用进度回调等待作业完成，比固定 sleep 更可靠
+    const allDone = new Promise<void>(resolve => {
+      runner.subscribeProgress((progress) => {
+        if (progress.jobId === jobId && progress.state === 'done') resolve()
+      })
+    })
+
     await runner.start(jobId)
-    await sleep(500)
+    await Promise.race([
+      allDone,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('大批量处理超时')), 5000)),
+    ])
 
     expect(processed).toHaveLength(25)
     const job = db.getJob(jobId)!
