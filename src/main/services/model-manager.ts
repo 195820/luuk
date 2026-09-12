@@ -1,7 +1,8 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as crypto from 'crypto'
-import type { ModelInfo, ModelDownloadState } from '../../types/plugin'
+import type { ModelInfo } from '../../types/plugin'
+import { logger } from '../../utils/logger'
 
 /**
  * 模型管理器
@@ -34,7 +35,8 @@ export class ModelManager {
 
   /**
    * 获取模型本地路径。
-   * 仅当模型已注册且状态为 'downloaded' 且文件实际存在时返回路径，否则返回 null。
+   * 返回模型预期存储路径（不保证文件已存在），调用方需自行检查文件可用性。
+   * 未注册的模型返回 null。
    */
   getModelPath(id: string): string | null {
     const info = this.models.get(id)
@@ -74,8 +76,8 @@ export class ModelManager {
     // 校验失败：删除损坏文件
     try {
       await fs.unlink(filePath)
-    } catch {
-      // 删除失败时静默（文件可能已被移走）
+    } catch (err) {
+      logger.warn('ModelManager', `删除损坏模型文件失败: ${filePath}`, err)
     }
     return false
   }
