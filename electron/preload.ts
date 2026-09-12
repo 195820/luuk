@@ -104,6 +104,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
+  getAudioUrl: (filePath: string) => ipcRenderer.invoke('getAudioUrl', filePath),
 
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
@@ -185,6 +186,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // 幻灯片：选择音频文件
   selectAudioFile: () => ipcRenderer.invoke('selectAudioFile'),
+
+  // 插件管理
+  pluginsList: () => ipcRenderer.invoke('plugins:list'),
+  pluginsGet: (pluginId: string) => ipcRenderer.invoke('plugins:get', pluginId),
+  pluginsSetEnabled: (pluginId: string, enabled: boolean) =>
+    ipcRenderer.invoke('plugins:setEnabled', pluginId, enabled),
+  pluginsExecute: (pluginId: string, opId: string, input: unknown) =>
+    ipcRenderer.invoke('plugins:execute', pluginId, opId, input),
+  pluginsGetMenuItems: (context?: string) =>
+    ipcRenderer.invoke('plugins:getMenuItems', context),
+
+  // JobRunner 作业管理
+  jobsList: () => ipcRenderer.invoke('jobs:list'),
+  jobsGet: (jobId: string) => ipcRenderer.invoke('jobs:get', jobId),
+  jobsPause: (jobId: string) => ipcRenderer.invoke('jobs:pause', jobId),
+  jobsResume: (jobId: string) => ipcRenderer.invoke('jobs:resume', jobId),
+  jobsCancel: (jobId: string) => ipcRenderer.invoke('jobs:cancel', jobId),
+  jobsSubscribeProgress: () => ipcRenderer.invoke('jobs:subscribeProgress'),
+  onJobProgress: (callback: (progress: any) => void) => {
+    const subscription = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on('job-progress', subscription)
+    return () => ipcRenderer.removeListener('job-progress', subscription)
+  },
 
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>

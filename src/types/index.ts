@@ -1,4 +1,7 @@
 // Electron API 类型定义
+import type {
+  PluginInfo, Job, JobItem, JobProgress,
+} from './plugin'
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
@@ -83,6 +86,20 @@ export interface ElectronAPI {
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   // 幻灯片
   selectAudioFile: () => Promise<{ success: boolean; data?: { path: string }; error?: string }>
+  // 插件管理
+  pluginsList: () => Promise<{ success: boolean; data?: PluginInfo[]; error?: string }>
+  pluginsGet: (pluginId: string) => Promise<{ success: boolean; data?: PluginInfo; error?: string }>
+  pluginsSetEnabled: (pluginId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  pluginsExecute: (pluginId: string, opId: string, input: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>
+  pluginsGetMenuItems: (context?: string) => Promise<{ success: boolean; data?: Array<{ pluginId: string; op: string; label: string; context: string[] }>; error?: string }>
+  // JobRunner 作业管理
+  jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
+  jobsGet: (jobId: string) => Promise<{ success: boolean; data?: Job & { items: JobItem[] }; error?: string }>
+  jobsPause: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsResume: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsCancel: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsSubscribeProgress: () => Promise<{ success: boolean; error?: string }>
+  onJobProgress: (callback: (progress: JobProgress) => void) => () => void
   // 文件夹封面
   setFolderCover: (libraryId: number, folderPath: string, coverPath: string) => Promise<{ success: boolean; error?: string }>
   removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
