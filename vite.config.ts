@@ -35,6 +35,15 @@ export default defineConfig({
           },
         },
       },
+      {
+        // 插件 Worker 进程入口
+        entry: 'electron/plugin-worker.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+          },
+        },
+      },
     ]),
   ],
   resolve: {
