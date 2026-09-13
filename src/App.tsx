@@ -2,11 +2,12 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
 import {
-  Folder, FolderOpen, Heart, Music, Pause, X,
+  Folder, FolderOpen, Heart, Music, Pause, X, Minus, Square,
   RefreshCw, Trash2, AlertTriangle, Plus, Tag,
   LayoutGrid, Columns3, Image as ImageIcon, Maximize2,
   Database, MonitorPlay, HardDrive,
 } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
 import { CompareViewer } from './components/CompareViewer'
 import { ImageGrid } from './components/ImageGrid'
@@ -788,6 +789,13 @@ function App() {
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
   const isRecentView = currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID
   const isVirtualLibrary = isFavoriteLibrary || isRecentView
+  // 库选择器的可控 value：收藏库映射回 'favorites'，避免原生 select 对 -1 显示空白
+  const librarySelectValue = isFavoriteLibrary ? 'favorites' : currentLibraryId !== null ? String(currentLibraryId) : ''
+  // Base UI Select 关闭态需 items 才能渲染 label（否则回退显示 raw value）
+  const librarySelectItems = useMemo(() => [
+    { value: 'favorites', label: `♡ 收藏夹 (${favoriteCount})` },
+    ...libraries.map(lib => ({ value: String(lib.id), label: `${lib.name} - ${lib.imageCount} 张` })),
+  ], [libraries, favoriteCount])
   const isSearching = useSearchStore(s => s.hasSearched)
   const searchResults = useSearchStore(s => s.results)
   const closeSearchPanel = useSearchStore(s => s.closePanel)
@@ -830,149 +838,146 @@ function App() {
   return (
     <div className="w-full h-full flex flex-col">
       {!immersiveFullscreen && (
-      <header className="h-14 px-5 flex items-center justify-between glass-l1 [-webkit-app-region:drag]">
-        <h1
-          className="text-heading font-semibold tracking-tight"
-          style={{
-            background: 'linear-gradient(135deg, var(--color-text-primary) 0%, var(--color-text-secondary) 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}
-        >
-          图片查看器
-        </h1>
-        <div className="flex items-center gap-2 [-webkit-app-region:no-drag]">
-          {/* 组 1: 文件夹 + 库选择 */}
-          <div className="flex items-center gap-2">
-            <button onClick={toggleFolderSidebar} className="btn-icon" title="切换文件夹面板 (F6)">
-              <FolderOpen size={18} />
-            </button>
-            <select
-              value={currentLibraryId ?? ''}
-              onChange={(e) => handleSwitchLibrary(e.target.value)}
-              className="h-9 pl-3 pr-8 rounded-md border border-border bg-glass-l1 text-text-primary text-body cursor-pointer outline-none transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              <option value="favorites">♡ 收藏夹 ({favoriteCount})</option>
-              <option value="" disabled>──────────</option>
-              {libraries.map(lib => (
-                <option key={lib.id} value={lib.id}>
-                  {lib.name} ({lib.status === 'online' ? '在线' : '离线'}) - {lib.imageCount} 张
-                </option>
-              ))}
-            </select>
-            <button onClick={() => setShowLibraryPanel(!showLibraryPanel)} className="btn-text">
-              <Database size={14} />
-              管理
-            </button>
-          </div>
-
-          <span
-            className="text-micro text-text-muted bg-canvas-tertiary px-3 py-1 rounded-full border border-border tabular-nums whitespace-nowrap truncate max-w-[200px] transition-colors duration-150 hover:border-border-hover hover:bg-canvas-raised"
-            title={
-              isFavoriteLibrary
-                ? `${favoriteCount} 张收藏图片`
-                : currentLibraryId
-                  ? `${totalImages} 张图片`
-                  : '请先选择或添加库'
-            }
+      <header className="h-12 px-4 flex items-center gap-3 glass-l1 rounded-none shrink-0 [-webkit-app-region:drag]">
+        {/* 左：标题 + 导航 + 库选择 */}
+        <div className="flex items-center gap-2 min-w-0">
+          <h1
+            className="text-heading font-semibold tracking-tight whitespace-nowrap shrink-0"
+            style={{
+              background: 'linear-gradient(135deg, #edeaff 0%, var(--color-accent) 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            }}
           >
-            {isFavoriteLibrary
-              ? `${favoriteCount} 张收藏图片`
-              : currentLibraryId
-                ? `${totalImages} 张图片`
-                : '请先选择或添加库'
-            }
-          </span>
-
-          <div className="w-px h-6 bg-border" />
-
-          {/* 组 2: 视图控制 */}
-          {!isVirtualLibrary && viewMode === 'grid' && currentLibraryId && (
-            <div className="flex items-center gap-2 text-caption text-text-secondary">
-              <label htmlFor="thumbnail-size">缩略图:</label>
-              <input
-                id="thumbnail-size"
-                type="range"
-                min="80"
-                max="400"
-                step="20"
-                value={thumbnailSize}
-                onChange={(e) => setThumbnailSize(Number(e.target.value))}
-                className="thumbnail-slider"
-              />
-              <span>{thumbnailSize}px</span>
-            </div>
-          )}
-
-          {viewMode === 'grid' && currentLibraryId && (
-            <>
-              <SortControl
-                sortBy={imageSortBy}
-                sortOrder={imageSortOrder}
-                onSortByChange={(v) => { setSortBy(v); applySort() }}
-                onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
-              />
-              {currentLibraryId > 0 && <SearchPanel libraryId={currentLibraryId} />}
-              {currentLibraryId > 0 && <TagCloudButton libraryId={currentLibraryId} />}
-            </>
-          )}
-
-          {viewMode === 'grid' && currentLibraryId && (
-            <button
-              onClick={() => setGridLayoutMode(gridLayoutMode === 'grid' ? 'masonry' : 'grid')}
-              className="btn-text"
-              title={gridLayoutMode === 'grid' ? '切换到瀑布流视图' : '切换到网格视图'}
-            >
-              {gridLayoutMode === 'grid' ? <Columns3 size={14} /> : <LayoutGrid size={14} />}
-              {gridLayoutMode === 'grid' ? '网格' : '瀑布流'}
-            </button>
-          )}
-
-          <div className="w-px h-6 bg-border" />
-
-          {/* 组 3: 操作 */}
-          <button
-            onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
-            className={`btn-text primary`}
-            disabled={isFavoriteLibrary ? favoriteCount === 0 : !currentLibraryId || images.length === 0}
-            title={viewMode === 'grid' ? '进入查看器 (F5)' : '返回网格视图 (F5)'}
-          >
-            {viewMode === 'grid' ? <Maximize2 size={14} /> : <LayoutGrid size={14} />}
-            {viewMode === 'grid' ? '查看' : '网格'}
+            图片查看器
+          </h1>
+          <div className="w-px h-5 bg-border shrink-0" />
+          <button onClick={toggleFolderSidebar} className="btn-icon shrink-0 [-webkit-app-region:no-drag]" title="切换文件夹面板 (F6)">
+            <FolderOpen size={18} />
           </button>
-
-          {viewMode === 'grid' && currentLibraryId && hasAudio && (
-            <button
-              onClick={() => setShowAudio(!showAudio)}
-              className={`btn-text ${showAudio ? 'primary' : ''}`}
-              title={showAudio ? '隐藏音频' : '显示音频'}
-            >
-              <Music size={14} />
-              音频
-            </button>
-          )}
-
-          <button
-            onClick={() => setShowCachePanel(true)}
-            className="btn-text"
-            title="缓存管理"
-          >
-            <HardDrive size={14} />
-            缓存
+          <div className="max-w-[240px] shrink-0 [-webkit-app-region:no-drag]">
+            <Select value={librarySelectValue} items={librarySelectItems} onValueChange={(v) => handleSwitchLibrary(v ?? '')}>
+              <SelectTrigger className="w-full h-8 rounded-md border border-border bg-glass-l1 text-body text-text-secondary hover:border-border-hover focus-visible:border-ring transition-colors duration-150">
+                <SelectValue placeholder="选择库" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="favorites">♡ 收藏夹 ({favoriteCount})</SelectItem>
+                <SelectSeparator />
+                {libraries.map(lib => (
+                  <SelectItem key={lib.id} value={String(lib.id)}>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`size-1.5 rounded-full ${lib.status === 'online' ? 'bg-success' : 'bg-error'}`} />
+                      {lib.name} - {lib.imageCount} 张
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <button onClick={() => setShowLibraryPanel(!showLibraryPanel)} className="btn-text shrink-0 [-webkit-app-region:no-drag]">
+            <Database size={14} />
+            管理
           </button>
         </div>
 
+          {/* 右：计数 + 视图控制 + 操作，分组排列 */}
+          <div className="flex-1 flex items-center justify-end gap-1.5 min-w-0">
+            <span
+              className="flex items-center gap-1 text-micro text-text-muted tabular-nums whitespace-nowrap shrink-0"
+              title={
+                isFavoriteLibrary
+                  ? `${favoriteCount} 张收藏图片`
+                  : currentLibraryId
+                    ? `${totalImages} 张图片`
+                    : '请先选择或添加库'
+              }
+            >
+              {isFavoriteLibrary ? (
+                <>
+                  <span className="text-accent font-medium">{favoriteCount}</span>
+                  <span>张收藏图片</span>
+                </>
+              ) : currentLibraryId ? (
+                <>
+                  <span className="text-accent font-medium">{totalImages}</span>
+                  <span>张图片</span>
+                </>
+              ) : (
+                <span>请先选择或添加库</span>
+              )}
+            </span>
+
+            {viewMode === 'grid' && currentLibraryId && (
+              <>
+                <div className="[-webkit-app-region:no-drag]">
+                  <SortControl
+                    sortBy={imageSortBy}
+                    sortOrder={imageSortOrder}
+                    onSortByChange={(v) => { setSortBy(v); applySort() }}
+                    onSortOrderChange={(v) => { setSortOrder(v); applySort() }}
+                  />
+                </div>
+                <div className="[-webkit-app-region:no-drag]">
+                  {currentLibraryId > 0 && <SearchPanel libraryId={currentLibraryId} />}
+                </div>
+                <div className="[-webkit-app-region:no-drag]">
+                  {currentLibraryId > 0 && <TagCloudButton libraryId={currentLibraryId} />}
+                </div>
+                <button
+                  onClick={() => setGridLayoutMode(gridLayoutMode === 'grid' ? 'masonry' : 'grid')}
+                  className="btn-text shrink-0 [-webkit-app-region:no-drag]"
+                  title={gridLayoutMode === 'grid' ? '切换到瀑布流视图' : '切换到网格视图'}
+                >
+                  {gridLayoutMode === 'grid' ? <Columns3 size={14} /> : <LayoutGrid size={14} />}
+                  {gridLayoutMode === 'grid' ? '网格' : '瀑布流'}
+                </button>
+              </>
+            )}
+
+            <div className="w-px h-5 bg-border shrink-0" />
+
+            <button
+              onClick={() => setViewMode(viewMode === 'grid' ? 'viewer' : 'grid')}
+              className="btn-text primary shrink-0 [-webkit-app-region:no-drag]"
+              disabled={isFavoriteLibrary ? favoriteCount === 0 : !currentLibraryId || images.length === 0}
+              title={viewMode === 'grid' ? '进入查看器 (F5)' : '返回网格视图 (F5)'}
+            >
+              {viewMode === 'grid' ? <Maximize2 size={14} /> : <LayoutGrid size={14} />}
+              {viewMode === 'grid' ? '查看' : '网格'}
+            </button>
+
+            {viewMode === 'grid' && currentLibraryId && hasAudio && (
+              <button
+                onClick={() => setShowAudio(!showAudio)}
+                className={`btn-text ${showAudio ? 'primary' : ''} shrink-0 [-webkit-app-region:no-drag]`}
+                title={showAudio ? '隐藏音频' : '显示音频'}
+              >
+                <Music size={14} />
+                音频
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowCachePanel(true)}
+              className="btn-text shrink-0 [-webkit-app-region:no-drag]"
+              title="缓存管理"
+            >
+              <HardDrive size={14} />
+              缓存
+            </button>
+          </div>
+
         {/* 窗口控制按钮 */}
-        <div className="flex items-center gap-0.5 ml-2 [-webkit-app-region:no-drag]">
+        <div className="flex items-center gap-0.5 ml-1 shrink-0 [-webkit-app-region:no-drag]">
           <button onClick={() => window.electronAPI?.windowMinimize()} className="window-ctrl-btn" title="最小化">
-            <svg width="10" height="1" viewBox="0 0 10 1"><line x1="0" y1="0.5" x2="10" y2="0.5" stroke="currentColor" strokeWidth="1"/></svg>
+            <Minus size={16} />
           </button>
           <button onClick={() => window.electronAPI?.windowMaximize()} className="window-ctrl-btn" title="最大化/还原">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1"><rect x="0.5" y="0.5" width="9" height="9"/></svg>
+            <Square size={12} />
           </button>
           <button onClick={() => window.electronAPI?.windowClose()} className="window-ctrl-btn window-ctrl-close" title="关闭">
-            <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.2"><line x1="0" y1="0" x2="10" y2="10"/><line x1="10" y1="0" x2="0" y2="10"/></svg>
+            <X size={16} />
           </button>
         </div>
       </header>
@@ -1035,7 +1040,7 @@ function App() {
                 onClick={() => setAppView(appView === 'recycleBin' ? 'main' : 'recycleBin')}
                 className={`w-full flex items-center gap-2 px-3 py-2 mt-2 rounded-md text-sm transition-colors duration-150 ${
                   appView === 'recycleBin'
-                    ? 'bg-overlay-accent text-text-primary'
+                    ? 'bg-accent/15 text-text-primary'
                     : 'text-text-secondary hover:bg-canvas-tertiary'
                 }`}
               >
@@ -1246,7 +1251,7 @@ function App() {
                     统计
                   </button>
                 )}
-                <button onClick={() => setShowLibraryPanel(false)} className="btn-icon-sm text-xl">×</button>
+                <button onClick={() => setShowLibraryPanel(false)} className="btn-icon-sm" title="关闭"><X size={16} /></button>
               </div>
             </div>
             <div className="p-3 max-h-80 overflow-y-auto">
@@ -1293,22 +1298,25 @@ function App() {
       </AnimatePresence>
 
       {viewMode === 'viewer' && slideshow.enabled && (
-        <div className="h-11 px-5 flex items-center justify-between bg-[rgba(255,255,255,0.08)] border-b border-border text-text-primary text-sm [-webkit-app-region:drag]">
+        <div className="h-11 px-5 flex items-center justify-between glass-l1 rounded-none text-text-primary text-sm [-webkit-app-region:drag]">
           <span className="flex items-center gap-2">
             <MonitorPlay size={16} />
             幻灯片播放中
           </span>
           <div className="flex items-center gap-3 [-webkit-app-region:no-drag]">
             <span>间隔:</span>
-            <select
-              value={selectedInterval}
-              onChange={(e) => changeSlideshowInterval(Number(e.target.value))}
-              className="h-8 pl-2 pr-4 bg-glass-l1 border border-border rounded-md text-sm text-text-secondary cursor-pointer transition-colors duration-150 hover:border-border-hover focus-visible:outline-2 focus-visible:outline-offset-2"
-            >
-              {SLIDESHOW_INTERVALS.map(interval => (
-                <option key={interval} value={interval}>{interval}秒</option>
-              ))}
-            </select>
+            <div className="w-16 shrink-0">
+            <Select value={String(selectedInterval)} items={SLIDESHOW_INTERVALS.map(i => ({ value: String(i), label: `${i}秒` }))} onValueChange={(v) => changeSlideshowInterval(Number(v))}>
+              <SelectTrigger size="sm" className="h-7 rounded-md border border-border bg-glass-l1 text-sm text-text-secondary hover:border-border-hover transition-colors duration-150">
+                <SelectValue placeholder="间隔" />
+              </SelectTrigger>
+              <SelectContent>
+                {SLIDESHOW_INTERVALS.map(interval => (
+                  <SelectItem key={interval} value={String(interval)}>{interval}秒</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
             <button onClick={toggleSlideshow} className="btn-pill">
               <Pause size={14} />
               暂停
@@ -1353,38 +1361,40 @@ function App() {
       )}
 
       {!immersiveFullscreen && (
-      <footer className="h-8 px-5 flex items-center justify-center gap-4 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums">
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">←→</kbd> 翻页
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">H/V</kbd> 翻转
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">I</kbd> 信息
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F</kbd> 收藏
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Space</kbd> 幻灯片
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F5</kbd> 视图
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">F6</kbd> 面板
-        </span>
-        <span className="text-border">|</span>
-        <span className="[-webkit-app-region:no-drag]">
-          <kbd className="px-1.5 py-0.5 bg-overlay-darker border border-border-hover rounded text-[10px] font-mono text-text-secondary">Esc</kbd> 关闭
-        </span>
+      <footer className="h-7 px-4 flex items-center justify-between gap-4 glass-l1 rounded-none text-micro text-text-muted [-webkit-app-region:drag] tabular-nums shrink-0">
+        {/* 左：缩略图滑块（自头部下移，仅网格 + 真实库显示） */}
+        <div className="flex items-center gap-2 min-w-0 [-webkit-app-region:no-drag]">
+          {!isVirtualLibrary && viewMode === 'grid' && currentLibraryId && (
+            <div className="flex items-center gap-2 text-caption text-text-secondary shrink-0">
+              <label htmlFor="thumbnail-size">缩略图:</label>
+              <input
+                id="thumbnail-size"
+                type="range"
+                min="80"
+                max="400"
+                step="20"
+                value={thumbnailSize}
+                onChange={(e) => setThumbnailSize(Number(e.target.value))}
+                className="thumbnail-slider"
+              />
+              <span className="w-9 text-left">{thumbnailSize}px</span>
+            </div>
+          )}
+        </div>
+        {/* 右：快捷键一行提示 */}
+        <div className="flex items-center gap-2">
+          <span><kbd className="kbd">←→</kbd> 翻页</span>
+          <span className="text-border">·</span>
+          <span><kbd className="kbd">I</kbd> 信息</span>
+          <span className="text-border">·</span>
+          <span><kbd className="kbd">F</kbd> 收藏</span>
+          <span className="text-border">·</span>
+          <span><kbd className="kbd">Space</kbd> 幻灯片</span>
+          <span className="text-border">·</span>
+          <span><kbd className="kbd">F5</kbd> 视图</span>
+          <span className="text-border">·</span>
+          <span><kbd className="kbd">Esc</kbd> 关闭</span>
+        </div>
       </footer>
       )}
 

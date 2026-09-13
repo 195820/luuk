@@ -1,4 +1,5 @@
 import { ArrowUp, ArrowDown } from 'lucide-react'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useViewStore } from '../stores/viewStore'
 import type { GroupBy } from '../utils/group'
 
@@ -39,29 +40,23 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
   const groupBy = useViewStore(state => state.groupBy)
   const setGroupBy = useViewStore(state => state.setGroupBy)
 
-  const handleSortByChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    onSortByChange(e.target.value as SortBy)
-  }
-
   const handleSortOrderChange = () => {
     onSortOrderChange(sortOrder === 'ASC' ? 'DESC' : 'ASC')
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-text-secondary">排序:</span>
-      <select
-        value={sortBy}
-        onChange={handleSortByChange}
-        className="h-8 pl-2 pr-6 bg-glass-l1 border border-border rounded-md text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
-        title="选择排序字段"
-      >
-        {SORT_OPTIONS.map(option => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-1.5 shrink-0">
+      <span className="text-xs text-text-secondary shrink-0">排序:</span>
+      <Select value={sortBy} items={SORT_OPTIONS} onValueChange={(v) => onSortByChange(v as SortBy)}>
+        <SelectTrigger size="sm" className="border border-border bg-glass-l1 text-xs text-text-secondary hover:border-border-hover transition-colors duration-150">
+          <SelectValue placeholder="排序" />
+        </SelectTrigger>
+        <SelectContent>
+          {SORT_OPTIONS.map(option => (
+            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <button
         onClick={handleSortOrderChange}
         className="btn-icon-sm"
@@ -70,19 +65,17 @@ export function SortControl({ sortBy, sortOrder, onSortByChange, onSortOrderChan
         {sortOrder === 'ASC' ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
       </button>
 
-      <span className="text-xs text-text-secondary ml-2">分组:</span>
-      <select
-        value={groupBy}
-        onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-        className="h-8 pl-2 pr-6 bg-glass-l1 border border-border rounded-md text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover"
-        title="选择分组方式"
-      >
-        {GROUP_OPTIONS.map(option => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+      <span className="text-xs text-text-secondary ml-1 shrink-0">分组:</span>
+      <Select value={groupBy} items={GROUP_OPTIONS} onValueChange={(v) => setGroupBy(v as GroupBy)}>
+        <SelectTrigger size="sm" className="border border-border bg-glass-l1 text-xs text-text-secondary hover:border-border-hover transition-colors duration-150">
+          <SelectValue placeholder="分组" />
+        </SelectTrigger>
+        <SelectContent>
+          {GROUP_OPTIONS.map(option => (
+            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

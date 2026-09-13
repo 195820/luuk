@@ -17,8 +17,8 @@ export function MediaFilter({ value, onChange }: MediaFilterProps) {
       {filters.map((f) => (
         <button
           key={f.key}
-          className={`px-3 py-1.5 border border-border rounded-full bg-transparent text-xs text-text-secondary cursor-pointer transition-colors duration-150 hover:border-border-hover hover:text-text-primary ${
-            value === f.key ? 'bg-overlay-selected border-border-hover text-text-primary' : ''
+          className={`px-3 py-1.5 border border-transparent rounded-full bg-transparent text-xs text-text-secondary cursor-pointer transition-colors duration-150 hover:bg-overlay-light hover:text-text-primary ${
+            value === f.key ? 'bg-overlay-selected text-text-primary' : ''
           }`}
           onClick={() => onChange(f.key)}
         >

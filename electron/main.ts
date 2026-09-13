@@ -196,6 +196,13 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  // 注册 F12 打开 DevTools（生产构建也生效，便于调试）
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F12') {
+      mainWindow?.webContents.openDevTools()
+    }
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })

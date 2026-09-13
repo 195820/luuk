@@ -3,7 +3,7 @@
  * 显示内存/磁盘占用，可调整上限，可一键清空
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, X } from 'lucide-react'
 
 interface CachePanelProps {
   onClose: () => void
@@ -74,7 +74,7 @@ export function CachePanel({ onClose }: CachePanelProps) {
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
           <h3 className="text-body font-semibold tracking-tight">缓存管理</h3>
-          <button onClick={onClose} className="btn-icon-sm text-xl">×</button>
+          <button onClick={onClose} className="btn-icon-sm" title="关闭"><X size={14} /></button>
         </div>
 
         <div className="p-4 space-y-5">

@@ -14,6 +14,7 @@ dist-electron
 
 # Build output
 release
+release-new
 *.tsbuildinfo
 
 # Environment

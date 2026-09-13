@@ -104,21 +104,21 @@ export function FolderTree({
         <>
           {/* 最近视图虚拟入口 */}
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-1 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_ADDED_ID ? 'bg-overlay-selected' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-1 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_ADDED_ID ? 'bg-accent/15 border border-accent/40' : 'border border-transparent'}`}
             onClick={() => setCurrentLibrary(RECENT_ADDED_ID)}
           >
             <Clock size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-accent" />
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body">最近添加</span>
           </div>
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_MODIFIED_ID ? 'bg-overlay-selected' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 text-text-primary hover:bg-glass-l2 ${currentLibraryId === RECENT_MODIFIED_ID ? 'bg-accent/15 border border-accent/40' : 'border border-transparent'}`}
             onClick={() => setCurrentLibrary(RECENT_MODIFIED_ID)}
           >
             <History size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-accent" />
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body">最近修改</span>
           </div>
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 font-medium bg-glass-l1 text-text-primary hover:bg-glass-l2 ${selectedFolder === null && currentLibraryId !== RECENT_ADDED_ID && currentLibraryId !== RECENT_MODIFIED_ID ? 'bg-overlay-selected' : ''}`}
+            className={`flex items-center gap-2 px-3 py-1.5 mx-2 mb-2 rounded-md cursor-pointer select-none transition-all duration-150 font-medium bg-glass-l1 text-text-primary hover:bg-glass-l2 ${selectedFolder === null && currentLibraryId !== RECENT_ADDED_ID && currentLibraryId !== RECENT_MODIFIED_ID ? 'bg-accent/15 border border-accent/40' : 'border border-transparent'}`}
             onClick={() => {
               // 如果当前在最近视图，需要先切回真实库
               if (currentLibraryId === RECENT_ADDED_ID || currentLibraryId === RECENT_MODIFIED_ID) {
@@ -199,7 +199,7 @@ function FolderTreeItem({
   return (
     <div className="flex flex-col">
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 rounded-sm cursor-pointer select-none transition-all duration-150 border border-transparent hover:bg-overlay-light hover:border-border ${isSelected ? 'bg-overlay-selected border-border-hover' : ''}`}
+        className={`flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 rounded-sm cursor-pointer select-none transition-all duration-150 border border-transparent hover:bg-overlay-light hover:border-border ${isSelected ? 'bg-accent/15 border-accent/40' : ''}`}
         style={{ paddingLeft: `${node.depth * 16 + 8}px` }}
         onClick={handleClick}
       >
@@ -217,7 +217,7 @@ function FolderTreeItem({
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body text-text-secondary transition-colors duration-150" title={node.name}>
           {node.name}
         </span>
-        <span className="text-micro text-text-muted px-2 py-0.5 bg-canvas-tertiary rounded-full flex-shrink-0 border border-border tabular-nums transition-all duration-150">
+        <span className="text-micro text-text-muted px-2 py-0.5 bg-canvas-tertiary rounded-full flex-shrink-0 tabular-nums transition-all duration-150">
           {node.imageCount}
         </span>
         {/* 在收藏库中显示取消收藏按钮 */}

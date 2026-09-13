@@ -23,13 +23,13 @@ function HistoryThumb({ item }: { item: HistoryItem }) {
 
   if (!src) {
     return (
-      <div className="w-10 h-10 flex-shrink-0 rounded-md bg-canvas-tertiary border border-border flex items-center justify-center text-text-muted">
+      <div className="w-10 h-10 flex-shrink-0 rounded-md bg-canvas-tertiary flex items-center justify-center text-text-muted">
         <Clock size={14} />
       </div>
     )
   }
   return (
-    <img src={src} alt="" className="w-10 h-10 flex-shrink-0 rounded-md border border-border object-cover" />
+    <img src={src} alt="" className="w-10 h-10 flex-shrink-0 rounded-md object-cover" />
   )
 }
 
@@ -43,7 +43,7 @@ export function RecentHistory({ history, onOpen, onClear }: RecentHistoryProps) 
   const libraries = useImageStore((s) => s.libraries)
 
   return (
-    <div className="border-t border-border mt-2 pt-2">
+    <div className="mt-3">
       <div className="flex items-center justify-between px-1 pb-1">
         <span className="text-xs font-medium text-text-secondary flex items-center gap-1.5">
           <Clock size={12} />
