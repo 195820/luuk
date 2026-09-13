@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { ExportDialog } from './file-ops/ExportDialog'
 import { TagDialog } from './TagDialog'
 import type { ImageGridItem } from './ImageGrid'
 import { formatFileSize } from '../utils/format'
@@ -61,6 +62,7 @@ export function MasonryGrid({
   const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; imagePath: string; image?: ImageGridItem } | null>(null)
   const [renameDialog, setRenameDialog] = useState<{ paths: string[] } | null>(null)
+  const [exportDialog, setExportDialog] = useState<{ paths: string[] } | null>(null)
 
   // 分组状态
   const groupBy = useViewStore(state => state.groupBy)
@@ -252,6 +254,17 @@ export function MasonryGrid({
         }
         break
       }
+      case 'export': {
+        const pathsToExport = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+        setExportDialog({ paths: pathsToExport })
+        break
+      }
+      case 'setFolderCover': {
+        // 提取图片所在文件夹路径（正斜杠格式）
+        const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
+        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        break
+      }
       // move/copy 待后续实现
       default:
         break
@@ -375,6 +388,14 @@ export function MasonryGrid({
           libraryId={libraryId}
           initialPaths={renameDialog.paths}
           onClose={() => setRenameDialog(null)}
+        />
+      )}
+      {exportDialog && (
+        <ExportDialog
+          isOpen={true}
+          onClose={() => setExportDialog(null)}
+          libraryId={libraryId}
+          selectedPaths={exportDialog.paths}
         />
       )}
       <TagDialogMount libraryId={libraryId} />

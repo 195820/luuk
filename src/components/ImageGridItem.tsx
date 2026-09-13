@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Heart } from 'lucide-react'
 import type { ImageGridItem } from './ImageGrid'
 import { logger } from '@/utils/logger'
+import { highlightMatch, getHighlightKeyword } from '@/utils/highlight'
+import { useSearchStore } from '@/stores/searchStore'
 
 export interface ImageGridItemProps {
   image: ImageGridItem
@@ -142,6 +144,13 @@ export function ImageGridItemComponent({
     onToggleFavorite?.(image)
   }, [onToggleFavorite, image])
 
+  // 搜索高亮关键词
+  const searchCriteria = useSearchStore(s => s.hasSearched ? s.criteria : null)
+  const highlightKeyword = useMemo(
+    () => searchCriteria ? getHighlightKeyword(searchCriteria) : '',
+    [searchCriteria]
+  )
+
   // 格式化视频时长
   const formatDuration = (seconds: number): string => {
     const m = Math.floor(seconds / 60)
@@ -231,7 +240,7 @@ export function ImageGridItemComponent({
         }}
       >
         <span className="text-micro font-medium text-text-secondary truncate block group-hover:text-text-primary transition-colors duration-150" title={image.alt}>
-          {image.alt}
+          {highlightKeyword ? highlightMatch(image.alt, highlightKeyword) : image.alt}
         </span>
         <div className="flex items-center gap-2 text-micro text-text-muted font-mono text-[11px] group-hover:text-white/70">
           {image.width && image.height ? (

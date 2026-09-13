@@ -31,6 +31,9 @@ interface ImageState {
   // 最近视图依附的真实库 ID（切换到负 ID 前保存）
   lastRealLibraryId: number | null
 
+  // 库在线状态映射（供全局组件访问）
+  libraryStatus: Record<number, 'online' | 'offline'>
+
   // 图片相关
   images: Image[]
   totalImages: number
@@ -74,6 +77,10 @@ interface ImageState {
   removeLibrary: (id: number) => Promise<void>
   setCurrentLibrary: (id: number | null) => void
   scanLibrary: (id: number) => Promise<ScanResult>
+
+  // 库在线状态操作
+  setLibraryStatus: (id: number, status: 'online' | 'offline') => void
+  syncLibraryStatus: (libraries: Library[]) => void
 
   // 文件夹操作
   loadFolderTree: () => Promise<void>
@@ -129,6 +136,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   currentLibraryId: null,
   isInitialized: false,
   lastRealLibraryId: null,
+  libraryStatus: {},
   images: [],
   totalImages: 0,
   currentImage: null,
@@ -171,6 +179,8 @@ export const useImageStore = create<ImageState>((set, get) => ({
   loadLibraries: async () => {
     try {
       const libraries = await window.electronAPI.getLibraries()
+      // 同步库在线状态到全局 store
+      get().syncLibraryStatus(libraries)
       set({ libraries })
 
       // 如果有库且当前没有选中，选中第一个
@@ -262,6 +272,22 @@ export const useImageStore = create<ImageState>((set, get) => ({
       set({ error: '扫描库失败', isLoading: false })
       throw error
     }
+  },
+
+  // 设置单个库的在线状态
+  setLibraryStatus: (id: number, status: 'online' | 'offline') => {
+    set((state) => ({
+      libraryStatus: { ...state.libraryStatus, [id]: status },
+    }))
+  },
+
+  // 从库列表同步在线状态（初始化或库列表变更时调用）
+  syncLibraryStatus: (libraries: Library[]) => {
+    const statusMap: Record<number, 'online' | 'offline'> = {}
+    for (const lib of libraries) {
+      statusMap[lib.id] = lib.status || 'online'
+    }
+    set({ libraryStatus: statusMap })
   },
 
   // 加载文件夹树

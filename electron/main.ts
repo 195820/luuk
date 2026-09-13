@@ -3,9 +3,11 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
 import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/ipc/library-handlers'
-import { registerFileHandlers } from '../src/main/ipc/file-handlers'
+import { registerFileHandlers, unregisterFileHandlers } from '../src/main/ipc/file-handlers'
 import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ipc/search-handlers'
 import { registerTagHandlers, unregisterTagHandlers } from '../src/main/ipc/tag-handlers'
+import { registerPluginHandlers, unregisterPluginHandlers } from '../src/main/ipc/plugin-handlers'
+import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
 import { closeAllDatabases } from '../src/main/services/database'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken } from '../src/main/services/media-registry'
@@ -217,6 +219,8 @@ app.whenReady().then(async () => {
   registerFileHandlers()
   registerSearchHandlers()
   registerTagHandlers()
+  registerPluginHandlers()
+  registerJobHandlers()
 
   createWindow()
 
@@ -230,8 +234,11 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   // 清理资源
   unregisterLibraryHandlers()
+  unregisterFileHandlers()
   unregisterSearchHandlers()
   unregisterTagHandlers()
+  unregisterPluginHandlers()
+  unregisterJobHandlers()
   closeAllDatabases()
 
   if (process.platform !== 'darwin') {
@@ -242,8 +249,11 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   // 清理资源
   unregisterLibraryHandlers()
+  unregisterFileHandlers()
   unregisterSearchHandlers()
   unregisterTagHandlers()
+  unregisterPluginHandlers()
+  unregisterJobHandlers()
   closeAllDatabases()
 })
 

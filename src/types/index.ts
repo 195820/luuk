@@ -1,4 +1,7 @@
 // Electron API 类型定义
+import type {
+  PluginInfo, Job, JobItem, JobProgress,
+} from './plugin'
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
@@ -70,14 +73,52 @@ export interface ElectronAPI {
   getLibraryStats: (libraryId: number) => Promise<{ success: boolean; data?: LibraryStats; error?: string }>
   // EXIF
   getImageExif: (libraryId: number, relativePath: string) => Promise<{ success: boolean; data?: ExifInfo; error?: string }>
+  // 直方图
+  getImageHistogram: (libraryId: number, relativePath: string) => Promise<{
+    success: boolean
+    data?: HistogramData
+    error?: string
+  }>
+  // 导出
+  exportSingleImage: (libraryId: number, relativePath: string, options: ExportOptions, taskId: string) => Promise<{ success: boolean; outputPath?: string; error?: string }>
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; error?: string }>
+  cancelExport: (taskId: string) => Promise<{ success: boolean }>
+  onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
+  // 幻灯片
+  selectAudioFile: () => Promise<{ success: boolean; data?: { path: string }; error?: string }>
+  // 插件管理
+  pluginsList: () => Promise<{ success: boolean; data?: PluginInfo[]; error?: string }>
+  pluginsGet: (pluginId: string) => Promise<{ success: boolean; data?: PluginInfo; error?: string }>
+  pluginsSetEnabled: (pluginId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+  pluginsExecute: (pluginId: string, opId: string, input: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>
+  pluginsGetMenuItems: (context?: string) => Promise<{ success: boolean; data?: Array<{ pluginId: string; op: string; label: string; context: string[] }>; error?: string }>
+  // JobRunner 作业管理
+  jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
+  jobsGet: (jobId: string) => Promise<{ success: boolean; data?: Job & { items: JobItem[] }; error?: string }>
+  jobsPause: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsResume: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsCancel: (jobId: string) => Promise<{ success: boolean; error?: string }>
+  jobsSubscribeProgress: () => Promise<{ success: boolean; error?: string }>
+  onJobProgress: (callback: (progress: JobProgress) => void) => () => void
+  // 文件夹封面
+  setFolderCover: (libraryId: number, folderPath: string, coverPath: string) => Promise<{ success: boolean; error?: string }>
+  removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
+  getFolderCovers: (libraryId: number) => Promise<Record<string, string>>
   // 媒体相关
   loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
+  getAudioUrl: (filePath: string) => Promise<string>
   getMediaPath: (libraryId: number, imageId: number) => Promise<string>
   extractVideoMetadata: (libraryId: number, imageId: number, relativePath: string) => Promise<{ duration: number; codec: string; width: number; height: number }>
   generateVideoThumbnail: (libraryId: number, imageId: number, relativePath: string) => Promise<string>
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) => Promise<SearchResult>
+  getSearchHistory: () => Promise<string[]>
+  addSearchHistory: (query: string) => Promise<void>
+  clearSearchHistory: () => Promise<void>
+  getSearchPresets: () => Promise<Array<{ id: string; name: string; criteria: SearchCriteria; createdAt: string }>>
+  saveSearchPreset: (name: string, criteria: SearchCriteria) => Promise<{ id: string }>
+  deleteSearchPreset: (id: string) => Promise<void>
   // 标签
   createTag: (name: string, color?: string) => Promise<{ success: boolean; data?: Tag; error?: string }>
   deleteTag: (id: number) => Promise<{ success: boolean; error?: string }>
@@ -95,6 +136,7 @@ export interface ElectronAPI {
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
+  onLibraryStatusChanged: (callback: (data: { id: number; status: 'online' | 'offline' }) => void) => () => void
   // 窗口控制
   windowMinimize: () => void
   windowMaximize: () => void
@@ -404,3 +446,56 @@ export interface ExifInfo {
   focalLength?: number
   gps?: { latitude: number; longitude: number }
 }
+
+// ==================== 直方图类型 ====================
+
+export interface HistogramData {
+  /** 红色通道（256 个 bin） */
+  r: Uint32Array | number[]
+  /** 绿色通道（256 个 bin） */
+  g: Uint32Array | number[]
+  /** 蓝色通道（256 个 bin） */
+  b: Uint32Array | number[]
+  /** 亮度（256 个 bin） */
+  luminance: Uint32Array | number[]
+  /** 总像素数（降采样前） */
+  totalPixels: number
+  /** 是否已降采样至 200 万像素 */
+  downsampled: boolean
+}
+
+// ==================== 导出类型 ====================
+
+export interface ExportOptions {
+  /** 导出格式 */
+  format: 'jpg' | 'png' | 'webp' | 'original'
+  /** 最大宽度（可选，保持宽高比） */
+  maxWidth?: number
+  /** 质量（1-100，仅 JPG/WEBP） */
+  quality?: number
+  /** 输出路径（单图为目录，批量为 ZIP 文件路径） */
+  outputPath: string
+}
+
+export interface ExportProgress {
+  /** 任务 ID */
+  taskId: string
+  /** 已完成数量 */
+  done: number
+  /** 总数量 */
+  total: number
+  /** 是否已完成 */
+  finished: boolean
+}
+
+// ==================== 插件系统类型 ====================
+
+export type {
+  PluginKind, PluginPermission, PluginManifest, PluginState, PluginInfo,
+  ModelRequirement, OpDefinition, MenuItemDefinition,
+  SettingDefinition, PanelDefinition,
+  JobState, JobItemState, Job, JobItem, JobProgress,
+  Edit, MemoryLevel, MemoryStatus,
+  ModelInfo, ModelDownloadState, InferenceSessionInfo,
+  WorkerRpcRequest, WorkerRpcResponse,
+} from './plugin'

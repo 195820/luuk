@@ -14,6 +14,11 @@ docs/
 │   └── 故障排除.md               # 常见问题与已知问题
 ├── reference/                   # 稳定参考（长期有效）
 │   └── 架构设计.md               # 系统架构 / 数据库 / IPC / media://
+├── plans/                       # 实施计划与方向性设计（阶段性，实施完成后归档）
+│   ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
+│   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
+│   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
+│   └── phase-5-completion.md               # Phase 5 完成记录
 └── archive/                     # 已完成的方案与测试记录（历史快照，不再更新）
     ├── 测试方案.md               # Phase 1 MVP 测试方案
     ├── 多媒体模块重构方案.md     # 多媒体重构方案（已实施）
@@ -28,22 +33,25 @@ docs/
 | `roadmap.md` | 开发者/规划 | 任务清单 + 进度 | 常更新，反映现状 |
 | `guides/` | 用户/发布者 | 操作步骤 | 功能变化时更新 |
 | `reference/` | 开发者 | 架构/接口描述 | 慎改，随代码演进 |
+| `plans/` | 开发者/规划 | 实施计划、方向性设计、评审报告 | 阶段性文档，带 `status` 标记（draft → reviewed → current），实施完成后连同结果移入 `archive/` |
 | `archive/` | 任何人 | 已完成方案的历史快照 | 不再更新 |
 
 ## ✅ 文档维护规范
 
-1. **新增文档**：先判断归属——指南 → `guides/`，参考 → `reference/`，任务 → 并入 `roadmap.md`；已完成/过期的内容 → `archive/`
+1. **新增文档**：先判断归属——指南 → `guides/`，参考 → `reference/`，实施计划与方向性设计 → `plans/`，任务清单 → 并入 `roadmap.md`；已完成/过期的内容 → `archive/`
 2. **统一 front matter**：每份文档顶部需有 YAML front matter：
 
    ```yaml
    ---
    title: 文档标题
    description: 一句话说明（用于索引检索）
-   type: guide | reference | roadmap | archive
-   status: current | archived
+   type: guide | reference | roadmap | archive | plan | design | review
+   status: draft | reviewed | current | archived
    updated: YYYY-MM-DD
    ---
    ```
+
+   > `type` 枚举补全说明：`plan`（实施计划）、`design`（方向性设计）、`review`（评审报告）已被 `plans/` 下的现有文档使用，原枚举缺这三项。`status` 同理补 `draft` / `reviewed` 两个阶段性取值。
 
 3. **交叉引用**：使用相对路径链接（如 `../roadmap.md`），移动文档时同步修正引用
 4. **归档**：方案/计划一旦实施完成，连同结果记录移入 `archive/` 并标记 `status: archived`
@@ -70,4 +78,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-08-16
+**文档结构更新日期**: 2026-09-13

@@ -27,7 +27,10 @@ import { AudioViewer } from './AudioViewer'
 import { RatingStars } from './RatingStars'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
+import { ExportDialog } from './file-ops/ExportDialog'
+import { HistogramChart } from './HistogramChart'
 import { useImageStore } from '@/stores/imageStore'
+import { useSlideshowStore } from '@/stores/slideshowStore'
 import type { ExifInfo } from '@/types'
 
 type ExifData = ExifInfo
@@ -107,11 +110,15 @@ export function ImageViewer({
   const [exifData, setExifData] = useState<ExifData | null>(null)
   const [exifLoading, setExifLoading] = useState(false)
   const exifCacheRef = useRef<Map<string, ExifData>>(new Map())
+  // 信息面板标签页（图片切回时重置到 EXIF）
+  const [infoTab, setInfoTab] = useState<'exif' | 'histogram'>('exif')
+  useEffect(() => { setInfoTab('exif') }, [imagePath])
   // 延迟显示 spinner：快速加载时不显示，消除闪烁
   const [showSpinner, setShowSpinner] = useState(false)
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 图片切换过渡：scale + opacity 进入效果
-  const [imageTransition, setImageTransition] = useState<'idle' | 'entering'>('idle')
+  // 订阅幻灯片过渡类型（响应式，而非 getState() 快照）
+  const slideshowTransition = useSlideshowStore(s => s.transition)
+  // 图片切换过渡（由 SlideshowTransitionWrapper 的 key 驱动 CSS 动画）
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
   const [videoDuration, setVideoDuration] = useState(0)
@@ -120,6 +127,7 @@ export function ImageViewer({
   // 右键菜单状态
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [renameDialog, setRenameDialog] = useState(false)
+  const [exportDialog, setExportDialog] = useState(false)
 
   // EXIF 惰性加载（仅在信息面板打开且媒体类型为图片时请求）
   useEffect(() => {
@@ -186,6 +194,15 @@ export function ImageViewer({
       case 'rename':
         setRenameDialog(true)
         break
+      case 'export':
+        setExportDialog(true)
+        break
+      case 'setFolderCover': {
+        // 提取图片所在文件夹路径（正斜杠格式）
+        const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
+        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        break
+      }
     }
     setContextMenu(null)
   }, [libraryId, imagePath, onClose])
@@ -297,13 +314,6 @@ export function ImageViewer({
         naturalWidth: width,
         naturalHeight: height,
       })
-      // 新图片进入：从模糊中淡入
-      setImageTransition('entering')
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setImageTransition('idle')
-        })
-      })
     },
     []
   )
@@ -350,6 +360,17 @@ export function ImageViewer({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return
       }
+
+      // Ctrl+R: 切换幻灯片随机播放模式
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault()
+        e.stopImmediatePropagation()
+        const { toggleMode, mode } = useSlideshowStore.getState()
+        toggleMode()
+        logger.info('ImageViewer', `幻灯片模式: ${mode === 'sequential' ? '随机' : '顺序'}`)
+        return
+      }
+
       switch (e.key) {
         case 'r':
         case 'R':
@@ -580,13 +601,7 @@ export function ImageViewer({
         ) : mediaType === 'audio' ? (
           <AudioViewer src={src} filename={alt || ''} />
         ) : (
-          <div
-            className="w-full h-full transition-opacity transition-transform duration-250 ease-out"
-            style={{
-              opacity: imageTransition === 'entering' ? 0 : 1,
-              transform: imageTransition === 'entering' ? 'scale(0.9)' : 'scale(1)',
-            }}
-          >
+          <SlideshowTransitionWrapper key={src} transition={slideshowTransition}>
             <ImageLightbox
               src={src}
               alt={alt || '图片'}
@@ -600,7 +615,6 @@ export function ImageViewer({
                   spinnerTimerRef.current = null
                 }
                 setShowSpinner(false)
-                setImageTransition('idle')
                 // 延迟报告错误，避免瞬时加载成功导致的错误闪烁
                 if (pendingErrorTimerRef.current) {
                   clearTimeout(pendingErrorTimerRef.current)
@@ -612,7 +626,7 @@ export function ImageViewer({
               }}
               paused={!isGifPlaying}
             />
-          </div>
+          </SlideshowTransitionWrapper>
         )}
       </div>
 
@@ -700,54 +714,84 @@ export function ImageViewer({
                 </div>
               )}
 
-              {/* EXIF 拍摄信息（仅图片显示） */}
+              {/* EXIF / 直方图（仅图片显示） */}
               {mediaType === 'image' && (
                 <div className="mt-3 pt-3 border-t border-border">
-                  <div className="text-xs font-medium text-text-secondary mb-2">拍摄信息</div>
-                  {exifLoading && (
-                    <div className="text-xs text-text-dim">加载中...</div>
-                  )}
-                  {!exifLoading && exifData && Object.keys(exifData).length === 0 && (
-                    <div className="text-xs text-text-dim">无 EXIF 信息</div>
-                  )}
-                  {!exifLoading && exifData && Object.keys(exifData).length > 0 && (
-                    <div className="space-y-1.5 text-xs">
-                      {exifData.dateTimeOriginal && (
-                        <ExifRow label="拍摄时间" value={exifData.dateTimeOriginal} />
+                  <div className="flex items-center gap-1 mb-2">
+                    <button
+                      onClick={() => setInfoTab('exif')}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        infoTab === 'exif'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-text-dim hover:text-text-secondary hover:bg-overlay-lighter'
+                      }`}
+                    >
+                      拍摄信息
+                    </button>
+                    <button
+                      onClick={() => setInfoTab('histogram')}
+                      className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                        infoTab === 'histogram'
+                          ? 'bg-accent/20 text-accent font-medium'
+                          : 'text-text-dim hover:text-text-secondary hover:bg-overlay-lighter'
+                      }`}
+                    >
+                      直方图
+                    </button>
+                  </div>
+
+                  {infoTab === 'exif' && (
+                    <>
+                      {exifLoading && (
+                        <div className="text-xs text-text-dim">加载中...</div>
                       )}
-                      {(exifData.make || exifData.model) && (
-                        <ExifRow label="相机" value={[exifData.make, exifData.model].filter(Boolean).join(' ')} />
+                      {!exifLoading && exifData && Object.keys(exifData).length === 0 && (
+                        <div className="text-xs text-text-dim">无 EXIF 信息</div>
                       )}
-                      {exifData.lensModel && (
-                        <ExifRow label="镜头" value={exifData.lensModel} />
-                      )}
-                      {exifData.exposureTime && (
-                        <ExifRow label="曝光" value={exifData.exposureTime} />
-                      )}
-                      {exifData.fNumber !== undefined && (
-                        <ExifRow label="光圈" value={`f/${exifData.fNumber}`} />
-                      )}
-                      {exifData.iso !== undefined && (
-                        <ExifRow label="ISO" value={String(exifData.iso)} />
-                      )}
-                      {exifData.focalLength !== undefined && (
-                        <ExifRow label="焦距" value={`${exifData.focalLength}mm`} />
-                      )}
-                      {exifData.gps && (
-                        <div className="flex justify-between py-1">
-                          <span className="text-text-secondary">GPS</span>
-                          <a
-                            href={`https://www.openstreetmap.org/?mlat=${exifData.gps.latitude}&mlon=${exifData.gps.longitude}#map=15/${exifData.gps.latitude}/${exifData.gps.longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-accent hover:underline"
-                            title="在地图中查看"
-                          >
-                            {exifData.gps.latitude.toFixed(4)}, {exifData.gps.longitude.toFixed(4)}
-                          </a>
+                      {!exifLoading && exifData && Object.keys(exifData).length > 0 && (
+                        <div className="space-y-1.5 text-xs">
+                          {exifData.dateTimeOriginal && (
+                            <ExifRow label="拍摄时间" value={exifData.dateTimeOriginal} />
+                          )}
+                          {(exifData.make || exifData.model) && (
+                            <ExifRow label="相机" value={[exifData.make, exifData.model].filter(Boolean).join(' ')} />
+                          )}
+                          {exifData.lensModel && (
+                            <ExifRow label="镜头" value={exifData.lensModel} />
+                          )}
+                          {exifData.exposureTime && (
+                            <ExifRow label="曝光" value={exifData.exposureTime} />
+                          )}
+                          {exifData.fNumber !== undefined && (
+                            <ExifRow label="光圈" value={`f/${exifData.fNumber}`} />
+                          )}
+                          {exifData.iso !== undefined && (
+                            <ExifRow label="ISO" value={String(exifData.iso)} />
+                          )}
+                          {exifData.focalLength !== undefined && (
+                            <ExifRow label="焦距" value={`${exifData.focalLength}mm`} />
+                          )}
+                          {exifData.gps && (
+                            <div className="flex justify-between py-1">
+                              <span className="text-text-secondary">GPS</span>
+                              <a
+                                href={`https://www.openstreetmap.org/?mlat=${exifData.gps.latitude}&mlon=${exifData.gps.longitude}#map=15/${exifData.gps.latitude}/${exifData.gps.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-accent hover:underline"
+                                title="在地图中查看"
+                              >
+                                {exifData.gps.latitude.toFixed(4)}, {exifData.gps.longitude.toFixed(4)}
+                              </a>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
+                  )}
+
+                  {infoTab === 'histogram' && libraryId && imagePath && (
+                    <HistogramChart libraryId={libraryId} imagePath={imagePath} />
                   )}
                 </div>
               )}
@@ -826,6 +870,16 @@ export function ImageViewer({
           onClose={() => setRenameDialog(false)}
         />
       )}
+
+      {/* 导出对话框 */}
+      {exportDialog && libraryId && imagePath && (
+        <ExportDialog
+          isOpen={true}
+          onClose={() => setExportDialog(false)}
+          libraryId={libraryId}
+          selectedPaths={[imagePath]}
+        />
+      )}
     </div>
   )
 }
@@ -836,6 +890,39 @@ function ExifRow({ label, value }: { label: string; value: string }) {
     <div className="flex justify-between py-1">
       <span className="text-text-secondary">{label}</span>
       <span className="text-text-primary text-right max-w-[60%] break-all">{value}</span>
+    </div>
+  )
+}
+
+/** 幻灯片过渡动画包装器 */
+function SlideshowTransitionWrapper({
+  children,
+  transition
+}: {
+  children: React.ReactNode
+  transition: 'fade' | 'slide' | 'zoom'
+}) {
+  const transitionStyles: Record<'fade' | 'slide' | 'zoom', React.CSSProperties> = {
+    fade: {
+      transition: 'opacity 500ms ease-in-out',
+    },
+    slide: {
+      transition: 'transform 500ms ease-in-out, opacity 500ms ease-in-out',
+    },
+    zoom: {
+      transition: 'transform 500ms ease-in-out, opacity 500ms ease-in-out',
+    },
+  }
+
+  return (
+    <div
+      className="w-full h-full"
+      style={{
+        ...transitionStyles[transition],
+        animation: `slideshow-${transition} 500ms ease-in-out`,
+      }}
+    >
+      {children}
     </div>
   )
 }

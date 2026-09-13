@@ -104,10 +104,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
   loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
+  getAudioUrl: (filePath: string) => ipcRenderer.invoke('getAudioUrl', filePath),
 
   // 搜索
   searchImages: (libraryId: number, criteria: SearchCriteria, options: SearchOptions) =>
     ipcRenderer.invoke('searchImages', libraryId, criteria, options),
+  getSearchHistory: () => ipcRenderer.invoke('getSearchHistory'),
+  addSearchHistory: (query: string) => ipcRenderer.invoke('addSearchHistory', query),
+  clearSearchHistory: () => ipcRenderer.invoke('clearSearchHistory'),
+  getSearchPresets: () => ipcRenderer.invoke('getSearchPresets'),
+  saveSearchPreset: (name: string, criteria: SearchCriteria) =>
+    ipcRenderer.invoke('saveSearchPreset', name, criteria),
+  deleteSearchPreset: (id: string) => ipcRenderer.invoke('deleteSearchPreset', id),
 
   // 标签
   createTag: (name: string, color?: string) =>
@@ -151,6 +159,57 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getImageExif: (libraryId: number, relativePath: string) =>
     ipcRenderer.invoke('getImageExif', libraryId, relativePath),
 
+  // 直方图
+  getImageHistogram: (libraryId: number, relativePath: string) =>
+    ipcRenderer.invoke('getImageHistogram', libraryId, relativePath),
+
+  // 文件夹封面
+  setFolderCover: (libraryId: number, folderPath: string, coverPath: string) =>
+    ipcRenderer.invoke('setFolderCover', libraryId, folderPath, coverPath),
+  removeFolderCover: (libraryId: number, folderPath: string) =>
+    ipcRenderer.invoke('removeFolderCover', libraryId, folderPath),
+  getFolderCovers: (libraryId: number) =>
+    ipcRenderer.invoke('getFolderCovers', libraryId),
+
+  // 导出
+  exportSingleImage: (libraryId: number, relativePath: string, options: any, taskId: string) =>
+    ipcRenderer.invoke('exportSingleImage', libraryId, relativePath, options, taskId),
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: any, taskId: string) =>
+    ipcRenderer.invoke('exportBatchImages', libraryId, relativePaths, options, taskId),
+  cancelExport: (taskId: string) =>
+    ipcRenderer.invoke('cancelExport', taskId),
+  onExportProgress: (callback: (progress: any) => void) => {
+    const subscription = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on('export-progress', subscription)
+    return () => ipcRenderer.removeListener('export-progress', subscription)
+  },
+
+  // 幻灯片：选择音频文件
+  selectAudioFile: () => ipcRenderer.invoke('selectAudioFile'),
+
+  // 插件管理
+  pluginsList: () => ipcRenderer.invoke('plugins:list'),
+  pluginsGet: (pluginId: string) => ipcRenderer.invoke('plugins:get', pluginId),
+  pluginsSetEnabled: (pluginId: string, enabled: boolean) =>
+    ipcRenderer.invoke('plugins:setEnabled', pluginId, enabled),
+  pluginsExecute: (pluginId: string, opId: string, input: unknown) =>
+    ipcRenderer.invoke('plugins:execute', pluginId, opId, input),
+  pluginsGetMenuItems: (context?: string) =>
+    ipcRenderer.invoke('plugins:getMenuItems', context),
+
+  // JobRunner 作业管理
+  jobsList: () => ipcRenderer.invoke('jobs:list'),
+  jobsGet: (jobId: string) => ipcRenderer.invoke('jobs:get', jobId),
+  jobsPause: (jobId: string) => ipcRenderer.invoke('jobs:pause', jobId),
+  jobsResume: (jobId: string) => ipcRenderer.invoke('jobs:resume', jobId),
+  jobsCancel: (jobId: string) => ipcRenderer.invoke('jobs:cancel', jobId),
+  jobsSubscribeProgress: () => ipcRenderer.invoke('jobs:subscribeProgress'),
+  onJobProgress: (callback: (progress: any) => void) => {
+    const subscription = (_event: any, progress: any) => callback(progress)
+    ipcRenderer.on('job-progress', subscription)
+    return () => ipcRenderer.removeListener('job-progress', subscription)
+  },
+
   // 媒体相关
   getMediaPath: (libraryId: number, imageId: number) =>
     ipcRenderer.invoke('getMediaPath', libraryId, imageId),
@@ -171,6 +230,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const subscription = (_event: any, data: any) => callback(data)
     ipcRenderer.on('library-scan-started', subscription)
     return () => ipcRenderer.removeListener('library-scan-started', subscription)
+  },
+
+  // 库状态变更事件（在线/离线）
+  onLibraryStatusChanged: (callback: (data: { id: number; status: 'online' | 'offline' }) => void) => {
+    const subscription = (_event: any, data: { id: number; status: 'online' | 'offline' }) => callback(data)
+    ipcRenderer.on('library-status-changed', subscription)
+    return () => ipcRenderer.removeListener('library-status-changed', subscription)
   },
 
   // 窗口控制

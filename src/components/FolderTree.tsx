@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
-import { ChevronRight, Folder, Trash2, Heart, Clock, History } from 'lucide-react'
+import { ChevronRight, Folder, Trash2, Heart, Clock, History, Image as CoverIcon, X } from 'lucide-react'
 import { useImageStore, RECENT_ADDED_ID, RECENT_MODIFIED_ID } from '../stores/imageStore'
 import { useViewStore } from '../stores/viewStore'
 
@@ -40,6 +40,43 @@ export function FolderTree({
   const setSelectedFavoriteFolder = useViewStore(state => state.setSelectedFavoriteFolder)
   const setCurrentLibrary = useImageStore(state => state.setCurrentLibrary)
   const currentLibraryId = useImageStore(state => state.currentLibraryId)
+
+  // 文件夹封面（按 libraryId 加载）
+  const [folderCovers, setFolderCovers] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!libraryId || libraryId < 0) {
+      setFolderCovers({})
+      return
+    }
+    window.electronAPI?.getFolderCovers(libraryId).then(setFolderCovers).catch(() => {})
+  }, [libraryId])
+
+  // 文件夹右键菜单状态
+  const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folderPath: string; hasCover: boolean } | null>(null)
+
+  const handleFolderContextMenu = useCallback((e: React.MouseEvent, folderPath: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const hasCover = !!folderCovers[folderPath]
+    setFolderMenu({ x: e.clientX, y: e.clientY, folderPath, hasCover })
+  }, [folderCovers])
+
+  const handleSetCover = useCallback(async (folderPath: string, coverPath: string) => {
+    if (!libraryId) return
+    await window.electronAPI?.setFolderCover(libraryId, folderPath, coverPath)
+    // 刷新封面列表
+    const covers = await window.electronAPI?.getFolderCovers(libraryId)
+    if (covers) setFolderCovers(covers)
+    setFolderMenu(null)
+  }, [libraryId])
+
+  const handleRemoveCover = useCallback(async (folderPath: string) => {
+    if (!libraryId) return
+    await window.electronAPI?.removeFolderCover(libraryId, folderPath)
+    const covers = await window.electronAPI?.getFolderCovers(libraryId)
+    if (covers) setFolderCovers(covers)
+    setFolderMenu(null)
+  }, [libraryId])
 
   // 点击单图收藏按钮时，清除选中的文件夹并切换到单图视图
   const handleSingleFavoriteClick = useCallback(() => {
@@ -92,6 +129,8 @@ export function FolderTree({
             isFavoriteLibrary={isFavoriteLibrary}
             onToggleFavoriteFolder={onToggleFavoriteFolder}
             folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, folder.path) : false}
+            folderCovers={folderCovers}
+            onFolderContextMenu={handleFolderContextMenu}
           />
         ))
       ) : /* 收藏库 - 单图收藏模式 */
@@ -144,8 +183,52 @@ export function FolderTree({
               isFavoriteLibrary={isFavoriteLibrary}
               onToggleFavoriteFolder={onToggleFavoriteFolder}
               folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, folder.path) : false}
+              folderCovers={folderCovers}
+              onFolderContextMenu={handleFolderContextMenu}
             />
           ))}
+        </>
+      )}
+
+      {/* 文件夹右键菜单 */}
+      {folderMenu && (
+        <>
+          <div className="fixed inset-0 z-[999]" onClick={() => setFolderMenu(null)} />
+          <div
+            className="fixed z-[1000] min-w-[140px] py-1 glass-l2 rounded-lg shadow-lg border border-border"
+            style={{ left: folderMenu.x, top: folderMenu.y }}
+          >
+            {folderMenu.hasCover ? (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-text-secondary hover:bg-overlay-lighter hover:text-text-primary transition-colors"
+                onClick={() => handleRemoveCover(folderMenu.folderPath)}
+              >
+                <X size={14} />
+                清除封面
+              </button>
+            ) : (
+              <button
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-text-secondary hover:bg-overlay-lighter hover:text-text-primary transition-colors"
+                onClick={() => {
+                  // 使用文件夹中第一张图片作为封面
+                  const coverPath = folderCovers[folderMenu.folderPath]
+                  if (!coverPath && libraryId) {
+                    // 获取文件夹第一张图片作为封面
+                    window.electronAPI?.getImagesByFolder(libraryId, folderMenu.folderPath, { limit: 1, offset: 0 })
+                      .then(images => {
+                        if (images.length > 0) {
+                          handleSetCover(folderMenu.folderPath, images[0].relative_path)
+                        }
+                      })
+                  }
+                  setFolderMenu(null)
+                }}
+              >
+                <CoverIcon size={14} />
+                设置为封面
+              </button>
+            )}
+          </div>
         </>
       )}
     </div>
@@ -160,6 +243,8 @@ interface FolderTreeItemProps {
   isFavoriteLibrary?: boolean
   onToggleFavoriteFolder?: (folderPath: string) => void
   folderFavorited?: boolean
+  folderCovers?: Record<string, string>
+  onFolderContextMenu?: (e: React.MouseEvent, folderPath: string) => void
 }
 
 function FolderTreeItem({
@@ -170,12 +255,15 @@ function FolderTreeItem({
   isFavoriteLibrary,
   onToggleFavoriteFolder,
   folderFavorited,
+  folderCovers = {},
+  onFolderContextMenu,
 }: FolderTreeItemProps) {
   const checkIsFavoriteFolder = useImageStore(state => state.isFavoriteFolder)
   const [isExpanded, setIsExpanded] = useState(true)
 
   const hasChildren = node.children && node.children.length > 0
   const isSelected = selectedFolder === node.path
+  const coverPath = folderCovers[node.path]
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -202,6 +290,7 @@ function FolderTreeItem({
         className={`flex items-center gap-2 px-3 py-1.5 mx-2 my-0.5 rounded-sm cursor-pointer select-none transition-all duration-150 border border-transparent hover:bg-overlay-light hover:border-border ${isSelected ? 'bg-accent/15 border-accent/40' : ''}`}
         style={{ paddingLeft: `${node.depth * 16 + 8}px` }}
         onClick={handleClick}
+        onContextMenu={(e) => onFolderContextMenu?.(e, node.path)}
       >
         {hasChildren ? (
           <span
@@ -213,7 +302,11 @@ function FolderTreeItem({
         ) : (
           <span className="w-4 h-4" />
         )}
-        <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted transition-opacity duration-150" />
+        {coverPath && libraryId ? (
+          <FolderCoverThumbnail libraryId={libraryId} coverPath={coverPath} />
+        ) : (
+          <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted transition-opacity duration-150" />
+        )}
         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-body text-text-secondary transition-colors duration-150" title={node.name}>
           {node.name}
         </span>
@@ -262,11 +355,47 @@ function FolderTreeItem({
                 isFavoriteLibrary={isFavoriteLibrary}
                 onToggleFavoriteFolder={onToggleFavoriteFolder}
                 folderFavorited={libraryId ? checkIsFavoriteFolder(libraryId, child.path) : false}
+                folderCovers={folderCovers}
+                onFolderContextMenu={onFolderContextMenu}
               />
             ))}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+/**
+ * 文件夹封面缩略图 — 通过 IPC 获取 media:// URL 后渲染
+ */
+function FolderCoverThumbnail({ libraryId, coverPath }: { libraryId: number; coverPath: string }) {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    // 尝试获取缩略图（需要先查询图片 ID）
+    window.electronAPI?.getImageByRelativePath(libraryId, coverPath)
+      .then((image) => {
+        if (cancelled || !image) return
+        return window.electronAPI?.getThumbnail(libraryId, image.id, 'small')
+      })
+      .then((url) => {
+        if (!cancelled && url) setThumbUrl(url)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [libraryId, coverPath])
+
+  if (!thumbUrl) {
+    return <Folder size={16} className="w-4 h-4 flex-shrink-0 opacity-80 text-text-muted" />
+  }
+
+  return (
+    <img
+      src={thumbUrl}
+      alt=""
+      className="w-4 h-4 flex-shrink-0 rounded-sm object-cover"
+    />
   )
 }

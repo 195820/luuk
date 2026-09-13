@@ -7,7 +7,8 @@
   "npmRebuild": false,
   "files": [
     "dist/**/*",
-    "dist-electron/**/*"
+    "dist-electron/**/*",
+    "src/main/plugins/builtins/**/*"
   ],
   "win": {
     "signAndEditExecutable": false,

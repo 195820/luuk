@@ -2,7 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import type { Library, ThumbnailSize, SearchCriteria, SearchOptions, Tag } from '../../types';
+import type { Library, ThumbnailSize, SearchCriteria, SearchOptions, Tag, Job, JobItem, JobState, JobItemState, Edit } from '../../types';
 import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
@@ -37,6 +37,77 @@ export interface Image {
 }
 
 /**
+ * 数据库迁移定义
+ * - 每个迁移包含版本号、描述、SQL 语句
+ * - SQL 必须幂等（使用 IF NOT EXISTS 等）
+ * - 按顺序执行，事务包裹
+ */
+const MIGRATIONS: Array<{ version: number; description: string; sql: string }> = [
+  {
+    version: 1,
+    description: '添加文件夹封面支持',
+    sql: `
+      CREATE TABLE IF NOT EXISTS folder_covers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL,
+        folder_path TEXT NOT NULL,
+        cover_path TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(library_id, folder_path),
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_folder_covers_lib ON folder_covers(library_id);
+    `,
+  },
+  {
+    version: 2,
+    description: 'Phase 8 — JobRunner 作业表 + 编辑版本链',
+    sql: `
+      CREATE TABLE IF NOT EXISTS jobs (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        state       TEXT NOT NULL DEFAULT 'pending',
+        priority    INTEGER NOT NULL DEFAULT 0,
+        total       INTEGER NOT NULL DEFAULT 0,
+        done        INTEGER NOT NULL DEFAULT 0,
+        failed      INTEGER NOT NULL DEFAULT 0,
+        payload     TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS job_items (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id      TEXT NOT NULL,
+        library_id  INTEGER NOT NULL,
+        image_id    INTEGER,
+        state       TEXT NOT NULL DEFAULT 'pending',
+        attempt     INTEGER NOT NULL DEFAULT 0,
+        error       TEXT,
+        updated_at  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_job_items_state ON job_items(job_id, state);
+      CREATE INDEX IF NOT EXISTS idx_job_items_job ON job_items(job_id);
+
+      CREATE TABLE IF NOT EXISTS edits (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id     INTEGER NOT NULL,
+        image_id       INTEGER NOT NULL,
+        plugin_id      TEXT NOT NULL,
+        op             TEXT NOT NULL,
+        params         TEXT,
+        model_id       TEXT,
+        output_path    TEXT NOT NULL,
+        parent_edit_id INTEGER,
+        created_at     TEXT NOT NULL,
+        FOREIGN KEY (parent_edit_id) REFERENCES edits(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_edits_image ON edits(library_id, image_id);
+    `,
+  },
+]
+
+/**
  * 主数据库服务 - 管理 master.db
  */
 export class MasterDB {
@@ -59,6 +130,50 @@ export class MasterDB {
     this.db = new Database(this.dbPath);
     this.db.pragma('foreign_keys = ON');
     this.createTables();
+    this.ensureSchemaVersion();
+  }
+
+  /**
+   * 确保数据库 schema 版本是最新的
+   * - 首次运行时创建 schema_version 表（初始版本 0）
+   * - 依次执行未应用的迁移，事务包裹
+   * - 单个迁移失败时回滚该迁移并记录错误，不阻塞后续迁移
+   */
+  private ensureSchemaVersion(): void {
+    if (!this.db) return;
+
+    // 确保 schema_version 表存在
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // 获取当前版本
+    const currentRow = this.db.prepare(
+      'SELECT MAX(version) as version FROM schema_version'
+    ).get() as { version: number | null } | undefined;
+    const currentVersion = currentRow?.version ?? 0;
+
+    // 执行未应用的迁移
+    for (const migration of MIGRATIONS) {
+      if (migration.version <= currentVersion) continue;
+
+      try {
+        logger.info('MasterDB', `应用迁移 v${migration.version}: ${migration.description}`);
+        // 事务包裹
+        const transaction = this.db.transaction(() => {
+          this.db!.exec(migration.sql);
+          this.db!.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version);
+        });
+        transaction();
+        logger.info('MasterDB', `迁移 v${migration.version} 成功`);
+      } catch (err) {
+        logger.error('MasterDB', `迁移 v${migration.version} 失败，已回滚`, err);
+        // 单个迁移失败不阻塞后续迁移
+      }
+    }
   }
 
   private createTables(): void {
@@ -133,6 +248,17 @@ export class MasterDB {
         FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_image_tags_path ON image_tags(library_id, image_path);
+
+      CREATE TABLE IF NOT EXISTS folder_covers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL,
+        folder_path TEXT NOT NULL,
+        cover_path TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(library_id, folder_path),
+        FOREIGN KEY (library_id) REFERENCES libraries(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_folder_covers_lib ON folder_covers(library_id);
     `);
   }
 
@@ -633,7 +759,7 @@ export class MasterDB {
     const normalizedOld = oldPath.replace(/\\/g, '/');
     const normalizedNew = newPath.replace(/\\/g, '/');
 
-    // 事务保证 favorites + history + image_tags 三条 UPDATE 的原子性
+    // 事务保证 favorites + history + image_tags + folder_covers 四条 UPDATE 的原子性
     const tx = this.db.transaction(() => {
       this.db!.prepare(
         'UPDATE favorites SET image_path = ? WHERE library_id = ? AND image_path = ?'
@@ -645,6 +771,11 @@ export class MasterDB {
 
       this.db!.prepare(
         'UPDATE image_tags SET image_path = ? WHERE library_id = ? AND image_path = ?'
+      ).run(normalizedNew, libraryId, normalizedOld);
+
+      // 封面图片路径也需要级联更新
+      this.db!.prepare(
+        'UPDATE folder_covers SET cover_path = ? WHERE library_id = ? AND cover_path = ?'
       ).run(normalizedNew, libraryId, normalizedOld);
     });
     tx();
@@ -677,6 +808,18 @@ export class MasterDB {
            WHERE library_id = ? AND (image_path = ? OR image_path LIKE ?)`
         ).run(normalizedNew, normalizedOld, libraryId, normalizedOld, likePattern);
       }
+
+      // folder_covers 文件夹路径级联
+      const covers = this.db!.prepare(
+        'SELECT id, folder_path FROM folder_covers WHERE library_id = ? AND (folder_path = ? OR folder_path LIKE ?)'
+      ).all(libraryId, normalizedOld, likePattern) as Array<{ id: number; folder_path: string }>;
+      const updateCover = this.db!.prepare('UPDATE folder_covers SET folder_path = ? WHERE id = ?');
+      for (const row of covers) {
+        const newPath = row.folder_path === normalizedOld
+          ? normalizedNew
+          : normalizedNew + row.folder_path.slice(normalizedOld.length);
+        updateCover.run(newPath, row.id);
+      }
     });
     tx();
   }
@@ -707,6 +850,57 @@ export class MasterDB {
     this.db.prepare('DELETE FROM deleted_files WHERE id = ?').run(id);
   }
 
+  // ==================== 文件夹封面 ====================
+
+  /**
+   * 设置文件夹封面图片
+   */
+  setFolderCover(libraryId: number, folderPath: string, coverPath: string): void {
+    if (!this.db) return;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    const normalizedCover = coverPath.replace(/\\/g, '/');
+    this.db.prepare(
+      'INSERT OR REPLACE INTO folder_covers (library_id, folder_path, cover_path) VALUES (?, ?, ?)'
+    ).run(libraryId, normalizedFolder, normalizedCover);
+  }
+
+  /**
+   * 移除文件夹封面
+   */
+  removeFolderCover(libraryId: number, folderPath: string): void {
+    if (!this.db) return;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    this.db.prepare('DELETE FROM folder_covers WHERE library_id = ? AND folder_path = ?')
+      .run(libraryId, normalizedFolder);
+  }
+
+  /**
+   * 获取库的所有文件夹封面映射
+   */
+  getFolderCovers(libraryId: number): Record<string, string> {
+    if (!this.db) return {};
+    const rows = this.db.prepare(
+      'SELECT folder_path, cover_path FROM folder_covers WHERE library_id = ?'
+    ).all(libraryId) as Array<{ folder_path: string; cover_path: string }>;
+    const result: Record<string, string> = {};
+    for (const row of rows) {
+      result[row.folder_path] = row.cover_path;
+    }
+    return result;
+  }
+
+  /**
+   * 获取单个文件夹的封面路径
+   */
+  getFolderCover(libraryId: number, folderPath: string): string | null {
+    if (!this.db) return null;
+    const normalizedFolder = folderPath.replace(/\\/g, '/');
+    const row = this.db.prepare(
+      'SELECT cover_path FROM folder_covers WHERE library_id = ? AND folder_path = ?'
+    ).get(libraryId, normalizedFolder) as { cover_path: string } | undefined;
+    return row?.cover_path ?? null;
+  }
+
   close(): void {
     if (this.db) {
       this.db.close();
@@ -716,6 +910,169 @@ export class MasterDB {
 
   getDbPath(): string {
     return this.dbPath;
+  }
+
+  // ── JobRunner 数据访问 ──
+
+  createJob(id: string, kind: string, priority: number, total: number, payload: string): void {
+    if (!this.db) throw new Error('MasterDB 未初始化')
+    const now = new Date().toISOString()
+    this.db.prepare(`
+      INSERT INTO jobs (id, kind, state, priority, total, done, failed, payload, created_at, updated_at)
+      VALUES (?, ?, 'pending', ?, ?, 0, 0, ?, ?, ?)
+    `).run(id, kind, priority, total, payload, now, now)
+  }
+
+  getJob(id: string): Job | null {
+    if (!this.db) return null
+    const row = this.db.prepare('SELECT * FROM jobs WHERE id = ?').get(id) as any
+    if (!row) return null
+    return this.mapJob(row)
+  }
+
+  updateJobState(id: string, state: JobState, done?: number, failed?: number): void {
+    if (!this.db) throw new Error('MasterDB 未初始化')
+    const now = new Date().toISOString()
+    if (done !== undefined && failed !== undefined) {
+      this.db.prepare(
+        "UPDATE jobs SET state = ?, done = ?, failed = ?, updated_at = ? WHERE id = ?"
+      ).run(state, done, failed, now, id)
+    } else {
+      this.db.prepare(
+        "UPDATE jobs SET state = ?, updated_at = ? WHERE id = ?"
+      ).run(state, now, id)
+    }
+  }
+
+  getAllJobs(): Job[] {
+    if (!this.db) return []
+    const rows = this.db.prepare('SELECT * FROM jobs ORDER BY created_at DESC').all() as any[]
+    return rows.map(r => this.mapJob(r))
+  }
+
+  createJobItems(jobId: string, items: Array<{ libraryId: number; imageId: number | null }>): void {
+    if (!this.db) throw new Error('MasterDB 未初始化')
+    const now = new Date().toISOString()
+    const stmt = this.db.prepare(`
+      INSERT INTO job_items (job_id, library_id, image_id, state, attempt, updated_at)
+      VALUES (?, ?, ?, 'pending', 0, ?)
+    `)
+    const transaction = this.db.transaction(() => {
+      for (const item of items) {
+        stmt.run(jobId, item.libraryId, item.imageId, now)
+      }
+    })
+    transaction()
+  }
+
+  getJobItems(jobId: string, state?: JobItemState): JobItem[] {
+    if (!this.db) return []
+    let rows: any[]
+    if (state) {
+      rows = this.db.prepare(
+        'SELECT * FROM job_items WHERE job_id = ? AND state = ? ORDER BY id'
+      ).all(jobId, state) as any[]
+    } else {
+      rows = this.db.prepare(
+        'SELECT * FROM job_items WHERE job_id = ? ORDER BY id'
+      ).all(jobId) as any[]
+    }
+    return rows.map(r => this.mapJobItem(r))
+  }
+
+  updateJobItemState(itemIds: number[], state: JobItemState, error?: string): void {
+    if (!this.db) throw new Error('MasterDB 未初始化')
+    const now = new Date().toISOString()
+    const stmt = this.db.prepare(
+      'UPDATE job_items SET state = ?, error = ?, updated_at = ? WHERE id = ?'
+    )
+    const transaction = this.db.transaction(() => {
+      for (const id of itemIds) {
+        stmt.run(state, error ?? null, now, id)
+      }
+    })
+    transaction()
+  }
+
+  /** 重启恢复：将 running 状态批量改为 paused */
+  recoverInterruptedJobs(): number {
+    if (!this.db) return 0
+    const now = new Date().toISOString()
+    const result = this.db.prepare(
+      "UPDATE jobs SET state = 'paused', updated_at = ? WHERE state = 'running'"
+    ).run(now)
+    this.db.prepare(
+      "UPDATE job_items SET state = 'pending', updated_at = ? WHERE state = 'running'"
+    ).run(now)
+    return result.changes
+  }
+
+  // ── Edits 数据访问 ──
+
+  createEdit(edit: Omit<Edit, 'id' | 'createdAt'>): number {
+    if (!this.db) throw new Error('MasterDB 未初始化')
+    const now = new Date().toISOString()
+    const result = this.db.prepare(`
+      INSERT INTO edits (library_id, image_id, plugin_id, op, params, model_id, output_path, parent_edit_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      edit.libraryId, edit.imageId, edit.pluginId, edit.op,
+      edit.params, edit.modelId, edit.outputPath, edit.parentEditId, now
+    )
+    return Number(result.lastInsertRowid)
+  }
+
+  getEditsForImage(libraryId: number, imageId: number): Edit[] {
+    if (!this.db) return []
+    const rows = this.db.prepare(
+      'SELECT * FROM edits WHERE library_id = ? AND image_id = ? ORDER BY created_at'
+    ).all(libraryId, imageId) as any[]
+    return rows.map(r => this.mapEdit(r))
+  }
+
+  // ── 私有映射方法 ──
+
+  private mapJob(row: any): Job {
+    return {
+      id: row.id,
+      kind: row.kind,
+      state: row.state,
+      priority: row.priority,
+      total: row.total,
+      done: row.done,
+      failed: row.failed,
+      payload: row.payload,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  private mapJobItem(row: any): JobItem {
+    return {
+      id: row.id,
+      jobId: row.job_id,
+      libraryId: row.library_id,
+      imageId: row.image_id,
+      state: row.state,
+      attempt: row.attempt,
+      error: row.error,
+      updatedAt: row.updated_at,
+    }
+  }
+
+  private mapEdit(row: any): Edit {
+    return {
+      id: row.id,
+      libraryId: row.library_id,
+      imageId: row.image_id,
+      pluginId: row.plugin_id,
+      op: row.op,
+      params: row.params,
+      modelId: row.model_id,
+      outputPath: row.output_path,
+      parentEditId: row.parent_edit_id,
+      createdAt: row.created_at,
+    }
   }
 }
 
