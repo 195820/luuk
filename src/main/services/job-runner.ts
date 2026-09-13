@@ -173,23 +173,39 @@ export class JobRunner {
         'running' as JobItemState
       )
 
-      // 并发处理本批（单项失败不中断）
+      // 本批共享的 abort 竞态：暂停/取消时中断仍在途的项，避免卡在 running
+      let onAbort: (() => void) | null = null
+      const abortPromise = new Promise<never>((_, reject) => {
+        onAbort = () => reject(new Error('作业中止'))
+        abortController.signal.addEventListener('abort', onAbort, { once: true })
+      })
+
+      // 并发处理本批（单项失败不中断；被中断的项保留 pending 供恢复后重跑）
       const results = await Promise.allSettled(
         pendingItems.map(async (item) => {
           try {
-            await handler(item)
+            await Promise.race([handler(item), abortPromise])
             return { itemId: item.id, success: true as const }
           } catch (err) {
+            if (abortController.signal.aborted) {
+              return { itemId: item.id, success: false as const, interrupted: true as const }
+            }
             return { itemId: item.id, success: false as const, error: (err as Error).message }
           }
         })
       )
 
-      // 先处理结果（保留已完成的 done/failed 状态）
+      if (onAbort) abortController.signal.removeEventListener('abort', onAbort)
+
+      // 先处理结果（保留已完成的 done/failed 状态；中断项重置回 pending）
       let batchDone = 0
       let batchFailed = 0
       for (const result of results) {
         const value = result.status === 'fulfilled' ? result.value : null
+        if (value?.interrupted) {
+          this.db.updateJobItemState([value.itemId], 'pending' as JobItemState)
+          continue
+        }
         if (value?.success) {
           this.db.updateJobItemState([value.itemId], 'done' as JobItemState)
           batchDone++
@@ -229,17 +245,18 @@ export class JobRunner {
     const pendingRemaining = this.db.getJobItems(jobId, 'pending' as JobItemState)
 
     if (pendingRemaining.length === 0) {
-      // 所有 items 已处理完 — 保留外部意图状态（pause/cancel）
-      if (job?.state === 'cancelled' || job?.state === 'paused') {
-        // 不覆盖
-      } else {
+      // 所有 items 已处理完 — 仅 cancelled 为终态；paused 的作业已无可处理项也应转 done，
+      // 否则 resume 会永远停留在 paused（“卡住”）
+      if (job?.state !== 'cancelled') {
         this.db.updateJobState(jobId, 'done' as JobState)
         this.emitProgress(jobId)
       }
     }
-    // 若仍有 pending items：状态由 pause/cancel 设置为 'paused'/'cancelled'，不覆盖
 
-    this.runningJobs.delete(jobId)
+    // 仅当仍是本次运行对应的条目时删除，避免暂停后 resume 的新运行条目被旧循环误删
+    if (this.runningJobs.get(jobId) === running) {
+      this.runningJobs.delete(jobId)
+    }
     logger.info('JobRunner', `作业完成: ${jobId}`)
   }
 

@@ -7,6 +7,7 @@ import { readExif } from '../utils/exif';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
 import { logger } from '../../utils/logger';
 import { sendToRenderer } from '../utils/ipc';
+import { isPathWithin } from '../utils/path-safe';
 import { getMasterDB } from '../services/database';
 import { libraryMonitor } from '../services/library-monitor';
 
@@ -534,7 +535,7 @@ export function registerLibraryHandlers(): void {
       // 安全检查：确保路径在库目录内
       const resolved = path.resolve(absPath);
       const libRoot = path.resolve(library.rootPath);
-      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+      if (!isPathWithin(libRoot, resolved)) {
         return { success: false, error: 'Access denied' };
       }
       const exif = await readExif(absPath);
@@ -660,7 +661,7 @@ export function registerLibraryHandlers(): void {
       // 安全检查：确保路径在库目录内
       const resolved = path.resolve(absPath);
       const libRoot = path.resolve(library.rootPath);
-      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+      if (!isPathWithin(libRoot, resolved)) {
         return { success: false, error: 'Access denied' };
       }
       const { calculateHistogram } = await import('../utils/histogram');

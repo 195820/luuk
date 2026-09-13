@@ -1,5 +1,6 @@
 import { app } from 'electron'
 import * as path from 'path'
+import * as fs from 'fs'
 import { logger } from '../../utils/logger'
 import { getSetting } from './settings-service'
 import { getMasterDB } from './database'
@@ -21,6 +22,17 @@ const DEFAULT_RED_MB = 400
 /** 内存监控刷新间隔（毫秒） */
 const MEMORY_MONITOR_INTERVAL_MS = 5000
 
+/** 内置插件目录候选：开发时在源码目录，打包后在不同构建布局下位置不一，取最先存在的 */
+function resolveBuiltinDir(): string {
+  const candidates = [
+    path.join(__dirname, 'plugins', 'builtins'),
+    path.join(__dirname, '..', 'plugins', 'builtins'),
+    path.join(__dirname, 'main', 'plugins', 'builtins'),
+    path.resolve(process.cwd(), 'src/main/plugins/builtins'),
+  ]
+  return candidates.find(dir => fs.existsSync(dir)) ?? candidates[0]
+}
+
 /**
  * 插件系统统一入口
  * 协调 PluginLoader / PluginHostProcess / MemoryMonitor / ModelManager / EditsService
@@ -37,8 +49,8 @@ export class PluginManager {
   constructor() {
     const userDataPath = app.getPath('userData')
 
-    // 内置插件目录（构建后位于 dist-electron/main/plugins/builtins）
-    const builtinDir = path.join(__dirname, '../plugins/builtins')
+    // 内置插件目录（开发为源码目录，打包后为构建产物中的 plugins/builtins）
+    const builtinDir = resolveBuiltinDir()
     // 第三方插件目录：%APPDATA%/luuk/plugins
     const thirdPartyDir = path.join(userDataPath, 'plugins')
 

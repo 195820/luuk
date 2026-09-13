@@ -997,6 +997,12 @@ export class MasterDB {
   /** 重启恢复：将 running 状态批量改为 paused */
   recoverInterruptedJobs(): number {
     if (!this.db) return 0
+    // 迁移 v2 失败时 jobs/job_items 表不存在：跳过恢复，避免启动时 'no such table' 崩溃
+    const hasTable = (name: string): boolean => !!this.db!.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?"
+    ).get(name)
+    if (!hasTable('jobs') || !hasTable('job_items')) return 0
+
     const now = new Date().toISOString()
     const result = this.db.prepare(
       "UPDATE jobs SET state = 'paused', updated_at = ? WHERE state = 'running'"

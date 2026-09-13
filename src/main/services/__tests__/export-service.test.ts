@@ -54,7 +54,7 @@ describe('ExportService', () => {
       const zipPath = path.join(outDir, 'batch.zip')
       const progress: Array<[number, number]> = []
       await svc.exportBatch(
-        [img1, img2],
+        [img1, img2].map(p => ({ absPath: p, name: path.basename(p) })),
         { format: 'png', outputPath: zipPath },
         'b1',
         (d, t) => progress.push([d, t])
@@ -72,7 +72,7 @@ describe('ExportService', () => {
       const onProgress = vi.fn()
       const ghost = path.join(dir, 'ghost.png') // 不存在
       await svc.exportBatch(
-        [img1, ghost, img2],
+        [img1, ghost, img2].map(p => ({ absPath: p, name: path.basename(p) })),
         { format: 'png', outputPath: zipPath },
         'b2',
         onProgress
@@ -89,7 +89,7 @@ describe('ExportService', () => {
       const progress: number[] = []
       let cancelled = false
       await svc.exportBatch(
-        [img1, img2, img1],
+        [img1, img2, img1].map(p => ({ absPath: p, name: path.basename(p) })),
         { format: 'png', outputPath: zipPath },
         'cancel-task',
         (done) => {

@@ -8,7 +8,10 @@ import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ip
 import { registerTagHandlers, unregisterTagHandlers } from '../src/main/ipc/tag-handlers'
 import { registerPluginHandlers, unregisterPluginHandlers } from '../src/main/ipc/plugin-handlers'
 import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
-import { closeAllDatabases } from '../src/main/services/database'
+import { initJobRunner, getJobRunner } from '../src/main/services/job-runner'
+import { getPluginManager } from '../src/main/services/plugin-manager'
+import { closeAllDatabases, getMasterDB } from '../src/main/services/database'
+import { logger } from '../src/utils/logger'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken } from '../src/main/services/media-registry'
 import { MIME_TYPES } from '../src/types'
@@ -219,6 +222,13 @@ app.whenReady().then(async () => {
   registerFileHandlers()
   registerSearchHandlers()
   registerTagHandlers()
+
+  // 初始化持久化作业调度器（在此之前 getJobRunner() 会抛“未初始化”）
+  initJobRunner(getMasterDB())
+
+  // 初始化插件系统（feature flag 关闭时为空实现）
+  await getPluginManager().initialize()
+
   registerPluginHandlers()
   registerJobHandlers()
 
@@ -254,6 +264,12 @@ app.on('before-quit', () => {
   unregisterTagHandlers()
   unregisterPluginHandlers()
   unregisterJobHandlers()
+  // 中止运行中的作业并落库为 paused（同步段会先执行，DB 关闭前完成状态写回）
+  try {
+    getJobRunner().shutdown().catch(err => logger.error('Main', 'JobRunner 关闭异常', err))
+  } catch (err) {
+    logger.error('Main', 'JobRunner 未初始化，跳过关闭', err)
+  }
   closeAllDatabases()
 })
 

@@ -8,6 +8,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:list', async () => {
     try {
       const pm = getPluginManager()
+      await pm.initialize()
       return { success: true, data: pm.getPluginInfos() }
     } catch (err) {
       logger.error('PluginHandlers', 'plugins:list 失败', err)
@@ -19,6 +20,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:get', async (_event, pluginId: string) => {
     try {
       const pm = getPluginManager()
+      await pm.initialize()
       const plugin = pm.getPluginInfo(pluginId)
       if (!plugin) {
         return { success: false, error: `插件不存在: ${pluginId}` }
@@ -34,6 +36,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:setEnabled', async (_event, pluginId: string, enabled: boolean) => {
     try {
       const pm = getPluginManager()
+      await pm.initialize()
       await pm.setEnabled(pluginId, enabled)
       return { success: true }
     } catch (err) {
@@ -46,6 +49,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:execute', async (_event, pluginId: string, opId: string, input: unknown) => {
     try {
       const pm = getPluginManager()
+      await pm.initialize()
       const result = await pm.executeOp(pluginId, opId, input)
       return { success: true, data: result }
     } catch (err) {
@@ -58,6 +62,7 @@ export function registerPluginHandlers(): void {
   ipcMain.handle('plugins:getMenuItems', async () => {
     try {
       const pm = getPluginManager()
+      await pm.initialize()
       return { success: true, data: pm.getAvailableMenuItems() }
     } catch (err) {
       logger.error('PluginHandlers', 'plugins:getMenuItems 失败', err)

@@ -8,6 +8,25 @@ import type {
   MemoryStatus,
 } from '../src/types/plugin'
 
+// ── 通信端口 ──
+// 本 Worker 由 plugin-host-process 以 utilityProcess 方式启动，通信走
+// `process.parentPort`（Electron 注入），此时 worker_threads 的 parentPort 为 null。
+// 这里同时兼容两种宿主：优先 utilityProcess，退化为 worker_threads。
+
+interface ParentPortLike {
+  on(event: 'message', listener: (message: unknown) => void): unknown
+  postMessage(message: unknown): void
+}
+
+function getPort(): ParentPortLike | null {
+  const proc = process as NodeJS.Process & { parentPort?: ParentPortLike }
+  if (proc.parentPort) return proc.parentPort
+  if (parentPort) return parentPort as unknown as ParentPortLike
+  return null
+}
+
+const port = getPort()
+
 // ── 类型守卫：判断消息是否为 RPC 请求 ──
 
 interface RpcRequestMessage {
@@ -151,13 +170,13 @@ async function handleMessage(msg: unknown): Promise<void> {
     }
   }
 
-  parentPort?.postMessage({ type: 'rpc-response', ...response })
+  port?.postMessage({ type: 'rpc-response', ...response })
 }
 
 // ── 启动 ──
 
-if (parentPort) {
-  parentPort.on('message', (msg: unknown) => {
+if (port) {
+  port.on('message', (msg: unknown) => {
     // 异步处理，不阻塞消息接收
     handleMessage(msg).catch((err) => {
       console.error('[plugin-worker] 消息处理异常:', err)
@@ -165,8 +184,8 @@ if (parentPort) {
   })
 
   // 通知主进程 Worker 已就绪
-  parentPort.postMessage({ type: 'ready' })
+  port.postMessage({ type: 'ready' })
 } else {
-  console.error('[plugin-worker] parentPort 不存在，无法在 utilityProcess 中运行')
+  console.error('[plugin-worker] 端口不存在，无法在 utilityProcess/worker_threads 中运行')
   process.exit(1)
 }

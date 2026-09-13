@@ -5,6 +5,7 @@ import { FileService } from '../services/file-service';
 import { getMasterDB } from '../services/database';
 import { getSetting } from '../services/settings-service';
 import { sendToRenderer } from '../utils/ipc';
+import { isPathWithin } from '../utils/path-safe';
 import { logger } from '../../utils/logger';
 
 const fileService = new FileService();
@@ -89,11 +90,11 @@ export function registerFileHandlers(): void {
 
     const absPath = path.resolve(result.filePaths[0]);
     const rootPath = path.resolve(library.rootPath);
-    if (!absPath.startsWith(rootPath + path.sep) && absPath !== rootPath) {
+    if (!isPathWithin(rootPath, absPath)) {
       return { error: '目标目录必须在库目录内' };
     }
-    const relativePath = path.relative(rootPath, absPath).replace(/\\/g, '/');
-    return relativePath;
+    // 返回绝对路径：ExportDialog 直接将其用作导出输出目录
+    return absPath;
   });
 
   ipcMain.handle('getDeletedFiles', async (_e, libraryId?: number, limit?: number) => {
@@ -117,7 +118,7 @@ export function registerFileHandlers(): void {
       // 安全检查：确保路径在库目录内
       const resolved = path.resolve(absPath);
       const libRoot = path.resolve(library.rootPath);
-      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+      if (!isPathWithin(libRoot, resolved)) {
         return { success: false, error: 'Access denied' };
       }
       const outputPath = await exportService.exportSingle(absPath, options, taskId);
@@ -140,16 +141,17 @@ export function registerFileHandlers(): void {
         return { success: false, error: '库不存在' };
       }
       const libRoot = path.resolve(library.rootPath);
-      const absPaths = relativePaths.map(rp => {
+      // 携带库内相对路径作为 ZIP 条目名，避免不同目录下同名文件冲突
+      const files = relativePaths.map(rp => {
         const absPath = path.join(library.rootPath, rp);
         const resolved = path.resolve(absPath);
-        if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+        if (!isPathWithin(libRoot, resolved)) {
           throw new Error('Access denied');
         }
-        return resolved;
+        return { absPath: resolved, name: rp };
       });
       let lastEmit = 0;
-      await exportService.exportBatch(absPaths, options, taskId, (done: number, total: number) => {
+      await exportService.exportBatch(files, options, taskId, (done: number, total: number) => {
         const now = Date.now();
         // 100ms 节流，避免高频 IPC 事件导致渲染进程掉帧
         if (now - lastEmit >= 100 || done === total) {
