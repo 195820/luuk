@@ -116,8 +116,9 @@ export function ImageViewer({
   // 延迟显示 spinner：快速加载时不显示，消除闪烁
   const [showSpinner, setShowSpinner] = useState(false)
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  // 图片切换过渡：scale + opacity 进入效果
-  const [imageTransition, setImageTransition] = useState<'idle' | 'entering'>('idle')
+  // 订阅幻灯片过渡类型（响应式，而非 getState() 快照）
+  const slideshowTransition = useSlideshowStore(s => s.transition)
+  // 图片切换过渡（由 SlideshowTransitionWrapper 的 key 驱动 CSS 动画）
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [videoCurrentTime, setVideoCurrentTime] = useState(0)
   const [videoDuration, setVideoDuration] = useState(0)
@@ -196,6 +197,12 @@ export function ImageViewer({
       case 'export':
         setExportDialog(true)
         break
+      case 'setFolderCover': {
+        // 提取图片所在文件夹路径（正斜杠格式）
+        const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
+        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        break
+      }
     }
     setContextMenu(null)
   }, [libraryId, imagePath, onClose])
@@ -307,13 +314,6 @@ export function ImageViewer({
         naturalWidth: width,
         naturalHeight: height,
       })
-      // 新图片进入：从模糊中淡入
-      setImageTransition('entering')
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setImageTransition('idle')
-        })
-      })
     },
     []
   )
@@ -364,6 +364,7 @@ export function ImageViewer({
       // Ctrl+R: 切换幻灯片随机播放模式
       if ((e.ctrlKey || e.metaKey) && (e.key === 'r' || e.key === 'R')) {
         e.preventDefault()
+        e.stopImmediatePropagation()
         const { toggleMode, mode } = useSlideshowStore.getState()
         toggleMode()
         logger.info('ImageViewer', `幻灯片模式: ${mode === 'sequential' ? '随机' : '顺序'}`)
@@ -600,7 +601,7 @@ export function ImageViewer({
         ) : mediaType === 'audio' ? (
           <AudioViewer src={src} filename={alt || ''} />
         ) : (
-          <SlideshowTransitionWrapper transition={useSlideshowStore.getState().transition}>
+          <SlideshowTransitionWrapper key={src} transition={slideshowTransition}>
             <ImageLightbox
               src={src}
               alt={alt || '图片'}
@@ -614,7 +615,6 @@ export function ImageViewer({
                   spinnerTimerRef.current = null
                 }
                 setShowSpinner(false)
-                setImageTransition('idle')
                 // 延迟报告错误，避免瞬时加载成功导致的错误闪烁
                 if (pendingErrorTimerRef.current) {
                   clearTimeout(pendingErrorTimerRef.current)

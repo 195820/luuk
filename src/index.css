@@ -161,6 +161,23 @@
 }
 
 /* ═══════════════════════════════════════════════════════
+   强调色预设（data-accent）
+   ═══════════════════════════════════════════════════════ */
+[data-accent="violet"]  { --color-accent: #7c6ef0; --color-accent-hover: #9589f5; }
+[data-accent="blue"]    { --color-accent: #3B82F6; --color-accent-hover: #5B97FF; }
+[data-accent="cyan"]    { --color-accent: #06B6D4; --color-accent-hover: #22D3EE; }
+[data-accent="green"]   { --color-accent: #10B981; --color-accent-hover: #34D399; }
+[data-accent="orange"]  { --color-accent: #F59E0B; --color-accent-hover: #FBBF24; }
+[data-accent="pink"]    { --color-accent: #EC4899; --color-accent-hover: #F472B6; }
+
+/* ═══════════════════════════════════════════════════════
+   密度预设（data-density）
+   ═══════════════════════════════════════════════════════ */
+[data-density="compact"]    { --density-scale: 0.75; --density-padding: 8px;  --density-gap: 6px;  }
+[data-density="comfortable"] { --density-scale: 1;    --density-padding: 12px; --density-gap: 8px;  }
+[data-density="spacious"]   { --density-scale: 1.5;  --density-padding: 16px; --density-gap: 12px; }
+
+/* ═══════════════════════════════════════════════════════
    液态玻璃工具类
    ═══════════════════════════════════════════════════════ */
 @utility glass-l1 {

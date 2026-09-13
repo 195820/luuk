@@ -66,13 +66,18 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
     try {
       // 选择输出目录
       const destResult = await window.electronAPI?.selectDestinationFolder(libraryId)
-      if (!destResult || typeof destResult === 'object' && 'error' in destResult) {
-        setError(destResult?.error || '取消选择')
+      if (!destResult) {
+        setError('取消选择')
+        setIsExporting(false)
+        return
+      }
+      if (typeof destResult === 'object' && 'error' in destResult) {
+        setError(destResult.error)
         setIsExporting(false)
         return
       }
 
-      const outputPath = destResult as string
+      const outputPath = destResult
 
       if (selectedPaths.length === 1) {
         // 单图导出

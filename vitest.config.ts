@@ -14,7 +14,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      include: ['src/utils/**', 'src/stores/**', 'src/main/services/cache.ts'],
+      include: [
+        'src/utils/**',
+        'src/stores/**',
+        'src/main/services/cache.ts',
+        'src/main/services/export-service.ts',
+        'src/main/services/database.ts',
+        'src/main/utils/histogram.ts',
+      ],
     },
   },
 })

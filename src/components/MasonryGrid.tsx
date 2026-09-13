@@ -259,6 +259,12 @@ export function MasonryGrid({
         setExportDialog({ paths: pathsToExport })
         break
       }
+      case 'setFolderCover': {
+        // 提取图片所在文件夹路径（正斜杠格式）
+        const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
+        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        break
+      }
       // move/copy 待后续实现
       default:
         break

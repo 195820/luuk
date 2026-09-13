@@ -9,9 +9,8 @@ import {
   Check,
   X,
   GripVertical,
-  Save,
 } from 'lucide-react'
-import { useSlideshowStore, type SavedPlaylist, type PlaylistItem } from '@/stores/slideshowStore'
+import { useSlideshowStore, type SavedPlaylist } from '@/stores/slideshowStore'
 import { logger } from '@/utils/logger'
 
 interface PlaylistEditorProps {
@@ -26,7 +25,7 @@ interface PlaylistEditorProps {
  * - 创建/删除/重命名播放列表
  * - 拖拽排序播放列表项
  */
-export function PlaylistEditor({ isOpen, onClose, libraryId }: PlaylistEditorProps) {
+export function PlaylistEditor({ isOpen, onClose }: PlaylistEditorProps) {
   const savedPlaylists = useSlideshowStore(s => s.savedPlaylists)
   const activePlaylistId = useSlideshowStore(s => s.activePlaylistId)
   const savePlaylist = useSlideshowStore(s => s.savePlaylist)

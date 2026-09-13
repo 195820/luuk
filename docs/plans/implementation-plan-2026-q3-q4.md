@@ -44,7 +44,7 @@ Task 6.1（主题系统，Tailwind v4 @theme）
 Task 7.0（引入 archiver）
     └─► Task 7.2（导出）
 
-Task 7.1（幻灯片增强，复用 wavesurfer.js）  ← 独立
+Task 7.1（幻灯片增强，背景音乐用原生 <audio>）  ← 独立
 
 Task E.1（测试）→ 每个 Phase 完成后 24h 内补齐
 Task E.2（性能）→ Phase 5 首日跑基线，Phase 7 结束复测
@@ -59,7 +59,9 @@ Task E.2（性能）→ Phase 5 首日跑基线，Phase 7 结束复测
 
 ### Task 5.0：依赖引入与冒烟（前置）
 
-**状态**：⬜ 未开始  **工时**：0.25 天  **优先级**：P0
+**状态**：✅ 已跳过（采用方案 A：fs.access，无需 chokidar）  **工时**：0 天  **优先级**：P0
+
+**决策记录**：经评估，库监控采用 `fs.access` 轮询方案（`library-monitor.ts`），无需引入 chokidar 依赖。package.json 无 chokidar，实现更轻量。
 
 **范围**：
 - 引入 `chokidar@^3.6.0`（Task 5.2 备选，非必需 —— 详见 5.2 方案对比）
@@ -77,6 +79,8 @@ Task E.2（性能）→ Phase 5 首日跑基线，Phase 7 结束复测
 
 **状态**：🟡 70% 完成（文件级已实现）  **工时**：0.5 天  **优先级**：P0
 **前置**：无
+
+**决策**：采用方案 A（fs.access 轮询），Task 5.0 chokidar 依赖引入已跳过。库监控由 `library-monitor.ts` 实现。
 
 **已完成**：
 - ✅ 文件大小 + mtime 双条件跳过（`scanner.ts:222-227`）
@@ -491,8 +495,14 @@ const MIGRATIONS = [
 
 ### Task 7.1：幻灯片增强（P2 #22）
 
-**状态**：⬜ 未开始  **工时**：1.5 天  **优先级**：P2
+**状态**：✅ 已完成  **工时**：1.5 天  **优先级**：P2
 **前置**：无（可与 Task 7.0 并行）
+**决策（背景音乐实现）**：幻灯片背景音乐采用**原生 `<audio>` 元素**，不使用 wavesurfer.js。
+理由：BGM 场景无波形可视化需求，原生 `<audio>` 内存/CPU 开销更低（无需整轨解码为波形缓冲）；
+而 wavesurfer 实例生命周期较重、未 destroy 时反而是内存泄漏来源。wavesurfer.js 保留用于
+`AudioViewer.tsx` 的交互式波形展示（音频文件查看器），职责分离。
+资源释放双保险：组件卸载时 cleanup（pause + 清空 src + load）+ `slideshowStore.stop()` 显式调用
+`disposeAudioResources()`（不依赖 React effect 时序）。
 
 **需求（明确范围）**：
 - 过渡动画：淡入淡出 / 滑动 / 缩放（复用 `motion@^13` + `src/lib/motion-presets.ts`）
@@ -500,9 +510,9 @@ const MIGRATIONS = [
 - 自定义播放列表（拖拽排序，持久化到 electron-store）
 - **背景音乐范围明确**：
   - 单曲循环（一张 MP3/WAV/FLAC/M4A）
-  - **复用现有 `wavesurfer.js@^7.12.8`**（无需新增音频依赖）
+  - **采用原生 `<audio>` 元素**（无波形需求，开销更低；wavesurfer.js 仅用于 AudioViewer 波形展示）
   - 与图片切换**解耦**（音乐独立播放，不影响切图节奏）
-  - **退出全屏或幻灯片停止时自动停止并释放 audio 元素**
+  - **退出全屏或幻灯片停止时自动停止并释放 audio 元素**（cleanup + stop() 显式 disposer 双保险）
   - 音量控制（0-100，滑块 UI 复用现有 `.audio-volume-slider` 样式）
 
 **技术方案**：
@@ -532,14 +542,14 @@ interface SlideshowState {
 - [ ] 支持随机播放模式（Ctrl+R 切换，UI 状态同步）
 - [ ] 可创建/保存/加载自定义播放列表（electron-store `slideshow.playlists`）
 - [ ] 支持添加背景音乐（MP3/WAV/FLAC/M4A），单曲循环 + 音量控制
-- [ ] **退出全屏 / 关闭幻灯片 → 音乐立即停止 + wavesurfer 实例 destroy**（内存泄漏防护）
+- [ ] **退出全屏 / 关闭幻灯片 → 音乐立即停止 + 原生 audio 元素释放**（cleanup + stop() 显式 disposer，内存泄漏防护）
 - [ ] 播放列表拖拽排序流畅（60 FPS）
 
 **涉及文件**：
 - `src/stores/slideshowStore.ts`（新建）
 - `src/components/layout/SlideshowBar.tsx`
 - `src/components/PlaylistEditor.tsx`（新建）
-- `src/components/SlideshowAudio.tsx`（新建，封装 wavesurfer）
+- `src/components/SlideshowAudio.tsx`（新建，封装原生 `<audio>`）
 - `src/components/ImageViewer.tsx`（过渡动画，复用 motion-presets）
 
 ---
@@ -727,7 +737,7 @@ export class ExportService {
 | `chokidar`（备选） | 文件监听 | ^3.6.0 | ❌ 需引入 | 中（若采用方案 A 可跳过） |
 | `archiver` | ZIP 导出 | ^7.0.0 | ❌ 需引入 | 中（asar 打包待验证） |
 | `sharp` | 直方图 / 导出转换 | ^0.34.5 | ✅ 已有 | 低 |
-| `wavesurfer.js` | 幻灯片背景音乐 | ^7.12.8 | ✅ 已有 | 低 |
+| `wavesurfer.js` | 音频查看器波形展示（AudioViewer） | ^7.12.8 | ✅ 已有 | 低（幻灯片 BGM 改用原生 `<audio>`，不用此依赖） |
 | `motion` | 过渡动画 | ^13.0.0 | ✅ 已有 | 低 |
 | `recharts` | 直方图渲染 | ^3.10.1 | ✅ 已有 | 低 |
 | `electron-store` | 主题 / 搜索历史 / 播放列表持久化 | ^11.0.2 | ✅ 已有 | 低 |
@@ -742,7 +752,7 @@ export class ExportService {
 | 主题系统（6.1） | electron-store `theme.enabled = false` | 用户报告样式崩坏 / 视觉回归失败 |
 | 文件夹封面（6.3） | `schema_version` 保留，UI 层不读取 `folder_covers` | 迁移失败 |
 | 离线检测（5.2） | `LibraryMonitor.stop()` + 全库强制 `online` | 误报频繁 |
-| 幻灯片音乐（7.1） | `slideshowStore.audioTrack = null` | wavesurfer 内存泄漏 |
+| 幻灯片音乐（7.1） | `slideshowStore.audioTrack = null` | 原生 audio 元素未释放导致内存泄漏 |
 | 导出（7.2） | 右键菜单隐藏"导出为..."入口 | ZIP 生成失败率高 |
 
 **每个 feature flag 必须在 Phase 7 末评估：达标 → 默认开启并清理；不达标 → 排入下一 Quarter**。
@@ -769,7 +779,7 @@ export class ExportService {
 ### Phase 7（Week 3-4）
 - [ ] 幻灯片过渡动画（淡入淡出 / 滑动 / 缩放）
 - [ ] 随机播放 + 自定义播放列表（持久化）
-- [ ] 背景音乐（复用 wavesurfer，退出释放资源）
+- [ ] 背景音乐（原生 `<audio>`，退出释放资源）
 - [ ] 单图 / 批量导出 + 格式转换 + 进度反馈 + 取消支持
 - [ ] 单文件失败不中断批量
 
@@ -783,24 +793,42 @@ export class ExportService {
 
 ## 📎 附录 A：性能基线报告
 
-> Phase 5 首日填写。
+> 环境基线已于 2026-09-12 实机采集；性能指标需在**同一台参考机**上按下方协议采集，
+> 禁止填入估算/虚构数值（否则 Phase 7 复测无法对比）。
 
-**测试环境**：
-- CPU：待填
-- 内存：待填
-- 磁盘：待填（NVMe / SATA SSD / HDD）
+**测试环境（实机采集 @ 2026-09-12）**：
+- CPU：AMD Ryzen 5 PRO 4650U with Radeon Graphics（6 核 / 12 线程）
+- 内存：16 GB（可用物理内存 15.2 GB）
+- 磁盘：SAMSUNG MZALQ512HALU-000L1，NVMe SSD，512 GB（E: 盘位于此磁盘）
 - OS：Windows 22H2
-- Node：待填 / Electron：^40.6.1
+- Node：v24.14.0 / Electron：^40.6.1
 
-**基线数据**：
+**基准数据集**：
+- 仓库内置：`test-data/huge-library`（**7,780** 个媒体文件，85+ 子目录）—— 用于回归对比的标准数据集
+- 10 万张规格：需先用 `scripts/generate-test-data.cjs` 生成 ≥100,000 文件的合成库（当前仓库未内置，采集前需生成）
 
-| 指标 | 冷启动 | 热启动 | 备注 |
-|------|--------|--------|------|
-| 应用启动时间 | 待测 | 待测 | 从双击到主窗口渲染完成 |
-| 10 万张库首次扫描 | 待测 | — | 含元数据 + pHash |
-| 10 万张库增量扫描（无变化） | — | 待测 | 双条件跳过生效 |
-| 网格滚动 FPS（1000 张可见） | 待测 | 待测 | Chrome DevTools 采样 |
-| 内存占用（稳态） | 待测 | 待测 | 任务管理器 Private Bytes |
+**测量协议与基线数据**：
+
+| 指标 | 测量方法 | 冷启动 | 热启动 | 采集状态 |
+|------|----------|--------|--------|----------|
+| 应用启动时间 | 双击图标 → 主窗口 `DOMContentLoaded`（DevTools Performance 打点），取 5 次中位数 | 待实机采集 | 待实机采集 | ⬜ Phase 5 首日 |
+| 库首次扫描吞吐 | 对 huge-library（7,780）执行全量扫描，记录 `scan-progress` 起止时间戳，换算 张/秒（含元数据 + pHash） | 待实机采集 | — | ⬜ Phase 5 首日 |
+| 库增量扫描（无变化） | 紧接首次扫描后再次扫描同一库，验证双条件跳过（size+mtime），记录耗时与跳过率 | — | 待实机采集 | ⬜ Phase 5 首日 |
+| 网格滚动 FPS | 加载 ≥1000 张可见图，Chrome DevTools Performance 录制匀速滚动 5s，读取 Frame 平均 FPS | 待实机采集 | 待实机采集 | ⬜ Phase 5 首日 |
+| 内存占用（稳态） | 扫描完成 + 网格静置 30s 后，任务管理器读取主进程 Private Bytes | 待实机采集 | 待实机采集 | ⬜ Phase 5 首日 |
+
+> **对比规则**：Phase 7 复测必须在同一参考机、同一数据集、同一协议下采集，
+> 复测值与本附录基线逐项对比，回填至下方「Phase 7 复测」列并计算变化率。
+
+**Phase 7 复测（结束时回填）**：
+
+| 指标 | 基线 | 复测 | 变化率 | 达标判定 |
+|------|------|------|--------|----------|
+| 应用启动时间（冷） | — | — | — | 冷启动 ≤ 3s |
+| 库首次扫描吞吐 | — | — | — | ≥ 200 张/秒 |
+| 库增量扫描（无变化） | — | — | — | 跳过率 ≥ 95% |
+| 网格滚动 FPS | — | — | — | ≥ 55 FPS |
+| 内存占用（稳态） | — | — | — | ≤ 800 MB |
 
 ---
 
@@ -810,6 +838,7 @@ export class ExportService {
 |------|----------|------|
 | 2026-09-12 | 初始版本，整合 P0-P2 任务 | Claude |
 | 2026-09-12 | **评审修订 v2**：修正 15 项问题 —— 依赖清单/DB 迁移策略/Tailwind v4 兼容/工时统一/XSS 防护/直方图分级 SLA/离线检测改用 fs.access/幻灯片音乐范围/导出工时上调/测试分模块覆盖率/任务依赖图/回滚 feature flag/需求追溯链接/变更日志规范/性能基线附录 | Claude |
+| 2026-09-12 | **代码评审复审修正**：修复 archiver 运行时 Critical（`new ZipArchive` → `archiver('zip')` 工厂）；export handlers 迁至 file-handlers.ts + 新增 unregisterFileHandlers；stop() 显式 disposeAudioResources；Task 7.1 背景音乐定调为原生 `<audio>`（wavesurfer 仅留 AudioViewer）；附录 A 环境基线实机采集 + 测量协议 | Claude |
 
 ---
 

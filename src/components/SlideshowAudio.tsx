@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { Music, X, Volume2, VolumeX } from 'lucide-react'
-import { useSlideshowStore } from '@/stores/slideshowStore'
+import { useSlideshowStore, registerAudioDisposer } from '@/stores/slideshowStore'
 import { logger } from '@/utils/logger'
 
 /**
@@ -29,14 +29,14 @@ export function SlideshowAudio() {
 
     const loadAudio = async () => {
       try {
-        // 通过 IPC 获取 media:// 协议 URL
-        const result = await window.electronAPI.getMediaUrl(audioTrack.path)
-        if (cancelled || !result.success || !result.data) {
-          logger.error('SlideshowAudio', '获取音频 URL 失败', result.error)
+        // 通过音频专用 IPC 通道获取 media:// 协议 URL
+        // （不走库访问校验，支持用户从任意目录选择的音频文件）
+        const mediaUrl = await window.electronAPI.getAudioUrl(audioTrack.path)
+        if (cancelled || !mediaUrl) {
+          logger.error('SlideshowAudio', '获取音频 URL 失败')
           return
         }
 
-        const mediaUrl = result.data
         if (audio.src !== mediaUrl) {
           audio.src = mediaUrl
           audio.load()
@@ -93,12 +93,19 @@ export function SlideshowAudio() {
     }
   }, [isPlaying, audioTrack])
 
-  // 幻灯片停止时移除音频轨道
+  // 注册音频资源释放器：slideshowStore.stop() 时显式调用，
+  // 不依赖组件卸载时序即可确定性释放音频元素
   useEffect(() => {
-    if (!isPlaying && audioTrack) {
-      removeAudioTrack()
-    }
-  }, [isPlaying, audioTrack, removeAudioTrack])
+    const unregister = registerAudioDisposer(() => {
+      const audio = audioRef.current
+      if (audio) {
+        audio.pause()
+        audio.src = ''
+        audio.load()
+      }
+    })
+    return unregister
+  }, [])
 
   // 切换静音
   const toggleMute = useCallback(() => {

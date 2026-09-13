@@ -52,8 +52,8 @@ interface SlideshowState {
   toggleMode: () => void
   /** 设置过渡动画 */
   setTransition: (t: SlideshowTransition) => void
-  /** 设置切换间隔 */
-  setInterval: (sec: number) => void
+  /** 设置切换间隔（秒） */
+  setIntervalSec: (sec: number) => void
   /** 设置播放状态 */
   setPlaying: (playing: boolean) => void
   /** 设置运行时播放列表 */
@@ -76,7 +76,9 @@ interface SlideshowState {
   reorderPlaylistItems: (playlistId: string, fromIndex: number, toIndex: number) => void
   /** 启动幻灯片（进入播放状态） */
   start: () => void
-  /** 停止幻灯片（退出播放状态，必须释放资源） */
+  /** 暂停幻灯片（保留 audioTrack，可恢复） */
+  pause: () => void
+  /** 停止幻灯片（退出播放状态，释放全部资源） */
   stop: () => void
 }
 
@@ -90,6 +92,35 @@ const MAX_INTERVAL = 30
 /** 生成唯一 ID */
 function generateId(): string {
   return `pl_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+}
+
+/**
+ * 音频资源释放器注册表
+ * - SlideshowAudio 挂载时注册一个释放回调（pause + 清空 src + load）
+ * - stop() 显式调用 disposeAudioResources()，不依赖 React effect 卸载时序，
+ *   保证退出幻灯片时音频元素被确定性释放（避免后台继续解码/占用内存）
+ */
+type AudioDisposer = () => void
+const audioDisposers = new Set<AudioDisposer>()
+
+/** 注册音频资源释放器，返回注销函数 */
+export function registerAudioDisposer(disposer: AudioDisposer): () => void {
+  audioDisposers.add(disposer)
+  return () => {
+    audioDisposers.delete(disposer)
+  }
+}
+
+/** 显式释放所有已注册的音频资源（幂等，可在 stop() 外单独调用/测试） */
+export function disposeAudioResources(): void {
+  audioDisposers.forEach((dispose) => {
+    try {
+      dispose()
+    } catch (err) {
+      logger.warn('Slideshow', '释放音频资源失败', (err as Error).message)
+    }
+  })
+  audioDisposers.clear()
 }
 
 export const useSlideshowStore = create<SlideshowState>()(
@@ -110,7 +141,7 @@ export const useSlideshowStore = create<SlideshowState>()(
 
       setTransition: (t) => set({ transition: t }),
 
-      setInterval: (sec) => {
+      setIntervalSec: (sec) => {
         const clamped = Math.max(MIN_INTERVAL, Math.min(MAX_INTERVAL, sec))
         set({ intervalSec: clamped })
       },
@@ -208,11 +239,19 @@ export const useSlideshowStore = create<SlideshowState>()(
         logger.info('Slideshow', '幻灯片开始播放')
       },
 
+      pause: () => {
+        // 暂停时保留 audioTrack，可恢复播放
+        set({ isPlaying: false })
+        logger.info('Slideshow', '幻灯片已暂停')
+      },
+
       stop: () => {
-        // 停止时清理音乐轨道，释放资源
+        // 显式释放音频资源（不依赖 React effect 卸载时序），再清理播放状态
+        disposeAudioResources()
         set({
           isPlaying: false,
-          audioTrack: null
+          audioTrack: null,
+          playlist: [],
         })
         logger.info('Slideshow', '幻灯片已停止，资源已释放')
       }

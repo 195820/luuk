@@ -228,6 +228,12 @@ export function ImageGrid({
         setExportDialog({ paths: pathsToExport })
         break
       }
+      case 'setFolderCover': {
+        // 提取图片所在文件夹路径（正斜杠格式）
+        const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
+        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        break
+      }
     }
     setContextMenu(null)
   }, [contextMenu, libraryId, selectedPaths, displayImages])

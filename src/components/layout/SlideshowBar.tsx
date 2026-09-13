@@ -8,7 +8,6 @@ import {
   ArrowRightLeft,
   Music,
   ListMusic,
-  Settings2,
 } from 'lucide-react'
 import { useSlideshowStore, type SlideshowTransition } from '@/stores/slideshowStore'
 import { SlideshowAudio } from '../SlideshowAudio'
@@ -40,7 +39,7 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
   const audioTrack = useSlideshowStore(s => s.audioTrack)
   const toggleMode = useSlideshowStore(s => s.toggleMode)
   const setTransition = useSlideshowStore(s => s.setTransition)
-  const setInterval = useSlideshowStore(s => s.setInterval)
+  const setIntervalSec = useSlideshowStore(s => s.setIntervalSec)
   const addAudioTrack = useSlideshowStore(s => s.addAudioTrack)
 
   const [showPlaylistEditor, setShowPlaylistEditor] = useState(false)
@@ -58,12 +57,14 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
   }
 
   return (
-    <>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 20 }}
-        transition={motionPresets.panel}
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 20 }}
+      transition={motionPresets.panel}
+      className="contents"
+    >
+      <div
         className="glass-l2 fixed bottom-4 left-1/2 -translate-x-1/2 px-4 py-3 flex items-center gap-4 rounded-xl border border-border shadow-lg z-40"
       >
         {/* 播放状态指示 */}
@@ -80,7 +81,7 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
           <span className="text-xs text-text-secondary">间隔:</span>
           <select
             value={intervalSec}
-            onChange={e => setInterval(Number(e.target.value))}
+            onChange={e => setIntervalSec(Number(e.target.value))}
             className="h-7 pl-2 pr-6 bg-canvas-tertiary border border-border rounded text-xs text-text-secondary cursor-pointer outline-none hover:border-border-hover appearance-none"
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
@@ -162,10 +163,10 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-text-primary bg-overlay-lighter hover:bg-overlay rounded transition-colors"
           onClick={onToggle}
         >
-          <Pause size={12} />
-          暂停
+          {isPlaying ? <Pause size={12} /> : <MonitorPlay size={12} />}
+          {isPlaying ? '暂停' : '播放'}
         </button>
-      </motion.div>
+      </div>
 
       {/* 背景音乐播放器（有音频时显示） */}
       {audioTrack && (
@@ -186,6 +187,6 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
         onClose={() => setShowPlaylistEditor(false)}
         libraryId={libraryId}
       />
-    </>
+    </motion.div>
   )
 }

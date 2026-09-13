@@ -1,10 +1,37 @@
 import sharp from 'sharp'
-import archiver from 'archiver'
+import * as archiverModule from 'archiver'
+import type { Archiver } from 'archiver'
 import { createWriteStream, promises as fsp } from 'fs'
-import { join, dirname, basename, extname } from 'path'
+import { join, basename, extname } from 'path'
 import { pipeline } from 'stream/promises'
 import { logger } from '../../utils/logger'
-import type { ExportOptions, ExportProgress } from '../../types'
+import type { ExportOptions } from '../../types'
+
+/**
+ * archiver@7 运行时导出可调用工厂（`archiver('zip', opts)`）与 `create()`；
+ * 但当前 @types/archiver 声明的是 v8 风格的类导出（ZipArchive/TarArchive），既无
+ * default 也无可调用签名：`import archiver from 'archiver'` 报 TS1192，
+ * `new archiverModule.ZipArchive()` 运行时 not a constructor。两者无法同时成立。
+ * 此处用命名空间导入 + 运行时形态探测，兼容不同打包器（esbuild/rollup）对 CJS 的
+ * interop：依次尝试命名空间本身 / .default / .create，取到真正可调用的工厂。
+ */
+type ArchiverFactory = (
+  format: 'zip' | 'tar' | 'json',
+  options?: Record<string, unknown>
+) => Archiver
+
+function resolveArchiverFactory(): ArchiverFactory {
+  const m = archiverModule as unknown as {
+    default?: unknown
+    create?: unknown
+  }
+  if (typeof m === 'function') return m as unknown as ArchiverFactory
+  if (typeof m.default === 'function') return m.default as ArchiverFactory
+  if (typeof m.create === 'function') return (m.create as ArchiverFactory).bind(m)
+  throw new Error('archiver 运行时工厂不可用（interop 形态未命中）')
+}
+
+const createArchive = resolveArchiverFactory()
 
 /**
  * 导出服务 — 支持单图导出 + 批量 ZIP 导出
@@ -86,13 +113,13 @@ export class ExportService {
     this.abortControllers.set(taskId, ac)
 
     const output = createWriteStream(opts.outputPath)
-    const archive = archiver('zip', { zlib: { level: 6 } })
+    const archive = createArchive('zip', { zlib: { level: 6 } })
 
-    archive.on('warning', (err) => {
+    archive.on('warning', (err: Error) => {
       logger.warn('ExportService', 'ZIP 警告:', err.message)
     })
 
-    archive.on('error', (err) => {
+    archive.on('error', (err: Error) => {
       logger.error('ExportService', 'ZIP 错误:', err.message)
       throw err
     })
@@ -108,6 +135,15 @@ export class ExportService {
       if (ac.signal.aborted) {
         logger.info('ExportService', '批量导出已取消')
         archive.abort()
+        // 等待输出流 close（释放文件句柄），确保 Windows 下 unlink 不因占用失败
+        await new Promise<void>((resolve) => {
+          output.once('close', () => resolve())
+          output.destroy()
+        })
+        // 吞掉因 destroy 触发的管道拒绝，避免未处理的 Promise rejection
+        await pipelinePromise.catch(() => {})
+        await fsp.unlink(opts.outputPath).catch(() => {})
+        this.abortControllers.delete(taskId)
         return
       }
 
@@ -189,9 +225,10 @@ export class ExportService {
    */
   private resolveOutPath(imagePath: string, opts: ExportOptions): string {
     const dir = opts.outputPath
-    const ext = this.getExtForFormat(opts.format)
-    const baseName = basename(imagePath, extname(imagePath))
-    return join(dir, `${baseName}${ext}`)
+    const baseName = opts.format === 'original'
+      ? basename(imagePath)  // 保留原扩展名
+      : basename(imagePath, extname(imagePath)) + this.getExtForFormat(opts.format)
+    return join(dir, baseName)
   }
 
   /**
@@ -201,9 +238,9 @@ export class ExportService {
    * @returns 文件名（含扩展名）
    */
   private resolveFileName(imagePath: string, opts: ExportOptions): string {
-    const ext = this.getExtForFormat(opts.format)
-    const baseName = basename(imagePath, extname(imagePath))
-    return `${baseName}${ext}`
+    return opts.format === 'original'
+      ? basename(imagePath)  // 保留原扩展名
+      : basename(imagePath, extname(imagePath)) + this.getExtForFormat(opts.format)
   }
 
   /**

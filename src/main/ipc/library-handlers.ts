@@ -435,6 +435,25 @@ export function registerLibraryHandlers(): void {
     return registerMediaUrl(resolvedPath);
   });
 
+  // 音频专用 URL 通道：不走 validateLibraryAccess，允许任意路径的音频文件
+  // 仅用于幻灯片背景音乐（用户通过文件选择器指定）
+  ipcMain.handle('getAudioUrl', async (
+    _event: Electron.IpcMainInvokeEvent,
+    filePath: string
+  ): Promise<string> => {
+    const resolvedPath = path.resolve(filePath);
+    const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.flac', '.m4a', '.aac', '.ogg', '.wma']);
+    const ext = path.extname(resolvedPath).toLowerCase();
+    if (!AUDIO_EXTENSIONS.has(ext)) {
+      throw new Error(`Access denied: not a supported audio format (${ext})`);
+    }
+    const fs = await import('fs');
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error('File not found');
+    }
+    return registerMediaUrl(resolvedPath);
+  });
+
   // 更新扫描进度
   ipcMain.handle('updateScanProgress', async (
     _event: Electron.IpcMainInvokeEvent,
@@ -592,8 +611,7 @@ export function registerLibraryHandlers(): void {
     coverPath: string
   ) => {
     try {
-      const masterDB = getMasterDB();
-      masterDB.setFolderCover(libraryId, folderPath, coverPath);
+      service.setFolderCover(libraryId, folderPath, coverPath);
       return { success: true };
     } catch (err) {
       logger.error('LibraryHandlers', 'setFolderCover 失败', err);
@@ -608,8 +626,7 @@ export function registerLibraryHandlers(): void {
     folderPath: string
   ) => {
     try {
-      const masterDB = getMasterDB();
-      masterDB.removeFolderCover(libraryId, folderPath);
+      service.removeFolderCover(libraryId, folderPath);
       return { success: true };
     } catch (err) {
       logger.error('LibraryHandlers', 'removeFolderCover 失败', err);
@@ -622,8 +639,7 @@ export function registerLibraryHandlers(): void {
     _event: Electron.IpcMainInvokeEvent,
     libraryId: number
   ) => {
-    const masterDB = getMasterDB();
-    return masterDB.getFolderCovers(libraryId);
+    return service.getFolderCovers(libraryId);
   });
 
   // ==================== 直方图 ====================
@@ -656,90 +672,16 @@ export function registerLibraryHandlers(): void {
     }
   });
 
-  // ==================== 导出功能 ====================
-  let exportService: any = null;
-
-  // 导出单张图片
-  ipcMain.handle('exportSingleImage', async (_event, libraryId: number, relativePath: string, options: any, taskId: string) => {
-    try {
-      if (!exportService) {
-        const { ExportService } = await import('../services/export-service');
-        exportService = new ExportService();
-      }
-      const library = service.getLibraryById(libraryId);
-      if (!library) {
-        return { success: false, error: '库不存在' };
-      }
-      const absPath = path.join(library.rootPath, relativePath);
-      // 安全检查：确保路径在库目录内
-      const resolved = path.resolve(absPath);
-      const libRoot = path.resolve(library.rootPath);
-      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
-        return { success: false, error: 'Access denied' };
-      }
-      const outputPath = await exportService.exportSingle(absPath, options, taskId);
-      return { success: true, outputPath };
-    } catch (err) {
-      logger.error('LibraryHandlers', 'exportSingleImage 失败', err);
-      return { success: false, error: (err as Error).message };
-    }
-  });
-
-  // 批量导出为 ZIP
-  ipcMain.handle('exportBatchImages', async (_event, libraryId: number, relativePaths: string[], options: any, taskId: string) => {
-    try {
-      if (!exportService) {
-        const { ExportService } = await import('../services/export-service');
-        exportService = new ExportService();
-      }
-      const library = service.getLibraryById(libraryId);
-      if (!library) {
-        return { success: false, error: '库不存在' };
-      }
-      const libRoot = path.resolve(library.rootPath);
-      const absPaths = relativePaths.map(rp => {
-        const absPath = path.join(library.rootPath, rp);
-        const resolved = path.resolve(absPath);
-        if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
-          throw new Error('Access denied');
-        }
-        return resolved;
-      });
-      await exportService.exportBatch(absPaths, options, taskId, (done, total) => {
-        sendToRenderer('export-progress', { taskId, done, total, finished: false });
-      });
-      sendToRenderer('export-progress', { taskId, done: relativePaths.length, total: relativePaths.length, finished: true });
-      return { success: true };
-    } catch (err) {
-      logger.error('LibraryHandlers', 'exportBatchImages 失败', err);
-      return { success: false, error: (err as Error).message };
-    }
-  });
-
-  // 取消导出任务
-  ipcMain.handle('cancelExport', async (_event, taskId: string) => {
-    try {
-      if (!exportService) {
-        return { success: true }; // 服务未初始化，无需取消
-      }
-      exportService.cancel(taskId);
-      return { success: true };
-    } catch (err) {
-      logger.error('LibraryHandlers', 'cancelExport 失败', err);
-      return { success: false, error: (err as Error).message };
-    }
-  });
-
   // ==================== 幻灯片 ====================
 
   // 选择音频文件（用于幻灯片背景音乐）
-  ipcMain.handle('selectAudioFile', async () => {
+  ipcMain.handle('selectAudioFile', async (event: Electron.IpcMainInvokeEvent) => {
     try {
-      const windows = BrowserWindow.getAllWindows();
-      if (windows.length === 0) {
+      const parent = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0];
+      if (!parent || parent.isDestroyed()) {
         return { success: false, error: 'No window available' };
       }
-      const result = await dialog.showOpenDialog(windows[0], {
+      const result = await dialog.showOpenDialog(parent, {
         title: '选择背景音乐',
         filters: [
           { name: '音频文件', extensions: ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'] }
@@ -773,7 +715,7 @@ const IPC_HANDLER_NAMES = [
   'getThumbnail', 'getThumbnails', 'toggleFavorite', 'getFavorites',
   'setFavoriteRating', 'addHistory', 'getHistory', 'clearHistory',
   'getCacheStats', 'getCacheConfig', 'setCacheLimit', 'clearCache', 'readFile', 'fileExists',
-  'loadFullImage', 'getMediaUrl', 'getMediaPath',
+  'loadFullImage', 'getMediaUrl', 'getAudioUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',
   'getLibraryStats', 'getImageExif',
   'updateScanProgress', 'clearScanProgress',
@@ -781,7 +723,6 @@ const IPC_HANDLER_NAMES = [
   'getSearchPresets', 'saveSearchPreset', 'deleteSearchPreset',
   'setFolderCover', 'removeFolderCover', 'getFolderCovers',
   'getImageHistogram',
-  'exportSingleImage', 'exportBatchImages', 'cancelExport',
   'selectAudioFile',
 ] as const;
 

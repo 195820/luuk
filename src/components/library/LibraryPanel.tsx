@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { Database, RefreshCw, Trash2, AlertCircle } from 'lucide-react'
 import type { Library } from '../../types'
+import { useImageStore } from '../../stores/imageStore'
 
 interface LibraryPanelProps {
   libraries: Library[]
@@ -17,41 +18,23 @@ export function LibraryPanel({
   onRemoveLibrary,
   onScanLibrary,
 }: LibraryPanelProps) {
-  // 库状态映射（从 IPC 事件更新）
-  const [statusMap, setStatusMap] = useState<Record<number, 'online' | 'offline'>>(() => {
-    const map: Record<number, 'online' | 'offline'> = {}
-    for (const lib of libraries) {
-      map[lib.id] = lib.status || 'online'
-    }
-    return map
-  })
+  // 从全局 store 消费库在线状态
+  const libraryStatus = useImageStore((s) => s.libraryStatus)
+  const setLibraryStatus = useImageStore((s) => s.setLibraryStatus)
 
-  // 订阅库状态变更事件
+  // 订阅库状态变更事件，直接写入全局 store
   useEffect(() => {
     if (!window.electronAPI?.onLibraryStatusChanged) return
 
     const unsubscribe = window.electronAPI.onLibraryStatusChanged(({ id, status }) => {
-      setStatusMap(prev => ({ ...prev, [id]: status }))
+      setLibraryStatus(id, status)
     })
 
     return unsubscribe
-  }, [])
-
-  // 同步 libraries 变更到 statusMap
-  useEffect(() => {
-    setStatusMap(prev => {
-      const next = { ...prev }
-      for (const lib of libraries) {
-        if (!(lib.id in next)) {
-          next[lib.id] = lib.status || 'online'
-        }
-      }
-      return next
-    })
-  }, [libraries])
+  }, [setLibraryStatus])
 
   const getLibraryStatus = (libId: number): 'online' | 'offline' => {
-    return statusMap[libId] || 'offline'
+    return libraryStatus[libId] || 'offline'
   }
 
   return (

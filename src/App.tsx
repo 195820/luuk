@@ -2,12 +2,12 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { motionPresets } from '@/lib/motion-presets'
 import {
-  Folder, FolderOpen, Heart, Music, Pause, X,
+  Folder, FolderOpen, Heart, Music, X,
   RefreshCw, Trash2, AlertTriangle, Plus, Tag,
   LayoutGrid, Columns3, Image as ImageIcon, Maximize2,
-  Database, MonitorPlay, HardDrive,
+  Database, HardDrive,
 } from 'lucide-react'
-import { ImageViewer, type SlideshowSettings } from './components/ImageViewer'
+import { ImageViewer } from './components/ImageViewer'
 import { CompareViewer } from './components/CompareViewer'
 import { ImageGrid } from './components/ImageGrid'
 import { MasonryGrid } from './components/MasonryGrid'
@@ -37,6 +37,8 @@ import { logger } from './utils/logger'
 
 function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
+  const currentIndexRef = useRef(currentIndex)
+  currentIndexRef.current = currentIndex
   const [viewMode, setViewMode] = useState<'grid' | 'viewer'>('grid')
   const [appView, setAppView] = useState<'main' | 'recycleBin'>('main')
   const [thumbnailSize, setThumbnailSize] = useState(200)
@@ -44,6 +46,8 @@ function App() {
   const [slideshowEnabled, setSlideshowEnabled] = useState(false)
   const gridScrollRef = useRef<number>(0)
   const slideshowTimerRef = useRef<NodeJS.Timeout | null>(null)
+  // 跨库播放列表切换的待跳转目标（避免 setCurrentLibrary 后同步读取 images 的竞态）
+  const pendingJumpRef = useRef<{ libraryId: number; imagePath: string } | null>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
 
   const {
@@ -445,58 +449,67 @@ function App() {
     if (!slideshowEnabled) {
       useSlideshowStore.getState().start()
     } else {
-      useSlideshowStore.getState().stop()
+      useSlideshowStore.getState().pause()  // 暂停保留 BGM
     }
   }, [slideshowEnabled])
 
   // 幻灯片定时器（视频播放中暂停定时器，视频播完后通过 onVideoEnded 触发前进）
   // 支持随机播放模式和自定义播放列表
   const intervalSec = useSlideshowStore(s => s.intervalSec)
-  const slideshowMode = useSlideshowStore(s => s.mode)
-  const slideshowPlaylist = useSlideshowStore(s => s.playlist)
 
   useEffect(() => {
     if (slideshowEnabled && viewMode === 'viewer' && !isVideoPlaying) {
       slideshowTimerRef.current = setInterval(() => {
+        // 所有动态状态通过 getState() 读取，避免依赖数组膨胀导致定时器频繁重建
+        const playlist = useSlideshowStore.getState().playlist
+        const curMode = useSlideshowStore.getState().mode
+        const imgStore = useImageStore.getState()
+        const curLibId = imgStore.currentLibraryId ?? currentLibraryId
+        const curImg = imgStore.currentImage
+        const curIdx = currentIndexRef.current
+        const currentImages = imgStore.images
+
         // 如果有自定义播放列表，使用它；否则使用当前库的图片
-        if (slideshowPlaylist.length > 0) {
+        if (playlist.length > 0) {
           // 自定义播放列表模式
-          const currentIndex = useSlideshowStore.getState().playlist.findIndex(
-            item => item.libraryId === currentLibraryId && item.imagePath === currentImage?.relative_path
+          const currentIndex = playlist.findIndex(
+            item => item.libraryId === curLibId && item.imagePath === curImg?.relative_path
           )
           let nextIndex: number
-          if (slideshowMode === 'random') {
+          if (curMode === 'random') {
             // 随机模式：从播放列表中选择一张不同的图片
-            nextIndex = Math.floor(Math.random() * slideshowPlaylist.length)
-            if (nextIndex === currentIndex && slideshowPlaylist.length > 1) {
-              nextIndex = (nextIndex + 1) % slideshowPlaylist.length
+            nextIndex = Math.floor(Math.random() * playlist.length)
+            if (nextIndex === currentIndex && playlist.length > 1) {
+              nextIndex = (nextIndex + 1) % playlist.length
             }
           } else {
             // 顺序模式
-            nextIndex = (currentIndex + 1) % slideshowPlaylist.length
+            nextIndex = (currentIndex + 1) % playlist.length
           }
-          const nextItem = slideshowPlaylist[nextIndex]
-          if (nextItem && (nextItem.libraryId !== currentLibraryId || nextItem.imagePath !== currentImage?.relative_path)) {
-            // 切换库（如果需要）
-            if (nextItem.libraryId !== currentLibraryId) {
+          const nextItem = playlist[nextIndex]
+          if (nextItem && (nextItem.libraryId !== curLibId || nextItem.imagePath !== curImg?.relative_path)) {
+            // 跨库切换：先存储待跳转目标，等图片加载完成后由 effect 执行跳转
+            if (nextItem.libraryId !== curLibId) {
+              pendingJumpRef.current = { libraryId: nextItem.libraryId, imagePath: nextItem.imagePath }
               setCurrentLibrary(nextItem.libraryId)
-            }
-            // 查找图片并跳转
-            const targetImages = useImageStore.getState().images
-            const imgIndex = targetImages.findIndex(img => img.relative_path === nextItem.imagePath)
-            if (imgIndex >= 0) {
-              setCurrentIndex(imgIndex)
-              setCurrentImage(targetImages[imgIndex])
+            } else {
+              // 同库内跳转，直接查找并设置
+              const targetImages = useImageStore.getState().images
+              const imgIndex = targetImages.findIndex(img => img.relative_path === nextItem.imagePath)
+              if (imgIndex >= 0) {
+                setCurrentIndex(imgIndex)
+                setCurrentImage(targetImages[imgIndex])
+              }
             }
           }
         } else {
           // 使用当前库的图片
-          if (slideshowMode === 'random') {
+          if (curMode === 'random') {
             // 随机模式：选择一张不同的图片
-            const totalImages = images.length
+            const totalImages = currentImages.length
             if (totalImages > 1) {
               let newIndex = Math.floor(Math.random() * totalImages)
-              if (newIndex === currentIndex) {
+              if (newIndex === curIdx) {
                 newIndex = (newIndex + 1) % totalImages
               }
               setCurrentIndex(newIndex)
@@ -519,7 +532,21 @@ function App() {
         clearInterval(slideshowTimerRef.current)
       }
     }
-  }, [slideshowEnabled, intervalSec, slideshowMode, slideshowPlaylist, viewMode, handleNext, currentLibraryId, currentIndex, images, currentImage, isVideoPlaying])
+  }, [slideshowEnabled, intervalSec, viewMode, handleNext, currentLibraryId, isVideoPlaying])
+
+  // 跨库播放列表跳转：等待新库图片加载完成后执行目标图片定位
+  useEffect(() => {
+    const pending = pendingJumpRef.current
+    if (!pending || pending.libraryId !== currentLibraryId || images.length === 0) return
+
+    const imgIndex = images.findIndex(img => img.relative_path === pending.imagePath)
+    if (imgIndex >= 0) {
+      setCurrentIndex(imgIndex)
+      setCurrentImage(images[imgIndex])
+    }
+    // 无论是否找到，都清除 pending（避免下次误触）
+    pendingJumpRef.current = null
+  }, [currentLibraryId, images, setCurrentIndex, setCurrentImage])
 
   // 视频播完回调（幻灯片模式下自动前进）
   const handleVideoEnded = useCallback(() => {
@@ -842,7 +869,7 @@ function App() {
           e.preventDefault()
           handleLast()
         }
-        if (e.key === 'r' || e.key === 'R') {
+        if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && !e.altKey) {
           e.preventDefault()
           window.dispatchEvent(new CustomEvent('image-viewer-reset'))
         }

@@ -4,8 +4,13 @@ import { ipcMain, dialog } from 'electron';
 import { FileService } from '../services/file-service';
 import { getMasterDB } from '../services/database';
 import { getSetting } from '../services/settings-service';
+import { sendToRenderer } from '../utils/ipc';
+import { logger } from '../../utils/logger';
 
 const fileService = new FileService();
+
+/** 导出服务懒加载单例（首次导出时动态 import） */
+let exportService: any = null;
 
 /** 获取并校验库记录，不存在返回 null */
 function getValidLibrary(libraryId: number) {
@@ -94,4 +99,99 @@ export function registerFileHandlers(): void {
   ipcMain.handle('getDeletedFiles', async (_e, libraryId?: number, limit?: number) => {
     return getMasterDB().getDeletedFiles(limit, libraryId);
   });
+
+  // ==================== 导出功能 ====================
+
+  // 导出单张图片
+  ipcMain.handle('exportSingleImage', async (_event, libraryId: number, relativePath: string, options: any, taskId: string) => {
+    try {
+      if (!exportService) {
+        const { ExportService } = await import('../services/export-service');
+        exportService = new ExportService();
+      }
+      const library = getValidLibrary(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const absPath = path.join(library.rootPath, relativePath);
+      // 安全检查：确保路径在库目录内
+      const resolved = path.resolve(absPath);
+      const libRoot = path.resolve(library.rootPath);
+      if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+        return { success: false, error: 'Access denied' };
+      }
+      const outputPath = await exportService.exportSingle(absPath, options, taskId);
+      return { success: true, outputPath };
+    } catch (err) {
+      logger.error('FileHandlers', 'exportSingleImage 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 批量导出为 ZIP
+  ipcMain.handle('exportBatchImages', async (_event, libraryId: number, relativePaths: string[], options: any, taskId: string) => {
+    try {
+      if (!exportService) {
+        const { ExportService } = await import('../services/export-service');
+        exportService = new ExportService();
+      }
+      const library = getValidLibrary(libraryId);
+      if (!library) {
+        return { success: false, error: '库不存在' };
+      }
+      const libRoot = path.resolve(library.rootPath);
+      const absPaths = relativePaths.map(rp => {
+        const absPath = path.join(library.rootPath, rp);
+        const resolved = path.resolve(absPath);
+        if (!resolved.toLowerCase().startsWith(libRoot.toLowerCase())) {
+          throw new Error('Access denied');
+        }
+        return resolved;
+      });
+      let lastEmit = 0;
+      await exportService.exportBatch(absPaths, options, taskId, (done: number, total: number) => {
+        const now = Date.now();
+        // 100ms 节流，避免高频 IPC 事件导致渲染进程掉帧
+        if (now - lastEmit >= 100 || done === total) {
+          lastEmit = now;
+          sendToRenderer('export-progress', { taskId, done, total, finished: done === total });
+        }
+      });
+      sendToRenderer('export-progress', { taskId, done: relativePaths.length, total: relativePaths.length, finished: true });
+      return { success: true };
+    } catch (err) {
+      logger.error('FileHandlers', 'exportBatchImages 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+
+  // 取消导出任务
+  ipcMain.handle('cancelExport', async (_event, taskId: string) => {
+    try {
+      if (!exportService) {
+        return { success: true }; // 服务未初始化，无需取消
+      }
+      exportService.cancel(taskId);
+      return { success: true };
+    } catch (err) {
+      logger.error('FileHandlers', 'cancelExport 失败', err);
+      return { success: false, error: (err as Error).message };
+    }
+  });
+}
+
+/**
+ * 已注册的 IPC 处理器名称（用于批量注销）
+ */
+const FILE_IPC_HANDLER_NAMES = [
+  'renameFile', 'batchRename', 'moveFiles', 'copyFiles', 'deleteFiles',
+  'setWallpaper', 'showInExplorer', 'selectDestinationFolder', 'getDeletedFiles',
+  'exportSingleImage', 'exportBatchImages', 'cancelExport',
+] as const;
+
+/**
+ * 清理文件操作相关的 IPC 处理器
+ */
+export function unregisterFileHandlers(): void {
+  FILE_IPC_HANDLER_NAMES.forEach(name => ipcMain.removeHandler(name));
 }

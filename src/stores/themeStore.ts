@@ -5,10 +5,13 @@ export type ThemeMode = 'dark' | 'light' | 'system'
 export type ThemeDensity = 'compact' | 'comfortable' | 'spacious'
 
 interface ThemeState {
+  /** feature flag：关闭时完全回退到深色行为（回滚保障） */
+  enabled: boolean
   mode: ThemeMode
   accentColor: string
   density: ThemeDensity
 
+  setEnabled: (v: boolean) => void
   setMode: (mode: ThemeMode) => void
   setAccentColor: (color: string) => void
   setDensity: (density: ThemeDensity) => void
@@ -41,9 +44,15 @@ function resolveTheme(mode: ThemeMode): 'dark' | 'light' {
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
+      enabled: false,  // 默认关闭，需用户在设置面板显式开启
       mode: 'dark',
       accentColor: '#7c6ef0',
       density: 'comfortable',
+
+      setEnabled: (v) => {
+        set({ enabled: v })
+        get().applyTheme()
+      },
 
       setMode: (mode) => {
         set({ mode })
@@ -63,39 +72,52 @@ export const useThemeStore = create<ThemeState>()(
       applyTheme: () => {
         if (typeof document === 'undefined') return
 
-        const resolved = resolveTheme(get().mode)
         const root = document.documentElement
+
+        // feature flag 关闭：完全回退到深色行为
+        if (!get().enabled) {
+          root.setAttribute('data-theme', 'dark')
+          root.removeAttribute('data-accent')
+          root.removeAttribute('data-density')
+          root.style.removeProperty('--color-accent')
+          root.style.removeProperty('--color-accent-hover')
+          root.style.removeProperty('--density-padding')
+          root.style.removeProperty('--density-gap')
+          return
+        }
+
+        const resolved = resolveTheme(get().mode)
 
         // 设置 data-theme 属性
         root.setAttribute('data-theme', resolved)
 
-        // 设置强调色 CSS 变量
-        root.style.setProperty('--color-accent', get().accentColor)
-
-        // 计算强调色 hover 状态（稍微提亮）
-        const hoverColor = adjustBrightness(get().accentColor, 15)
-        root.style.setProperty('--color-accent-hover', hoverColor)
-
-        // 设置密度相关变量
-        const density = get().density
-        const paddingMap: Record<ThemeDensity, string> = {
-          compact: '8px',
-          comfortable: '12px',
-          spacious: '16px',
+        // 强调色：优先匹配预设（用 data-accent 触发 CSS 选择器），自定义色用 inline style 兜底
+        const accentColor = get().accentColor.toLowerCase()
+        const presetMatch = ACCENT_PRESETS.find(p => p.color.toLowerCase() === accentColor)
+        if (presetMatch) {
+          const presetName = ACCENT_PRESETS.indexOf(presetMatch) === 0 ? 'violet'
+            : ACCENT_PRESETS.indexOf(presetMatch) === 1 ? 'blue'
+            : ACCENT_PRESETS.indexOf(presetMatch) === 2 ? 'cyan'
+            : ACCENT_PRESETS.indexOf(presetMatch) === 3 ? 'green'
+            : ACCENT_PRESETS.indexOf(presetMatch) === 4 ? 'orange'
+            : 'pink'
+          root.dataset.accent = presetName
+          root.style.removeProperty('--color-accent')
+          root.style.removeProperty('--color-accent-hover')
+        } else {
+          root.removeAttribute('data-accent')
+          root.style.setProperty('--color-accent', accentColor)
+          root.style.setProperty('--color-accent-hover', adjustBrightness(accentColor, 15))
         }
-        root.style.setProperty('--density-padding', paddingMap[density])
 
-        const gapMap: Record<ThemeDensity, string> = {
-          compact: '6px',
-          comfortable: '8px',
-          spacious: '12px',
-        }
-        root.style.setProperty('--density-gap', gapMap[density])
+        // 密度：用 data-density 触发 CSS 选择器
+        root.dataset.density = get().density
       },
     }),
     {
       name: 'theme-storage',
       partialize: (state) => ({
+        enabled: state.enabled,
         mode: state.mode,
         accentColor: state.accentColor,
         density: state.density,
