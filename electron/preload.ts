@@ -239,6 +239,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('library-status-changed', subscription)
   },
 
+  // 库扫描完成事件（刷新库状态/数量）
+  onLibraryScanFinished: (callback: (data: { libraryId: number; imageCount: number; status: 'online' | 'offline' }) => void) => {
+    const subscription = (_event: any, data: { libraryId: number; imageCount: number; status: 'online' | 'offline' }) => callback(data)
+    ipcRenderer.on('library-scan-finished', subscription)
+    return () => ipcRenderer.removeListener('library-scan-finished', subscription)
+  },
+
   // 窗口控制
   windowMinimize: () => ipcRenderer.send('window-minimize'),
   windowMaximize: () => ipcRenderer.send('window-maximize'),

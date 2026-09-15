@@ -18,6 +18,7 @@ import {
   VolumeX,
   Image as WallpaperIcon,
   FolderSearch,
+  Heart,
 } from 'lucide-react'
 import { isBrowserPlayableVideo } from '../utils/media'
 import { formatFileSize } from '../utils/format'
@@ -92,6 +93,8 @@ export function ImageViewer({
   imagePath,
   rating = 0,
   onRatingChange,
+  isFavorite = false,
+  onFavoriteChange,
   onVideoEnded,
   onVideoPlayStateChange,
 }: ImageViewerProps) {
@@ -128,6 +131,13 @@ export function ImageViewer({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [renameDialog, setRenameDialog] = useState(false)
   const [exportDialog, setExportDialog] = useState(false)
+  // 收藏反馈状态：脉冲触发 + toast 提示
+  const [favoriteToast, setFavoriteToast] = useState<{ liked: boolean } | null>(null)
+  const [favoritePop, setFavoritePop] = useState(0)
+  const favoriteToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const prevFavoriteRef = useRef<boolean | null>(null)
+  // 图片切换时仅重置基线、不触发 toast（避免跨图/收藏库移除图片时误报）
+  const srcChangedRef = useRef(false)
 
   // EXIF 惰性加载（仅在信息面板打开且媒体类型为图片时请求）
   useEffect(() => {
@@ -294,6 +304,11 @@ export function ImageViewer({
   const handleZoomOut = useCallback(() => lightboxActions.zoomOut(), [])
   const handleReset = useCallback(() => lightboxActions.reset(), [])
 
+  // 收藏切换：与 F 键（App 层）同一路径 —— 都收敛到 onFavoriteChange → toggleFavorite
+  const handleFavoriteClick = useCallback(() => {
+    onFavoriteChange?.(!isFavorite)
+  }, [isFavorite, onFavoriteChange])
+
   // 图片加载完成
   const handleImageLoaded = useCallback(
     (width: number, height: number) => {
@@ -340,6 +355,10 @@ export function ImageViewer({
     })
     // 切换图片时重置 GIF 播放状态
     setIsGifPlaying(true)
+    // 图片已切换：重置收藏反馈基线，本次 isFavorite 变化不算"用户收藏反馈"
+    srcChangedRef.current = true
+    prevFavoriteRef.current = null
+    setFavoriteToast(null)
     // 延迟显示 spinner：200ms 内加载完成则不显示，避免闪烁
     spinnerTimerRef.current = setTimeout(() => {
       spinnerTimerRef.current = null
@@ -353,6 +372,29 @@ export function ImageViewer({
       }
     }
   }, [src])
+
+  // 收藏反馈：isFavorite 变化时（F 键 / 按钮同一路径触发）播放脉冲 + 弹出提示
+  useEffect(() => {
+    // 刚切换图片：仅重置基线，本次 isFavorite 变化不视为用户操作反馈
+    if (srcChangedRef.current) {
+      srcChangedRef.current = false
+      prevFavoriteRef.current = isFavorite
+      return
+    }
+    const prev = prevFavoriteRef.current
+    if (prev !== null && prev !== isFavorite) {
+      setFavoritePop(p => p + 1)
+      setFavoriteToast({ liked: isFavorite })
+      if (favoriteToastTimerRef.current) clearTimeout(favoriteToastTimerRef.current)
+      favoriteToastTimerRef.current = setTimeout(() => setFavoriteToast(null), 1600)
+    }
+    prevFavoriteRef.current = isFavorite
+  }, [isFavorite])
+
+  // 卸载时清理 toast 定时器
+  useEffect(() => () => {
+    if (favoriteToastTimerRef.current) clearTimeout(favoriteToastTimerRef.current)
+  }, [])
 
   // 监听全局快捷键事件
   useEffect(() => {
@@ -405,12 +447,17 @@ export function ImageViewer({
           break
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // 捕获阶段监听：内联 YARL(ImageLightbox) 的 keydown 会在 #root 委托冒泡阶段
+    // 对 ←/→/Esc 调用 native stopPropagation() 吞掉按键（DEF-5）。
+    // 捕获阶段先于其运行，保证查看器快捷键不被抢占。
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [handleReset, handleFlipHorizontal, handleFlipVertical, onClose, onPrevious, onNext, mediaType, toggleVideoPlayback])
 
   // 工具栏按钮通用样式
-  const toolbarBtnClass = 'btn-icon'
+  // 显式 no-drag：工具栏本身是 [-webkit-app-region:drag]（frameless 拖动区），
+  // 与 App header 一致把 no-drag 直接加到按钮上，确保关闭/上一张/下一张可点击（DEF-5）
+  const toolbarBtnClass = 'btn-icon [-webkit-app-region:no-drag]'
   const toolbarBtnActiveClass = 'bg-overlay-selected text-text-primary'
 
   return (
@@ -547,12 +594,39 @@ export function ImageViewer({
           </button>
         </motion.div>
 
+        {/* 收藏按钮（可见反馈：高亮填充 + 切换脉冲动画 + toast 提示） */}
+        {libraryId && imagePath && (
+          <motion.div
+            className="flex items-center gap-1.5 [-webkit-app-region:no-drag]"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...motionPresets.fade, delay: 0.35 }}
+          >
+            <motion.button
+              onClick={handleFavoriteClick}
+              whileTap={{ scale: 0.9 }}
+              className={`${toolbarBtnClass} ${isFavorite ? toolbarBtnActiveClass : ''}`}
+              title={isFavorite ? '取消收藏 (F)' : '收藏 (F)'}
+            >
+              <motion.span
+                key={favoritePop}
+                initial={{ scale: 1.35 }}
+                animate={{ scale: 1 }}
+                transition={motionPresets.micro}
+                className="flex"
+              >
+                <Heart size={16} className={isFavorite ? 'text-favorite fill-current' : ''} />
+              </motion.span>
+            </motion.button>
+          </motion.div>
+        )}
+
         {libraryId && imagePath && (
           <motion.div
             className="flex items-center gap-1.5 ml-auto [-webkit-app-region:no-drag]"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ ...motionPresets.fade, delay: 0.35 }}
+            transition={{ ...motionPresets.fade, delay: 0.4 }}
           >
             <RatingStars
               key={imagePath}
@@ -669,6 +743,29 @@ export function ImageViewer({
           </button>
         </div>
       )}
+
+      {/* 收藏反馈 toast */}
+      <AnimatePresence>
+        {favoriteToast && (
+          <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[150] pointer-events-none">
+            <motion.div
+              className="glass-l2 px-4 py-2 rounded-md flex items-center gap-2 shadow-lg shadow-black/20"
+              initial={{ opacity: 0, y: -8, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.95 }}
+              transition={motionPresets.panel}
+            >
+              <Heart
+                size={14}
+                className={favoriteToast.liked ? 'text-favorite fill-current' : 'text-text-secondary'}
+              />
+              <span className="text-sm text-text-primary font-medium">
+                {favoriteToast.liked ? '已收藏 ♥' : '已取消收藏'}
+              </span>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* 图片信息面板 */}
       <AnimatePresence>

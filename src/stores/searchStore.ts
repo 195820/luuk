@@ -143,7 +143,10 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         window.electronAPI.getSearchHistory(),
         window.electronAPI.getSearchPresets(),
       ])
-      set({ history, presets })
+      set({
+        history: Array.isArray(history) ? history : [],
+        presets: Array.isArray(presets) ? presets : [],
+      })
     } catch (err) {
       logger.error('SearchStore', '加载历史/预设失败', err)
     }

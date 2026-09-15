@@ -98,6 +98,7 @@ function App() {
     toggleFolderSidebar,
     folderSidebarOpen,
     setSelectedFavoriteFolder,
+    selectedFavoriteFolder,
     favoriteViewMode,
     gridLayoutMode,
     setGridLayoutMode,
@@ -164,6 +165,14 @@ function App() {
     // 初始化时读取一次当前状态
     window.electronAPI.isFullscreen().then(v => {
       useViewStore.getState().setImmersiveFullscreen(v)
+    })
+    return unsub
+  }, [])
+
+  // 库扫描完成：刷新库列表（状态/数量），避免新增库 UI 停留在离线/0
+  useEffect(() => {
+    const unsub = window.electronAPI.onLibraryScanFinished(() => {
+      useImageStore.getState().loadLibraries()
     })
     return unsub
   }, [])
@@ -445,21 +454,46 @@ function App() {
     }
   }, [viewMode, setCurrentImage, setCurrentLibrary, loadFavoriteImages])
 
+  const stopSlideshow = useCallback(() => {
+    setSlideshowEnabled(false)
+    useSlideshowStore.getState().stop()
+  }, [])
+
+  // 播放/暂停切换：未进入幻灯片时开启会话并自动播放；
+  // 已开启时在“播放/暂停”间切换——暂停保留控制栏（显示“播放”可继续），不再整个卸载
   const toggleSlideshow = useCallback(() => {
-    setSlideshowEnabled(prev => !prev)
+    const store = useSlideshowStore.getState()
     if (!slideshowEnabled) {
-      useSlideshowStore.getState().start()
+      setSlideshowEnabled(true)
+      store.start()
+    } else if (store.isPlaying) {
+      store.pause()
     } else {
-      useSlideshowStore.getState().pause()  // 暂停保留 BGM
+      store.start()
     }
   }, [slideshowEnabled])
+
+  // 手动上/下一张：重置幻灯片定时器，避免切走后被旧定时器立即切回
+  const handleSlideshowPrevious = useCallback(() => {
+    setSlideshowNavTick(t => t + 1)
+    handlePrevious()
+  }, [handlePrevious])
+
+  const handleSlideshowNext = useCallback(() => {
+    setSlideshowNavTick(t => t + 1)
+    handleNext()
+  }, [handleNext])
 
   // 幻灯片定时器（视频播放中暂停定时器，视频播完后通过 onVideoEnded 触发前进）
   // 支持随机播放模式和自定义播放列表
   const intervalSec = useSlideshowStore(s => s.intervalSec)
+  // 幻灯片是否处于播放状态（以 store 为单一来源；pause 时保留控制栏以便继续播放）
+  const slideshowIsPlaying = useSlideshowStore(s => s.isPlaying)
+  // 手动上/下一张时递增，驱动定时器重建以便重新计时（避免刚切走又被旧定时器立即切回）
+  const [slideshowNavTick, setSlideshowNavTick] = useState(0)
 
   useEffect(() => {
-    if (slideshowEnabled && viewMode === 'viewer' && !isVideoPlaying) {
+    if (slideshowIsPlaying && viewMode === 'viewer' && !isVideoPlaying) {
       slideshowTimerRef.current = setInterval(() => {
         // 所有动态状态通过 getState() 读取，避免依赖数组膨胀导致定时器频繁重建
         const playlist = useSlideshowStore.getState().playlist
@@ -505,19 +539,31 @@ function App() {
           }
         } else {
           // 使用当前库的图片
+          // 收藏库的图片数组是 favoriteImages/singleFavoriteImages（images 为空），
+          // 随机模式必须按库取正确的长度与索引 setter，否则“点了播放却不动”（DEF-9）
+          const curIsFav = curLibId === FAVORITE_LIBRARY_ID
           if (curMode === 'random') {
-            // 随机模式：选择一张不同的图片
-            const totalImages = currentImages.length
-            if (totalImages > 1) {
-              let newIndex = Math.floor(Math.random() * totalImages)
-              if (newIndex === curIdx) {
-                newIndex = (newIndex + 1) % totalImages
+            // 随机模式：选择当前数组里一张不同的图片
+            const favArrLength = curIsFav
+              ? (useViewStore.getState().favoriteViewMode === 'single'
+                  ? imgStore.singleFavoriteImages.length
+                  : imgStore.favoriteImages.length)
+              : currentImages.length
+            if (favArrLength > 1) {
+              const curPosition = curIsFav ? favoriteImageIndex : curIdx
+              let newIndex = Math.floor(Math.random() * favArrLength)
+              if (newIndex === curPosition) {
+                newIndex = (newIndex + 1) % favArrLength
               }
-              setCurrentIndex(newIndex)
+              if (curIsFav) {
+                setFavoriteImageIndex(newIndex)
+              } else {
+                setCurrentIndex(newIndex)
+              }
             }
           } else {
-            // 顺序模式
-            handleNext()
+            // 顺序模式（使用 handleSlideshowNext 重置定时器，避免与手动导航竞态）
+            handleSlideshowNext()
           }
         }
       }, intervalSec * 1000)
@@ -533,7 +579,7 @@ function App() {
         clearInterval(slideshowTimerRef.current)
       }
     }
-  }, [slideshowEnabled, intervalSec, viewMode, handleNext, currentLibraryId, isVideoPlaying])
+  }, [slideshowIsPlaying, intervalSec, viewMode, handleNext, currentLibraryId, isVideoPlaying, slideshowNavTick, favoriteImageIndex])
 
   // 跨库播放列表跳转：等待新库图片加载完成后执行目标图片定位
   useEffect(() => {
@@ -552,10 +598,11 @@ function App() {
   // 视频播完回调（幻灯片模式下自动前进）
   const handleVideoEnded = useCallback(() => {
     setIsVideoPlaying(false)
-    if (slideshowEnabled && viewMode === 'viewer') {
+    // 暂停期间视频播完不自动前进（防止用户暂停后仍被切走）
+    if (slideshowIsPlaying && viewMode === 'viewer') {
       handleNext()
     }
-  }, [slideshowEnabled, viewMode, handleNext])
+  }, [slideshowIsPlaying, viewMode, handleNext])
 
   // 切换收藏状态
   const handleToggleFavorite = useCallback(async () => {
@@ -877,8 +924,11 @@ function App() {
       }
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    // 捕获阶段监听：查看器内 ImageLightbox(YARL) 的内联 lightbox 会在 #root 委托
+    // 冒泡阶段对 ←/→/Esc 调 stopPropagation() 吞掉按键（DEF-5）。
+    // 捕获阶段先于其运行，保证 Esc 关闭 / Space 幻灯片 / Home/End/F 等快捷键生效。
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [viewMode, handleClose, toggleSlideshow, toggleFolderSidebar, handleFirst, handleLast, handleToggleFavorite, currentImage])
 
   const isFavoriteLibrary = currentLibraryId === FAVORITE_LIBRARY_ID
@@ -920,6 +970,8 @@ function App() {
   const viewerLibraryId = isFavoriteLibrary ? (currentImage as any)?.library_id : currentLibraryId
   const viewerImagePath = (currentImage as any)?.relative_path
   const viewerRating = viewerLibraryId && viewerImagePath ? getRating(viewerLibraryId, viewerImagePath) : 0
+  // 查看器收藏状态（随 favorites store 实时联动）
+  const viewerIsFavorite = viewerLibraryId && viewerImagePath ? isFavorite(viewerLibraryId, viewerImagePath) : false
 
   // 查看器相邻图预加载
   useAdjacentPreload({
@@ -977,7 +1029,7 @@ function App() {
 
           <button
             onClick={() => setShowSettingsPanel(true)}
-            className="btn-text"
+            className="btn-text shrink-0 [-webkit-app-region:no-drag]"
             title="外观设置"
           >
             🎨
@@ -1103,7 +1155,7 @@ function App() {
               {isFavoriteLibrary ? (
                 <FolderTree
                   folders={favoriteFolderTree}
-                  selectedFolder={selectedFolder}
+                  selectedFolder={selectedFavoriteFolder}
                   onFolderSelect={handleFolderSelect}
                   libraryId={FAVORITE_LIBRARY_ID}
                   isFavoriteLibrary={true}
@@ -1320,6 +1372,8 @@ function App() {
                 mediaType={(currentImage as any).mediaType || 'image'}
                 libraryId={viewerLibraryId || undefined}
                 imagePath={viewerImagePath}
+                isFavorite={viewerIsFavorite}
+                onFavoriteChange={() => handleToggleFavorite()}
                 rating={viewerRating}
                 onRatingChange={(newRating) => {
                   if (viewerLibraryId && viewerImagePath) {
@@ -1412,8 +1466,11 @@ function App() {
         {viewMode === 'viewer' && slideshowEnabled && currentLibraryId && (
           <SlideshowBar
             libraryId={currentLibraryId}
-            isPlaying={slideshowEnabled}
+            isPlaying={slideshowIsPlaying}
             onToggle={toggleSlideshow}
+            onPrevious={handleSlideshowPrevious}
+            onNext={handleSlideshowNext}
+            onExit={stopSlideshow}
           />
         )}
       </AnimatePresence>

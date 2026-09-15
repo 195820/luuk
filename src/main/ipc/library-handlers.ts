@@ -551,7 +551,8 @@ export function registerLibraryHandlers(): void {
   // 获取搜索历史
   ipcMain.handle('getSearchHistory', async (): Promise<string[]> => {
     const { getSetting } = await import('../services/settings-service');
-    return getSetting('search.history');
+    const history = getSetting('search.history');
+    return Array.isArray(history) ? history : [];
   });
 
   // 添加搜索历史
@@ -561,8 +562,9 @@ export function registerLibraryHandlers(): void {
   ): Promise<void> => {
     const { getSetting, setSetting } = await import('../services/settings-service');
     const history = getSetting('search.history');
+    const historyList = Array.isArray(history) ? history : [];
     // 去重并保留最近 10 条
-    const newHistory = [query, ...history.filter(h => h !== query)].slice(0, 10);
+    const newHistory = [query, ...historyList.filter(h => h !== query)].slice(0, 10);
     setSetting('search.history', newHistory);
   });
 
@@ -575,7 +577,8 @@ export function registerLibraryHandlers(): void {
   // 获取搜索预设
   ipcMain.handle('getSearchPresets', async () => {
     const { getSetting } = await import('../services/settings-service');
-    return getSetting('search.presets');
+    const presets = getSetting('search.presets');
+    return Array.isArray(presets) ? presets : [];
   });
 
   // 保存搜索预设
@@ -586,9 +589,10 @@ export function registerLibraryHandlers(): void {
   ): Promise<{ id: string }> => {
     const { getSetting, setSetting } = await import('../services/settings-service');
     const presets = getSetting('search.presets');
+    const presetList = Array.isArray(presets) ? presets : [];
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     const newPreset = { id, name, criteria, createdAt: new Date().toISOString() };
-    setSetting('search.presets', [...presets, newPreset]);
+    setSetting('search.presets', [...presetList, newPreset]);
     return { id };
   });
 
@@ -599,7 +603,8 @@ export function registerLibraryHandlers(): void {
   ): Promise<void> => {
     const { getSetting, setSetting } = await import('../services/settings-service');
     const presets = getSetting('search.presets');
-    setSetting('search.presets', presets.filter(p => p.id !== id));
+    const presetList = Array.isArray(presets) ? presets : [];
+    setSetting('search.presets', presetList.filter(p => p.id !== id));
   });
 
   // ==================== 文件夹封面 ====================

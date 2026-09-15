@@ -8,6 +8,9 @@ import {
   ArrowRightLeft,
   Music,
   ListMusic,
+  SkipBack,
+  SkipForward,
+  LogOut,
 } from 'lucide-react'
 import { useSlideshowStore, type SlideshowTransition } from '@/stores/slideshowStore'
 import { SlideshowAudio } from '../SlideshowAudio'
@@ -20,6 +23,12 @@ interface SlideshowBarProps {
   isPlaying: boolean
   /** 切换播放/暂停 */
   onToggle: () => void
+  /** 上一张 */
+  onPrevious: () => void
+  /** 下一张 */
+  onNext: () => void
+  /** 退出幻灯片（停止并卸载控制栏） */
+  onExit: () => void
 }
 
 /** 幻灯片间隔选项 */
@@ -32,7 +41,7 @@ const TRANSITION_OPTIONS: { value: SlideshowTransition; label: string }[] = [
   { value: 'zoom', label: '缩放' },
 ]
 
-export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarProps) {
+export function SlideshowBar({ libraryId, isPlaying, onToggle, onPrevious, onNext, onExit }: SlideshowBarProps) {
   const mode = useSlideshowStore(s => s.mode)
   const transition = useSlideshowStore(s => s.transition)
   const intervalSec = useSlideshowStore(s => s.intervalSec)
@@ -70,7 +79,28 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
         {/* 播放状态指示 */}
         <div className="flex items-center gap-2">
           <MonitorPlay size={16} className="text-accent" />
-          <span className="text-sm text-text-primary">幻灯片播放中</span>
+          <span className="text-sm text-text-primary">{isPlaying ? '幻灯片播放中' : '幻灯片已暂停'}</span>
+        </div>
+
+        {/* 分隔线 */}
+        <div className="w-px h-6 bg-border" />
+
+        {/* 上一张 / 下一张 */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onPrevious}
+            className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-overlay-lighter transition-colors"
+            title="上一张 (←)"
+          >
+            <SkipBack size={14} />
+          </button>
+          <button
+            onClick={onNext}
+            className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-overlay-lighter transition-colors"
+            title="下一张 (→)"
+          >
+            <SkipForward size={14} />
+          </button>
         </div>
 
         {/* 分隔线 */}
@@ -165,6 +195,18 @@ export function SlideshowBar({ libraryId, isPlaying, onToggle }: SlideshowBarPro
         >
           {isPlaying ? <Pause size={12} /> : <MonitorPlay size={12} />}
           {isPlaying ? '暂停' : '播放'}
+        </button>
+
+        {/* 分隔线 */}
+        <div className="w-px h-6 bg-border" />
+
+        {/* 退出幻灯片 */}
+        <button
+          onClick={onExit}
+          className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:text-error hover:bg-overlay-lighter transition-colors"
+          title="退出幻灯片 (Esc)"
+        >
+          <LogOut size={14} />
         </button>
       </div>
 

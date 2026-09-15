@@ -36,7 +36,12 @@ function cleanupExpiredTokens() {
     }
   }
 }
-setInterval(cleanupExpiredTokens, 10 * 60 * 1000) // 每 10 分钟清理一次
+const cleanupTimer = setInterval(cleanupExpiredTokens, 10 * 60 * 1000) // 每 10 分钟清理一次
+
+/** 停止令牌清理定时器（应用退出清理用，幂等） */
+export function stopMediaRegistryCleanup(): void {
+  clearInterval(cleanupTimer)
+}
 
 /**
  * 注册媒体文件路径，返回 media:// URL

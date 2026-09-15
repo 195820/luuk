@@ -13,6 +13,12 @@ import { useSimilarStore } from '@/stores/similarStore'
 import { useTagStore } from '@/stores/tagStore'
 import { groupImages } from '../utils/group'
 
+// 网格布局几何常量 —— 必须与下方行内联样式（flex gap / padding）保持一致，
+// 否则虚拟滚动 estimateSize / columns 与真实渲染错位，会造成卡片间距过大与底部大块空白。
+const GRID_GAP = 16 // 卡片间距（横向 flex gap，亦用作行下间距）
+const GRID_ROW_PAD_X = 8 // 行内左右 padding（padding:'0 8px'）
+const GRID_PARENT_PAD = 16 // 滚动容器 padding（p-4）
+
 export interface ImageGridItem {
   id: number | string
   src: string
@@ -84,7 +90,12 @@ export function ImageGrid({
     return groupImages(displayImages, groupBy)
   }, [displayImages, groupBy])
 
-  const columns = Math.max(1, Math.floor(containerWidth / (thumbnailSize + 60)))
+  // 每行可容纳卡片数：行内可用宽 = 容器宽 - 父容器 padding(p-4) - 行左右 padding - 末张后的空余(gap)。
+  // 旧公式用 thumbnailSize+60 作每项占位，远大于真实 "card + 16px gap"，导致列数偏少、网格稀疏。
+  const columns = Math.max(
+    1,
+    Math.floor((containerWidth - GRID_PARENT_PAD * 2 - GRID_ROW_PAD_X * 2 + GRID_GAP) / (thumbnailSize + GRID_GAP)),
+  )
   const rowCount = Math.ceil(displayImages.length / columns)
 
   // 更新容器宽度
@@ -102,7 +113,7 @@ export function ImageGrid({
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => thumbnailSize + 60,
+    estimateSize: () => thumbnailSize + GRID_GAP,
     overscan: 5,
   })
 

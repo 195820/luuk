@@ -13,7 +13,9 @@ import { getPluginManager } from '../src/main/services/plugin-manager'
 import { closeAllDatabases, getMasterDB } from '../src/main/services/database'
 import { logger } from '../src/utils/logger'
 import { getImageService } from '../src/main/services/image-service'
-import { resolveMediaToken } from '../src/main/services/media-registry'
+import { resolveMediaToken, stopMediaRegistryCleanup } from '../src/main/services/media-registry'
+import { libraryMonitor } from '../src/main/services/library-monitor'
+import { killActiveFfmpeg } from '../src/main/services/thumbnailer'
 import { MIME_TYPES } from '../src/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -208,9 +210,28 @@ function createWindow() {
     }
   })
 
+  // Dev-only：把渲染进程 console 转发到主进程 stdout，便于后台跟随日志
+  // 注意：DevTools 交互式求值（如 `await electronAPI.x()`）不会触发 console-message，
+  // 探针请用 console.log(await window.electronAPI.x()) 包裹才会出现在这里。
+  if (process.env.NODE_ENV !== 'production') {
+    mainWindow.webContents.on('console-message', (event: any, ...rest: any[]) => {
+      const hasEventShape = event && typeof event === 'object' && 'message' in event
+      const level = hasEventShape ? event.level : rest[0]
+      const message = hasEventShape ? event.message : rest[1]
+      const lineNo = hasEventShape ? event.lineNumber : rest[2]
+      const src = hasEventShape ? (event.sourceId ?? '') : (rest[3] ?? '')
+      process.stdout.write(`[renderer:${level}] ${message} (${src}:${lineNo})\n`)
+    })
+  }
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+}
+
+// Dev-only：开启 CDP 调试端口，供 scripts/debug.js 用 Playwright 直连诊断
+if (process.env.NODE_ENV !== 'production') {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222')
 }
 
 app.whenReady().then(async () => {
@@ -241,36 +262,73 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('window-all-closed', () => {
-  // 清理资源
-  unregisterLibraryHandlers()
-  unregisterFileHandlers()
-  unregisterSearchHandlers()
-  unregisterTagHandlers()
-  unregisterPluginHandlers()
-  unregisterJobHandlers()
-  closeAllDatabases()
+/** 退出清理中等待异步关闭的最大时长（毫秒） */
+const SHUTDOWN_TIMEOUT_MS = 2000
+/** 已启动的退出清理 Promise（多条退出路径共享同一份清理，幂等） */
+let shutdownPromise: Promise<void> | null = null
+/** 是否已完成一次真正 quit（防止 before-quit preventDefault 形成循环） */
+let quitCommitted = false
 
+/**
+ * 应用退出清理（幂等，可安全重复调用）
+ * 顺序：① 停用 keepalive（IPC / interval / ffmpeg / 插件 worker）→
+ *       ② 中止运行中作业并等待（2s 超时兜底）→ ③ 最后关闭数据库。
+ * 保证 closeAllDatabases 之前，不再有 ffmpeg spawn 等异步任务存活。
+ */
+function shutdownApp(): Promise<void> {
+  if (!shutdownPromise) {
+    shutdownPromise = (async () => {
+      // 1) 禁止新工作：注销 IPC 处理器 + 停止 keepalive 定时器/子进程（同步段立即生效）
+      unregisterLibraryHandlers()
+      unregisterFileHandlers()
+      unregisterSearchHandlers()
+      unregisterTagHandlers()
+      unregisterPluginHandlers()
+      unregisterJobHandlers()
+
+      libraryMonitor.stop()
+      stopMediaRegistryCleanup()
+      killActiveFfmpeg()
+      try {
+        // 插件关闭：同步段即停止内存监控并 kill 插件 worker
+        await getPluginManager().shutdown()
+      } catch (err) {
+        logger.error('Main', 'PluginManager 关闭异常', err)
+      }
+
+      // 2) 中止运行中的作业并落库为 paused；等待带超时，避免拖住退出
+      try {
+        await Promise.race([
+          getJobRunner().shutdown(),
+          new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
+        ])
+      } catch (err) {
+        logger.error('Main', 'JobRunner 关闭异常', err)
+      }
+
+      // 3) 数据库最后关闭——此时不再有挂起的异步读写
+      closeAllDatabases()
+    })()
+  }
+  return shutdownPromise
+}
+
+app.on('window-all-closed', () => {
+  // 非 macOS：启动清理（幂等，真正阻塞式收尾在 before-quit）后直接退出
   if (process.platform !== 'darwin') {
+    void shutdownApp()
     app.quit()
   }
 })
 
-app.on('before-quit', () => {
-  // 清理资源
-  unregisterLibraryHandlers()
-  unregisterFileHandlers()
-  unregisterSearchHandlers()
-  unregisterTagHandlers()
-  unregisterPluginHandlers()
-  unregisterJobHandlers()
-  // 中止运行中的作业并落库为 paused（同步段会先执行，DB 关闭前完成状态写回）
-  try {
-    getJobRunner().shutdown().catch(err => logger.error('Main', 'JobRunner 关闭异常', err))
-  } catch (err) {
-    logger.error('Main', 'JobRunner 未初始化，跳过关闭', err)
-  }
-  closeAllDatabases()
+app.on('before-quit', (event) => {
+  // 收尾完成后触发的二次 quit 直接放行
+  if (quitCommitted) return
+  event.preventDefault()
+  void shutdownApp().finally(() => {
+    quitCommitted = true
+    app.quit()
+  })
 })
 
 // 原有的 IPC 处理

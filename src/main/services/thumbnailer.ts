@@ -4,7 +4,7 @@ import path from 'path';
 import os from 'os';
 import { createRequire } from 'module';
 import { logger } from '../../utils/logger';
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import type { ThumbnailSize } from '../../types';
 
 // 延迟初始化 ffmpeg（避免 ES module 顶层 __dirname 问题）
@@ -29,6 +29,17 @@ function getFfmpeg(): any {
 // ES module 兼容的 require
 const req = createRequire(import.meta.url);
 const FFMPEG_STATIC = req('ffmpeg-static');
+
+/** 存活的 ffmpeg 缩略图子进程（退出清理时统一 kill） */
+const activeFfmpeg = new Set<ChildProcess>();
+
+/** 强制终止所有存活 ffmpeg 子进程（应用退出清理用，幂等） */
+export function killActiveFfmpeg(): void {
+  for (const proc of activeFfmpeg) {
+    try { proc.kill('SIGKILL'); } catch { /* 已退出 */ }
+  }
+  activeFfmpeg.clear();
+}
 
 /**
  * 缩略图配置
@@ -329,6 +340,12 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
       return;
     }
 
+    const fileExt = videoPath.slice(videoPath.lastIndexOf('.')).toLowerCase();
+    if (fileExt === '.avi' || fileExt === '.mkv') {
+      resolve(Buffer.alloc(0));
+      return;
+    }
+
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'luuk-thumb-'));
     const tmpPath = path.join(tmpDir, 'frame.png');
 
@@ -362,6 +379,9 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    // 登记存活子进程，供应用退出时统一 terminate
+    activeFfmpeg.add(proc);
+
     // 超时保护：30 秒后强制终止 ffmpeg
     const timeout = setTimeout(() => {
       try { proc.kill('SIGKILL'); } catch {}
@@ -376,6 +396,7 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
 
     proc.on('close', async (code: number) => {
       clearTimeout(timeout);
+      activeFfmpeg.delete(proc);
       if (code !== 0 && code !== null) {
         logger.warn('Thumbnailer', `ffmpeg exited with code ${code}`, stderr.slice(0, 500));
       }
@@ -408,6 +429,7 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
 
     proc.on('error', (err: Error) => {
       clearTimeout(timeout);
+      activeFfmpeg.delete(proc);
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
       reject(err);
     });

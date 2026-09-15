@@ -132,10 +132,10 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
                   />
                 </div>
                 {/* 搜索历史下拉 */}
-                {showHistory && history.length > 0 && (
+                {showHistory && (history ?? []).length > 0 && (
                   <div className="ml-19 pl-19 flex items-center gap-1 flex-wrap">
                     <Clock size={11} className="text-text-muted shrink-0" />
-                    {history.slice(0, 8).map((term, i) => (
+                    {(history ?? []).slice(0, 8).map((term, i) => (
                       <button
                         key={i}
                         onMouseDown={(e) => {
@@ -350,10 +350,10 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
               </div>
 
               {/* 已保存的预设 */}
-              {presets.length > 0 && (
+              {(presets ?? []).length > 0 && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] text-text-muted">预设:</span>
-                  {presets.map(p => (
+                  {(presets ?? []).map(p => (
                     <div key={p.id} className="group flex items-center gap-0.5">
                       <button
                         onClick={() => loadPreset(p)}

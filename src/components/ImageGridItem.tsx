@@ -37,6 +37,7 @@ export function ImageGridItemComponent({
   const [thumbnailSrc, setThumbnailSrc] = useState<string>('')
   const [realImageId, setRealImageId] = useState<number | string | null>(null)
   const [hasLoadedImageInfo, setHasLoadedImageInfo] = useState(false)
+  const isUnsupportedFormat = image.mediaType === 'video' && (['avi', 'mkv'].includes(image.format?.toLowerCase() || ''))
 
   // 收藏库需要获取真实的图片 ID
   useEffect(() => {
@@ -85,6 +86,11 @@ export function ImageGridItemComponent({
     let cancelled = false
 
     const loadThumbnail = async () => {
+      if (isUnsupportedFormat) {
+        setIsLoading(false)
+        return
+      }
+
       if (!hasLoadedImageInfo) return
 
       if (realImageId === null && isFavoriteLibrary) {
@@ -124,7 +130,7 @@ export function ImageGridItemComponent({
     return () => {
       cancelled = true
     }
-  }, [libraryId, image.id, realImageId, isFavoriteLibrary, image.libraryId, hasLoadedImageInfo, image.alt])
+  }, [libraryId, image.id, realImageId, isFavoriteLibrary, image.libraryId, hasLoadedImageInfo, isUnsupportedFormat, image.alt])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     onClick?.(image, e)
@@ -208,7 +214,7 @@ export function ImageGridItemComponent({
               display: isLoading || error ? 'none' : 'block',
             }}
           />
-        ) : (
+        ) : isUnsupportedFormat ? null : (
           <div className="w-full h-full bg-canvas-tertiary text-text-muted text-micro flex items-center justify-center">加载中</div>
         )}
 
@@ -220,7 +226,7 @@ export function ImageGridItemComponent({
         )}
 
         {/* 不支持的格式 overlay */}
-        {image.mediaType === 'video' && (['avi', 'mkv'].includes(image.format?.toLowerCase() || '')) && (
+        {isUnsupportedFormat && (
           <div className="unsupported-overlay">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10"/>

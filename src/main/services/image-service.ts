@@ -235,6 +235,12 @@ export class ImageService {
       const scanner = new LibraryScanner(db, library.rootPath, undefined, this.createScanProgressCallback());
       const result = await scanner.scan();
       this.masterDB.updateLibraryStatus(libraryId, 'online', result.total);
+      // 扫描成功后广播，让前端刷新库状态/数量（addLibrary 返回时仍是 offline/0）
+      sendToRenderer('library-scan-finished', {
+        libraryId,
+        imageCount: result.total,
+        status: 'online',
+      });
       return result;
     } finally {
       this.scanningLibraries.delete(libraryId);
@@ -631,6 +637,11 @@ export class ImageService {
       return ''
     }
 
+    const fileExt = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase()
+    if (mediaType === 'video' && (fileExt === '.avi' || fileExt === '.mkv')) {
+      return ''
+    }
+
     let thumbnail: Buffer
     if (mediaType === 'video') {
       // 视频：使用 ffmpeg 截取第 1 秒帧
@@ -772,6 +783,10 @@ export class ImageService {
 
     const fullPath = path.join(library.rootPath, relativePath);
     const cacheKey = `${libraryId}-${imageId}`;
+    const fileExt = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase();
+    if (fileExt === '.avi' || fileExt === '.mkv') {
+      return '';
+    }
 
     // 检查缓存
     const cached = this.cache.get(cacheKey, 'medium');

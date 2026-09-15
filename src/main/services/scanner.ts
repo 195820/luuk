@@ -123,6 +123,10 @@ export class LibraryScanner {
     // 过滤掉已有缩略图的文件
     const needGenerate = queue.filter(item => {
       if (item.mediaType === 'audio') return false;
+      if (item.mediaType === 'video') {
+        const fileExt = item.filePath.slice(item.filePath.lastIndexOf('.')).toLowerCase();
+        if (fileExt === '.avi' || fileExt === '.mkv') return false;
+      }
       return !this.db.getThumbnail(item.id, 'medium');
     });
 

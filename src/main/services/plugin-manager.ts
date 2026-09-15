@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
+import { fileURLToPath } from 'url'
 import { logger } from '../../utils/logger'
 import { getSetting } from './settings-service'
 import { getMasterDB } from './database'
@@ -21,6 +22,9 @@ const DEFAULT_RED_MB = 400
 
 /** 内存监控刷新间隔（毫秒） */
 const MEMORY_MONITOR_INTERVAL_MS = 5000
+
+// 工程为 ESM（package.json type: module），主进程 bundle 里没有全局 __dirname
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** 内置插件目录候选：开发时在源码目录，打包后在不同构建布局下位置不一，取最先存在的 */
 function resolveBuiltinDir(): string {

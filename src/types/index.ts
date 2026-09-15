@@ -137,6 +137,7 @@ export interface ElectronAPI {
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
   onLibraryStatusChanged: (callback: (data: { id: number; status: 'online' | 'offline' }) => void) => () => void
+  onLibraryScanFinished: (callback: (data: { libraryId: number; imageCount: number; status: 'online' | 'offline' }) => void) => () => void
   // 窗口控制
   windowMinimize: () => void
   windowMaximize: () => void

@@ -1320,8 +1320,15 @@ export class ThumbnailsDB {
 
   getImageByRelativePath(relativePath: string): Image | null {
     if (!this.db) return null;
-    const stmt = this.db.prepare('SELECT * FROM images WHERE relative_path = ? AND is_deleted = 0');
-    return stmt.get(relativePath) as Image | null;
+    // 兼容 / 与 \ 两种分隔符：文件夹封面 cover_path 统一归一化为「/」存储，
+    // 而 Windows 扫描入库的 relative_path 为「\」。若按原值精确匹配会取不到图，
+    // 导致封面缩略图回退为文件夹图标（== DEF-7「封面未生效」）。
+    const forward = relativePath.replace(/\\/g, '/');
+    const back = forward.replace(/\//g, '\\');
+    const stmt = this.db.prepare(
+      'SELECT * FROM images WHERE (relative_path = ? OR relative_path = ?) AND is_deleted = 0'
+    );
+    return stmt.get(forward, back) as Image | null;
   }
 
   getImages(options: { limit: number; offset: number; orderBy?: string; order?: string }): Image[] {
