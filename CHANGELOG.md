@@ -23,6 +23,12 @@
 - **IPC 接口**：`loadFullImage`（图片 data URL）、`getMediaUrl`（媒体流式 URL）
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名，比数据库 `media_type` 更可靠
 - **多媒体模块重构方案**：竞品调研（Immich/Hydrus/ImageGlass/nomacs）、开源库选型（YARL/wavesurfer.js）、4 阶段实施计划（docs/archive/多媒体模块重构方案.md）
+- **Phase 8 AI 插件系统补全**（2026-09-18）：`luuk.*` SDK 全链路 + 双向 RPC（`channel` 分域、requestId 命名空间隔离）、`InferencePool`（并发=1 / 交互式插队 / EP 回退 CPU / 关闭 CPU mem-arena）、模型下载（流式 SHA256 校验 + 断点续传 + url→mirrorUrls 回退）、内存水位线统一 300/400MB + 三进程 RSS 聚合、崩溃熔断（MAX_CRASHES=3）、builtins esbuild 编译管线、三个内置插件（autotone / matting(u2netp) / upscale(RealESRGAN-x4plus 分块)）、前端接线（pluginStore / SettingsPanel 三 Tab / 动态右键菜单 / JobProgressBar）、五类插件测试（SDK 契约 / 权限拒绝 / autotone 契约 / RPC 集成 / op 可见性）。全量 323 测试通过、tsc 无错、vite build 四入口成功
+
+### 遗留项（Phase 8，2026-09-18 交付时未闭环）
+- **`npm run build:dir` 完整 electron-builder 打包未验证**：R1 的「打包通道」子项仍 pending（dev 模式模块加载 + CPU EP createSession 已实测通过；win-unpacked `.node` 随包 + asarUnpack 待跑 `build:dir` 确认）
+- **设计文档 PoC 数据未回填**：`ai-crawler-direction-2026-q4.md` 附录 A 中 R2（4650U CLIP 吞吐）/ R4 / R5 / R6 / R8 / R9 仍「待回填」（属其它 Phase 的 PoC，本次范围内未涉及）；R1 / R3 / R7 已回填实测值
+- **matting 端到端验证仅覆盖合成图库**：test-library 图为无显著主体的生成图，抠图前景占比 ~0.5%（已确认非代码缺陷，量纲对比验证），真实含主体照片的抠图质量待人工抽检
 
 ### 已知问题（2026-06-22 深度审查发现）
 - **P0**: 视频 seek bar 不更新（`defaultValue` 未绑定 `currentTime`）
