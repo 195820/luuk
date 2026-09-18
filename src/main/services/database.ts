@@ -8,6 +8,18 @@ import { logger } from '../../utils/logger';
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
 const ALLOWED_ORDER = ['ASC', 'DESC'] as const;
 
+/**
+ * 测试基建：better-sqlite3 原生二进制默认按 Electron ABI 编译（electron-rebuild），
+ * vitest 在系统 Node 下加载会因 NODE_MODULE_VERSION 不匹配崩溃。
+ * 通过环境变量 BETTER_SQLITE3_NATIVE_BINDING 指定一份 Node-ABI 的 .node，
+ * new Database 时以 nativeBinding 显式加载它，使 DB 集成测试能跑真实 SQLite。
+ * 未设置该变量时返回空对象，与生产行为完全一致（零副作用）。
+ */
+function sqliteOptions(): { nativeBinding?: string } {
+  const binding = process.env.BETTER_SQLITE3_NATIVE_BINDING;
+  return binding ? { nativeBinding: binding } : {};
+}
+
 function validateOrderBy(orderBy: string, order: string): { orderBy: string; order: string } {
   const validatedOrderBy = ALLOWED_ORDER_BY.includes(orderBy as any) ? orderBy : 'relative_path';
   const validatedOrder = ALLOWED_ORDER.includes(order as any) ? order : 'ASC';
@@ -127,7 +139,7 @@ export class MasterDB {
     }
 
     this.dbPath = path.join(dataDir, 'master.db');
-    this.db = new Database(this.dbPath);
+    this.db = new Database(this.dbPath, sqliteOptions());
     this.db.pragma('foreign_keys = ON');
     this.createTables();
     this.ensureSchemaVersion();
@@ -1100,7 +1112,7 @@ export class ThumbnailsDB {
       fs.mkdirSync(libDir, { recursive: true });
     }
     this.dbPath = path.join(libDir, 'thumbs.db');
-    this.db = new Database(this.dbPath);
+    this.db = new Database(this.dbPath, sqliteOptions());
     this.createTables();
   }
 

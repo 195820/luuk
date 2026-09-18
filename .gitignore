@@ -65,6 +65,9 @@ data/*
 # Test data
 test-data/
 
+# 测试用 Node-ABI 原生二进制（vitest globalSetup 自动生成，勿入库）
+.test-native/
+
 # Library internal
 *.ivlib/thumbs.db
 **/.ivlib/
