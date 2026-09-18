@@ -1,6 +1,6 @@
 // Electron API 类型定义
 import type {
-  PluginInfo, Job, JobItem, JobProgress,
+  PluginInfo, Job, JobItem, JobProgress, ModelInfo, MenuItemDefinition,
 } from './plugin'
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
@@ -91,8 +91,17 @@ export interface ElectronAPI {
   pluginsGet: (pluginId: string) => Promise<{ success: boolean; data?: PluginInfo; error?: string }>
   pluginsSetEnabled: (pluginId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
   pluginsExecute: (pluginId: string, opId: string, input: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>
-  pluginsGetMenuItems: (context?: string) => Promise<{ success: boolean; data?: Array<{ pluginId: string; op: string; label: string; context: string[] }>; error?: string }>
+  pluginsGetMenuItems: (context?: string) => Promise<{ success: boolean; data?: MenuItemDefinition[]; error?: string }>
+  // 模型管理
+  modelsList: () => Promise<{ success: boolean; data?: ModelInfo[]; error?: string }>
+  modelsDownload: (modelId: string) => Promise<{ success: boolean; error?: string }>
+  modelsVerify: (modelId: string) => Promise<{ success: boolean; data?: boolean; error?: string }>
+  onModelDownloadProgress: (callback: (data: { modelId: string; progress: number; error?: string }) => void) => () => void
+  // 设置（feature flag 等白名单）
+  settingsGet: (key: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
+  settingsSet: (key: string, value: unknown) => Promise<{ success: boolean; error?: string }>
   // JobRunner 作业管理
+  jobsEnqueue: (kind: string, payload: unknown, options?: unknown) => Promise<{ success: boolean; data?: string; error?: string }>
   jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
   jobsGet: (jobId: string) => Promise<{ success: boolean; data?: Job & { items: JobItem[] }; error?: string }>
   jobsPause: (jobId: string) => Promise<{ success: boolean; error?: string }>

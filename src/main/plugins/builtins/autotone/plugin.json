@@ -27,5 +27,5 @@
       }
     ]
   },
-  "permissions": ["library.read", "fs.write.output", "image"]
+  "permissions": ["library.read", "fs.read.library", "fs.write.output", "edit.write", "image"]
 }

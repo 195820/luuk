@@ -197,7 +197,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pluginsGetMenuItems: (context?: string) =>
     ipcRenderer.invoke('plugins:getMenuItems', context),
 
+  // 模型管理
+  modelsList: () => ipcRenderer.invoke('models:list'),
+  modelsDownload: (modelId: string) => ipcRenderer.invoke('models:download', modelId),
+  modelsVerify: (modelId: string) => ipcRenderer.invoke('models:verify', modelId),
+  onModelDownloadProgress: (callback: (data: { modelId: string; progress: number; error?: string }) => void) => {
+    const subscription = (_event: any, data: { modelId: string; progress: number; error?: string }) => callback(data)
+    ipcRenderer.on('model-download-progress', subscription)
+    return () => ipcRenderer.removeListener('model-download-progress', subscription)
+  },
+
+  // 设置（feature flag 等白名单）
+  settingsGet: (key: string) => ipcRenderer.invoke('settings:get', key),
+  settingsSet: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value),
+
   // JobRunner 作业管理
+  jobsEnqueue: (kind: string, payload: unknown, options?: unknown) =>
+    ipcRenderer.invoke('jobs:enqueue', kind, payload, options),
   jobsList: () => ipcRenderer.invoke('jobs:list'),
   jobsGet: (jobId: string) => ipcRenderer.invoke('jobs:get', jobId),
   jobsPause: (jobId: string) => ipcRenderer.invoke('jobs:pause', jobId),

@@ -65,6 +65,8 @@ export interface MenuItemDefinition {
   op: string
   label: string
   context: ('grid-multi' | 'grid-single' | 'folder' | 'viewer')[]
+  /** 宿主在聚合菜单项时注入的来源插件 id（插件清单中不声明） */
+  pluginId?: string
 }
 
 /** 设置项定义 */
@@ -132,6 +134,7 @@ export interface JobItem {
 /** 作业进度 */
 export interface JobProgress {
   jobId: string
+  kind?: string                // 作业类型（供 UI 展示标签）
   state: JobState
   total: number
   done: number
@@ -182,6 +185,8 @@ export interface ModelInfo {
   state: ModelDownloadState
   progress?: number            // 0-100
   localPath?: string
+  url?: string                 // 下载 URL（来自 plugin.json requires.models[].url）
+  mirrorUrls?: string[]        // 镜像下载列表
 }
 
 // ── 推理会话 ──
@@ -193,8 +198,59 @@ export interface InferenceSessionInfo {
   residentMB: number
 }
 
-// ── Worker RPC 协议 ──
+// ── Worker RPC 协议（双向） ──
 
+/** RPC 错误码 */
+export type RpcErrorCode =
+  | 'PERMISSION_DENIED'
+  | 'NOT_FOUND'
+  | 'METHOD_NOT_FOUND'
+  | 'EXECUTION_ERROR'
+  | 'MEMORY_PRESSURE'
+  | 'NOT_IMPLEMENTED'
+
+/** RPC 错误负载 */
+export interface RpcError {
+  code: RpcErrorCode | string
+  message: string
+}
+
+/** 主进程 → Worker 的请求 */
+export interface MainToWorkerRequest {
+  type: 'rpc-request'
+  channel: 'main-to-worker'
+  id: number              // 主进程侧递增
+  method: string          // 'plugin.load' | 'plugin.execute' | 'inference.run' | 'memory.getStatus' ...
+  params?: unknown
+}
+
+/** Worker → 主进程的 SDK 调用（反向 RPC） */
+export interface WorkerToMainRequest {
+  type: 'sdk-request'
+  channel: 'worker-to-main'
+  id: number              // Worker 侧独立递增
+  method: string          // 'sdk.library.query' | 'sdk.fs.read' | 'sdk.jobs.enqueue' ...
+  pluginId: string
+  params: unknown
+}
+
+/** 通用响应（双向共用；channel 标记回包目标命名空间） */
+export interface RpcResponse {
+  type: 'rpc-response'
+  channel: 'main-to-worker' | 'worker-to-main'
+  id: number
+  result?: unknown
+  error?: RpcError
+}
+
+/** Worker 收到的消息（主进程请求 / 主进程对 sdk-request 的回包） */
+export type WorkerIncoming = MainToWorkerRequest | RpcResponse
+/** 主进程收到的消息（Worker 反向 SDK 调用 / Worker 对 rpc-request 的回包） */
+export type MainIncoming = WorkerToMainRequest | RpcResponse
+
+/**
+ * @deprecated 保留旧单向类型别名以兼容既有引用，新代码使用 MainToWorkerRequest。
+ */
 export type WorkerRpcRequest =
   | { id: number; method: 'plugin.load'; params: { pluginId: string; entryPath: string } }
   | { id: number; method: 'plugin.unload'; params: { pluginId: string } }
@@ -205,8 +261,82 @@ export type WorkerRpcRequest =
   | { id: number; method: 'memory.getStatus' }
   | { id: number; method: 'memory.getStats' }
 
-export type WorkerRpcResponse = {
-  id: number
-  result?: unknown
-  error?: { code: string; message: string }
+export type WorkerRpcResponse = RpcResponse
+
+// ── 张量序列化 ──
+
+/** 序列化后的张量描述（经 MessagePort structuredClone 传输，不经 JSON） */
+export interface SerializedTensor {
+  dataType: 'float32' | 'int64' | 'uint8' | 'int32' | 'float64'
+  dims: number[]
+  data: ArrayBuffer | Uint8Array
+}
+
+/** 序列化后的推理输入/输出映射 */
+export type SerializedTensorMap = Record<string, SerializedTensor>
+
+// ── luuk.* 插件 SDK 契约 ──
+
+/**
+ * 暴露给插件的 luuk.* API 命名空间。
+ * Worker 侧由各方法路由到 callMain（跨进程 SDK 调用）或本地实现（image.*）。
+ */
+export interface LuukSdk {
+  library: {
+    query(opts: unknown): Promise<unknown>
+    writeEmbedding(opts: unknown): Promise<unknown>
+  }
+  fs: {
+    read(path: string): Promise<Uint8Array>
+    write(path: string, data: Uint8Array): Promise<void>
+  }
+  inference: {
+    createSession(modelId: string, modelPath: string, opts?: unknown): Promise<unknown>
+    run(modelId: string, feeds: SerializedTensorMap, opts?: { priority?: 'interactive' | 'batch' }): Promise<SerializedTensorMap>
+    destroySession(modelId: string): Promise<void>
+  }
+  image: {
+    decode(buf: Uint8Array): Promise<{ width: number; height: number; channels: number; data: Uint8Array }>
+    encode(data: Uint8Array, opts: { width: number; height: number; channels: number; format?: string; quality?: number }): Promise<Uint8Array>
+    normalize(buf: Uint8Array, size: { width: number; height: number }): Promise<SerializedTensor>
+  }
+  jobs: {
+    enqueue(kind: string, payload: unknown, opts?: unknown): Promise<string>
+  }
+  edit: {
+    write(params: {
+      sourcePath: string
+      op: string
+      outputBuffer: Uint8Array
+      libraryId?: number
+      imageId?: number
+      modelId?: string
+      params?: Record<string, unknown>
+      parentEditId?: number
+      format?: 'png' | 'jpeg' | 'webp'
+    }): Promise<number>
+  }
+  progress: {
+    report(pct: number, message?: string): Promise<void>
+  }
+  log: {
+    info(msg: string): Promise<void>
+    warn(msg: string): Promise<void>
+    error(msg: string): Promise<void>
+  }
+  settings: {
+    get(key: string): Promise<unknown>
+    set(key: string, value: unknown): Promise<void>
+  }
+  // Phase 8 占位：调用即抛 NotImplemented
+  browser: { navigate(url: string): Promise<unknown> }
+  fetch: { request(url: string, opts?: unknown): Promise<unknown> }
+  mask: { request(opts: unknown): Promise<unknown> }
+}
+
+/** 插件实例（activate 返回值） */
+export interface PluginInstance {
+  executeOp?(sdk: LuukSdk, opId: string, input: unknown): Promise<unknown>
+  isAvailable?(): boolean
+  deactivate?(): void | Promise<void>
 }

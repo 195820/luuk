@@ -11,6 +11,7 @@ import { useSelectionStore } from '@/stores/selectionStore'
 import { useViewStore } from '@/stores/viewStore'
 import { useSimilarStore } from '@/stores/similarStore'
 import { useTagStore } from '@/stores/tagStore'
+import { usePluginStore } from '@/stores/pluginStore'
 import { groupImages } from '../utils/group'
 
 // 网格布局几何常量 —— 必须与下方行内联样式（flex gap / padding）保持一致，
@@ -77,6 +78,15 @@ export function ImageGrid({
 
   // 分组状态
   const groupBy = useViewStore(state => state.groupBy)
+
+  // 插件动态菜单（宿主注入 pluginId）
+  const pluginMenuItems = usePluginStore(state => state.menuItems)
+  const loadPluginState = usePluginStore(state => state.load)
+
+  // 首次挂载时拉取插件菜单（仅当插件系统启用时才有数据）
+  useEffect(() => {
+    if (!usePluginStore.getState().loaded) void loadPluginState()
+  }, [loadPluginState])
 
   // 过滤掉音频文件（音频在底部独立区域显示）
   const displayImages = images.filter((img) => {
@@ -184,6 +194,28 @@ export function ImageGrid({
   const handleMenuAction = useCallback(async (action: string) => {
     if (!contextMenu) return
     const imagePath = contextMenu.imagePath
+
+    // 插件贡献操作：plugin:<pluginId>:<op>
+    if (action.startsWith('plugin:')) {
+      const [, pluginId, op] = action.split(':')
+      const relPaths = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+      try {
+        const abs = await Promise.all(
+          relPaths.map((p) => window.electronAPI.getImagePathByRelativePath(libraryId, p)),
+        )
+        const paths = abs.filter((x): x is string => Boolean(x))
+        const res = await window.electronAPI.pluginsExecute(pluginId, op, { paths, libraryId })
+        if (!res.success) {
+          useImageStore.getState().setError(`插件执行失败: ${res.error}`)
+        } else {
+          await useImageStore.getState().loadImages()
+        }
+      } catch (err) {
+        useImageStore.getState().setError(`插件执行异常: ${(err as Error).message}`)
+      }
+      setContextMenu(null)
+      return
+    }
 
     switch (action) {
       case 'copyPath':
@@ -347,6 +379,8 @@ export function ImageGrid({
           y={contextMenu.y}
           onAction={handleMenuAction}
           onClose={() => setContextMenu(null)}
+          pluginMenuItems={pluginMenuItems}
+          context={selectedPaths.size > 1 ? 'grid-multi' : 'grid-single'}
           compareEnabled={(() => {
             if (selectedPaths.size !== 2) return false
             const paths = Array.from(selectedPaths)

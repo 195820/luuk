@@ -1,0 +1,45 @@
+{
+  "id": "builtin.matting",
+  "name": "AI 抠图",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "ai-transform",
+  "entry": "index.js",
+  "capabilities": ["image.matting"],
+  "requires": {
+    "runtime": "onnx",
+    "gpu": false,
+    "models": [
+      {
+        "id": "u2netp",
+        "url": "https://huggingface.co/skytnt/anime-seg/resolve/main/isnetis.onnx",
+        "size": 4480000,
+        "sha256": ""
+      }
+    ]
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "matting.extract",
+        "capability": "image.matting",
+        "label": "AI 抠图（提取主体）"
+      }
+    ],
+    "menuItems": [
+      {
+        "op": "matting.extract",
+        "label": "AI 抠图",
+        "context": ["grid-multi", "grid-single", "folder", "viewer"]
+      }
+    ]
+  },
+  "permissions": [
+    "library.read",
+    "fs.read.library",
+    "fs.write.output",
+    "inference",
+    "image",
+    "edit.write"
+  ]
+}

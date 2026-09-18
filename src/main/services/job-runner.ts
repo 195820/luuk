@@ -54,6 +54,11 @@ export class JobRunner {
     return () => this.progressCallbacks.delete(callback)
   }
 
+  /** 当前运行中的作业数（资源闸门用） */
+  getRunningCount(): number {
+    return this.runningJobs.size
+  }
+
   /** 创建新作业 */
   async enqueue(
     kind: string,
@@ -267,6 +272,7 @@ export class JobRunner {
 
     const progress: JobProgress = {
       jobId,
+      kind: job.kind,
       state: job.state,
       total: job.total,
       done: job.done,

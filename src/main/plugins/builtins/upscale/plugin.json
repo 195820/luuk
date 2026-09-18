@@ -1,0 +1,46 @@
+{
+  "id": "builtin.upscale",
+  "name": "AI 超分",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "ai-transform",
+  "entry": "index.js",
+  "capabilities": ["image.upscale"],
+  "requires": {
+    "runtime": "onnx",
+    "gpu": false,
+    "models": [
+      {
+        "id": "realesr-general-x4v3",
+        "url": "https://huggingface.co/Xenova/real-esrgan/resolve/main/onnx/model.onnx",
+        "size": 4500000,
+        "sha256": ""
+      }
+    ]
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "upscale.x4",
+        "capability": "image.upscale",
+        "label": "AI 超分（4x）",
+        "params": { "scale": 4 }
+      }
+    ],
+    "menuItems": [
+      {
+        "op": "upscale.x4",
+        "label": "AI 超分 4x",
+        "context": ["grid-single", "viewer"]
+      }
+    ]
+  },
+  "permissions": [
+    "library.read",
+    "fs.read.library",
+    "fs.write.output",
+    "inference",
+    "image",
+    "edit.write"
+  ]
+}

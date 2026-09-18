@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch, Tag, Columns2, Download, FolderHeart } from 'lucide-react'
+import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch, Tag, Columns2, Download, FolderHeart, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import type { MenuItemDefinition } from '../../types/plugin'
 
 interface FileContextMenuProps {
   x: number
@@ -9,9 +10,13 @@ interface FileContextMenuProps {
   onClose: () => void
   /** 对比项是否可用（恰好选中 2 张图片时） */
   compareEnabled?: boolean
+  /** 插件贡献的动态菜单项（已由宿主注入 pluginId） */
+  pluginMenuItems?: MenuItemDefinition[]
+  /** 当前上下文：用于按 item.context 过滤插件菜单项 */
+  context?: 'grid-multi' | 'grid-single' | 'folder' | 'viewer'
 }
 
-export function FileContextMenu({ x, y, onAction, onClose, compareEnabled }: FileContextMenuProps) {
+export function FileContextMenu({ x, y, onAction, onClose, compareEnabled, pluginMenuItems, context }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -51,6 +56,10 @@ export function FileContextMenu({ x, y, onAction, onClose, compareEnabled }: Fil
     return true
   })
 
+  // 插件贡献项：按当前上下文过滤（缺省视为多选网格）
+  const ctx = context ?? 'grid-multi'
+  const pluginItems = (pluginMenuItems ?? []).filter((m) => m.context.includes(ctx))
+
   return (
     <div
       ref={ref}
@@ -75,6 +84,21 @@ export function FileContextMenu({ x, y, onAction, onClose, compareEnabled }: Fil
           </button>
         )
       })}
+      {pluginItems.length > 0 && (
+        <>
+          <div className="my-1 h-px bg-border/40" />
+          {pluginItems.map((m) => (
+            <button
+              key={`${m.pluginId}:${m.op}`}
+              className="flex w-full items-center gap-3 px-3 py-1.5 text-sm hover:bg-accent/10"
+              onClick={() => { onAction(`plugin:${m.pluginId}:${m.op}`); onClose() }}
+            >
+              <Wand2 className="h-4 w-4 text-accent" />
+              <span className="flex-1 text-left">{m.label}</span>
+            </button>
+          ))}
+        </>
+      )}
     </div>
   )
 }

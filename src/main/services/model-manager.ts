@@ -1,6 +1,10 @@
 import * as fs from 'fs/promises'
+import * as nodeFs from 'fs'
 import * as path from 'path'
 import * as crypto from 'crypto'
+import { createReadStream } from 'fs'
+import { Readable } from 'stream'
+import { pipeline } from 'stream/promises'
 import type { ModelInfo } from '../../types/plugin'
 import { logger } from '../../utils/logger'
 
@@ -49,7 +53,7 @@ export class ModelManager {
   }
 
   /**
-   * SHA256 完整性校验。
+   * SHA256 完整性校验（流式，避免大文件整读 OOM）。
    * 文件不存在 → 返回 false（不抛错）。
    * 校验失败 → 删除文件并返回 false，触发调用方重新下载。
    */
@@ -60,15 +64,15 @@ export class ModelManager {
     const filePath = this.getModelPath(id)
     if (!filePath) return false
 
-    let fileBuffer: Buffer
-    try {
-      fileBuffer = await fs.readFile(filePath)
-    } catch {
-      // 文件不存在或读取失败
-      return false
-    }
+    if (!nodeFs.existsSync(filePath)) return false
 
-    const actualHash = crypto.createHash('sha256').update(fileBuffer).digest('hex')
+    const hash = crypto.createHash('sha256')
+    const stream = createReadStream(filePath)
+    for await (const chunk of stream) {
+      hash.update(chunk as Buffer)
+    }
+    const actualHash = hash.digest('hex')
+
     if (actualHash === info.sha256) {
       return true
     }
@@ -80,6 +84,93 @@ export class ModelManager {
       logger.warn('ModelManager', `删除损坏模型文件失败: ${filePath}`, err)
     }
     return false
+  }
+
+  /**
+   * 真实 HTTP 下载（.part 断点续传 + 流式写入 + SHA256 校验）。
+   * @param onProgress 进度回调（0-100）
+   */
+  async downloadModel(id: string, onProgress?: (pct: number) => void): Promise<void> {
+    const info = this.models.get(id)
+    if (!info) throw new Error(`模型未注册: ${id}`)
+    if (!info.url) throw new Error(`模型 ${id} 无下载 URL`)
+
+    await fs.mkdir(this.modelsDir, { recursive: true })
+    const finalPath = path.join(this.modelsDir, id)
+    const partPath = `${finalPath}.part`
+
+    // 已完成且校验通过 → 直接返回
+    if (nodeFs.existsSync(finalPath) && (await this.verifyModel(id))) {
+      this.markDownloaded(id, finalPath)
+      onProgress?.(100)
+      return
+    }
+
+    const existingSize = nodeFs.existsSync(partPath) ? nodeFs.statSync(partPath).size : 0
+    const total = info.size || 0
+
+    const headers: Record<string, string> = {}
+    if (existingSize > 0) headers.Range = `bytes=${existingSize}-`
+
+    info.state = 'downloading'
+    let response: Response
+    try {
+      response = await fetch(info.url, { headers })
+    } catch (err) {
+      this.markFailed(id)
+      throw new Error(`模型下载请求失败: ${(err as Error).message}`)
+    }
+    if (!response.ok && response.status !== 206) {
+      this.markFailed(id)
+      throw new Error(`模型下载失败: HTTP ${response.status}`)
+    }
+    if (!response.body) {
+      this.markFailed(id)
+      throw new Error('模型下载失败: 响应体为空')
+    }
+
+    // 206 → 追加；200 → 从头覆盖
+    const append = response.status === 206 && existingSize > 0
+    const startOffset = append ? existingSize : 0
+    if (!append && existingSize > 0) {
+      // 服务器不支持 Range → 清空重下
+      await fs.unlink(partPath).catch(() => {})
+    }
+
+    const nodeStream = Readable.fromWeb(response.body as any)
+    let received = startOffset
+    let lastPct = -1
+    const out = nodeFs.createWriteStream(partPath, { flags: append ? 'a' : 'w' })
+    nodeStream.on('data', (chunk: Buffer) => {
+      received += chunk.length
+      if (total > 0) {
+        const pct = Math.min(99, Math.round((received / total) * 100))
+        if (pct !== lastPct) {
+          lastPct = pct
+          info.progress = pct
+          onProgress?.(pct)
+        }
+      }
+    })
+
+    try {
+      await pipeline(nodeStream, out)
+    } catch (err) {
+      this.markFailed(id)
+      throw new Error(`模型下载中断: ${(err as Error).message}`)
+    }
+
+    // 原子重命名 + 校验
+    await fs.rename(partPath, finalPath)
+    info.localPath = finalPath
+    const ok = await this.verifyModel(id)
+    if (!ok) {
+      this.markFailed(id)
+      throw new Error(`模型校验失败(SHA256 不匹配): ${id}`)
+    }
+    this.markDownloaded(id, finalPath)
+    onProgress?.(100)
+    logger.info('ModelManager', `模型下载完成: ${id}`)
   }
 
   /** 更新下载进度（0-100） */

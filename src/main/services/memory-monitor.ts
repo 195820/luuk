@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import process from 'node:process'
+import { app } from 'electron'
 import type { MemoryLevel, MemoryStatus } from '../../types/plugin'
 
 export interface MemoryMonitorOptions {
@@ -40,9 +41,7 @@ export class MemoryMonitor extends EventEmitter {
 
   /** 刷新内存水位线，返回当前级别 */
   refresh(): MemoryLevel {
-    // process.memoryUsage().rss 包含所有 C/C++ 分配（含 native 模块）
-    const rssBytes = process.memoryUsage().rss
-    this.currentRssMB = Math.round(rssBytes / 1024 / 1024)
+    this.currentRssMB = this.aggregateRssMB()
 
     const previousLevel = this.currentLevel
     this.currentLevel = this.computeLevel(this.currentRssMB)
@@ -53,6 +52,23 @@ export class MemoryMonitor extends EventEmitter {
     }
 
     return this.currentLevel
+  }
+
+  /**
+   * 聚合所有进程 RSS（主进程 + 渲染进程 + 插件 utilityProcess）。
+   * app.getAppMetrics() 的 workingSetSize 单位为 KB。取不到时回退主进程 RSS。
+   */
+  private aggregateRssMB(): number {
+    try {
+      if (app?.isReady?.()) {
+        const metrics = app.getAppMetrics()
+        const totalKB = metrics.reduce((sum, m) => sum + (m.memory?.workingSetSize ?? 0), 0)
+        if (totalKB > 0) return Math.round(totalKB / 1024)
+      }
+    } catch {
+      /* 非 Electron 环境或 API 不可用 → 回退 */
+    }
+    return Math.round(process.memoryUsage().rss / 1024 / 1024)
   }
 
   /** 启动定时刷新，默认 5000ms 间隔 */

@@ -14,6 +14,7 @@ import { ImageGrid } from './components/ImageGrid'
 import { MasonryGrid } from './components/MasonryGrid'
 import { FolderTree } from './components/FolderTree'
 import { ScanProgress } from './components/ScanProgress'
+import { JobProgressBar } from './components/JobProgressBar'
 import { SortControl } from './components/SortControl'
 import { SearchPanel } from './components/SearchPanel'
 import { TagCloudPanel } from './components/TagCloudPanel'
@@ -1528,6 +1529,9 @@ function App() {
 
       {/* 扫描进度条 */}
       <ScanProgress />
+
+      {/* AI 作业进度条 */}
+      <JobProgressBar />
 
       {/* 库统计面板 */}
       {showStatsPanel && currentLibraryId !== null && currentLibraryId > 0 && (

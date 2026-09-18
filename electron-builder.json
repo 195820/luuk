@@ -7,8 +7,14 @@
   "npmRebuild": false,
   "files": [
     "dist/**/*",
-    "dist-electron/**/*",
-    "src/main/plugins/builtins/**/*"
+    "dist-electron/**/*"
+  ],
+  "asarUnpack": [
+    "**/*.node",
+    "**/onnxruntime*/**",
+    "**/sharp/**",
+    "**/@img/**",
+    "dist-electron/plugins/builtins/**/*"
   ],
   "win": {
     "signAndEditExecutable": false,

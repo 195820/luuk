@@ -6,17 +6,39 @@
 import { utilityProcess } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import type { WorkerRpcResponse } from '../../types/plugin'
+import { logger } from '../../utils/logger'
+import type {
+  WorkerRpcResponse,
+  WorkerToMainRequest,
+  RpcError,
+} from '../../types/plugin'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** Worker 启动超时时间（毫秒） */
 const STARTUP_TIMEOUT_MS = 10_000
+/** 反向 SDK 调用熔断前的最大崩溃次数 */
+const MAX_CRASHES = 3
 
 /** 待处理 RPC 请求的回调 */
 interface PendingRequest {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+}
+
+/** SDK 调用处理器（Worker → 主进程反向请求） */
+export type SdkCallHandler = (req: WorkerToMainRequest) => Promise<unknown>
+
+/** 将任意异常归一化为 RPC 错误负载 */
+function toRpcError(err: unknown): RpcError {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const e = err as { code?: string; message?: string; name?: string }
+    return {
+      code: e.code || e.name || 'EXECUTION_ERROR',
+      message: e.message || String(err),
+    }
+  }
+  return { code: 'EXECUTION_ERROR', message: err instanceof Error ? err.message : String(err) }
 }
 
 /**
@@ -29,12 +51,41 @@ export class PluginHostProcess {
   private requestId = 0
   private pendingRequests = new Map<number, PendingRequest>()
   private startPromise: Promise<void> | null = null
+  /** 内存水位线阈值（MB），随 fork 下发给 Worker，与主进程保持一致 */
+  private memoryThresholds: { yellowMB: number; redMB: number } = { yellowMB: 300, redMB: 400 }
+  /** 反向 SDK 调用处理器 */
+  private sdkCallHandler: SdkCallHandler | null = null
+  /** 连续崩溃计数与熔断标记 */
+  private crashCount = 0
+  private circuitBroken = false
+  /** 是否处于主动优雅关闭中（不计入崩溃计数） */
+  private shutdownRequested = false
+  /** 熔断回调（由 PluginManager 注册，用于停用全部插件） */
+  onCircuitBreak: (() => void) | null = null
+
+  /** 配置内存水位线阈值（须在 ensureStarted 前调用，随 fork 下发） */
+  setMemoryThresholds(yellowMB: number, redMB: number): void {
+    this.memoryThresholds = { yellowMB, redMB }
+  }
+
+  /** 注册反向 SDK 调用处理器 */
+  onSdkCall(handler: SdkCallHandler): void {
+    this.sdkCallHandler = handler
+  }
+
+  /** 熔断状态查询 */
+  isCircuitBroken(): boolean {
+    return this.circuitBroken
+  }
 
   /**
    * 懒启动 Worker（幂等）
    * 已启动则直接返回，启动中则复用 Promise
    */
   async ensureStarted(): Promise<void> {
+    if (this.circuitBroken) {
+      throw new Error('插件宿主已熔断（Worker 连续崩溃），请重启应用')
+    }
     if (this.ready && this.worker) return
     if (this.startPromise) return this.startPromise
 
@@ -51,6 +102,11 @@ export class PluginHostProcess {
 
     this.worker = utilityProcess.fork(workerScriptPath, [], {
       serviceName: 'luuk-plugin-worker',
+      env: {
+        ...process.env,
+        LUUK_MEM_YELLOW_MB: String(this.memoryThresholds.yellowMB),
+        LUUK_MEM_RED_MB: String(this.memoryThresholds.redMB),
+      },
     })
 
     // 监听 Worker 就绪消息
@@ -118,36 +174,70 @@ export class PluginHostProcess {
   }
 
   /**
-   * 处理 Worker 发来的消息
-   * 仅处理 rpc-response 类型
+   * 处理 Worker 发来的消息（双向）
+   * - worker-to-main（sdk-request）：转发给反向 SDK 宿主
+   * - rpc-response（main-to-worker）：路由到 pendingRequests
    */
   private handleWorkerMessage(msg: unknown): void {
-    if (
-      typeof msg !== 'object' ||
-      msg === null ||
-      (msg as Record<string, unknown>).type !== 'rpc-response'
-    ) {
+    if (typeof msg !== 'object' || msg === null) return
+    const m = msg as Record<string, unknown>
+
+    // Worker 发来的 SDK 调用 → 异步交给注册的 handler，完成后回包
+    if (m.type === 'sdk-request' || m.channel === 'worker-to-main') {
+      const req = msg as WorkerToMainRequest
+      if (!this.sdkCallHandler) {
+        this.sendSdkResponse(req.id, {
+          error: { code: 'EXECUTION_ERROR', message: 'SDK 宿主未就绪' },
+        })
+        return
+      }
+      void (async () => {
+        try {
+          const result = await this.sdkCallHandler!(req)
+          this.sendSdkResponse(req.id, { result })
+        } catch (err) {
+          const rpcErr = toRpcError(err)
+          this.sendSdkResponse(req.id, { error: rpcErr })
+        }
+      })()
       return
     }
 
-    const response = msg as WorkerRpcResponse
-    const pending = this.pendingRequests.get(response.id)
-    if (!pending) return
+    // 主进程发出的请求的响应 → 路由到 pendingRequests
+    if (m.type === 'rpc-response') {
+      const response = msg as WorkerRpcResponse
+      const pending = this.pendingRequests.get(response.id)
+      if (!pending) return
 
-    this.pendingRequests.delete(response.id)
+      this.pendingRequests.delete(response.id)
 
-    if (response.error) {
-      const err = new Error(response.error.message)
-      err.name = response.error.code
-      pending.reject(err)
-    } else {
-      pending.resolve(response.result)
+      if (response.error) {
+        const err = new Error(response.error.message)
+        err.name = response.error.code
+        pending.reject(err)
+      } else {
+        pending.resolve(response.result)
+      }
     }
   }
 
   /**
+   * 向 Worker 回复一个 SDK 调用的结果
+   */
+  sendSdkResponse(id: number, payload: { result?: unknown; error?: RpcError }): void {
+    if (!this.worker) return
+    this.worker.postMessage({
+      type: 'rpc-response',
+      channel: 'worker-to-main',
+      id,
+      ...payload,
+    })
+  }
+
+  /**
    * Worker 退出处理
-   * 拒绝所有待处理的 RPC 请求
+   * - 拒绝所有待处理 RPC 请求
+   * - 异常退出计入崩溃次数，达阈值则熔断并停止重启
    */
   private handleWorkerExit(code: number): void {
     const wasReady = this.ready
@@ -166,6 +256,19 @@ export class PluginHostProcess {
       )
     }
     this.pendingRequests.clear()
+
+    // 优雅关闭（主动 kill）不计入崩溃；仅非零退出码或运行中异常退出计数
+    const graceful = this.shutdownRequested
+    this.shutdownRequested = false
+    if (!graceful && (code !== 0 || wasReady)) {
+      this.crashCount++
+      logger.warn('PluginHostProcess', `Worker 异常退出（次数 ${this.crashCount}，退出码 ${code}）`)
+      if (this.crashCount >= MAX_CRASHES) {
+        this.circuitBroken = true
+        logger.error('PluginHostProcess', `Worker 连续崩溃 ${this.crashCount} 次，停止重启并触发熔断`)
+        this.onCircuitBreak?.()
+      }
+    }
   }
 
   /**
@@ -191,6 +294,7 @@ export class PluginHostProcess {
 
       this.worker!.postMessage({
         type: 'rpc-request',
+        channel: 'main-to-worker',
         id,
         method,
         params,
@@ -211,6 +315,9 @@ export class PluginHostProcess {
    */
   async shutdown(): Promise<void> {
     if (!this.worker) return
+
+    // 标记为优雅关闭，退出事件不计入崩溃
+    this.shutdownRequested = true
 
     // 拒绝所有待处理请求
     for (const [, pending] of this.pendingRequests) {

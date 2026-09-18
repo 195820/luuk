@@ -8,6 +8,7 @@ import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ip
 import { registerTagHandlers, unregisterTagHandlers } from '../src/main/ipc/tag-handlers'
 import { registerPluginHandlers, unregisterPluginHandlers } from '../src/main/ipc/plugin-handlers'
 import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
+import { registerSettingsHandlers, unregisterSettingsHandlers } from '../src/main/ipc/settings-handlers'
 import { initJobRunner, getJobRunner } from '../src/main/services/job-runner'
 import { getPluginManager } from '../src/main/services/plugin-manager'
 import { getMasterDB } from '../src/main/services/database'
@@ -257,6 +258,7 @@ app.whenReady().then(async () => {
 
   registerPluginHandlers()
   registerJobHandlers()
+  registerSettingsHandlers()
 
   createWindow()
 
@@ -313,6 +315,7 @@ function shutdownApp(): Promise<void> {
         unregisterTagHandlers()
         unregisterPluginHandlers()
         unregisterJobHandlers()
+        unregisterSettingsHandlers()
 
         libraryMonitor.stop()
         stopMediaRegistryCleanup()

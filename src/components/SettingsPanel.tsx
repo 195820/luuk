@@ -1,6 +1,18 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import { X, Palette, Monitor, Sun, Moon, Check } from 'lucide-react'
 import { useThemeStore, ACCENT_PRESETS } from '../stores/themeStore'
+
+// 插件 / 模型面板懒加载（按需引入，降低首屏与回归风险）
+const PluginSettings = lazy(() => import('./file-ops/PluginSettings').then((m) => ({ default: m.PluginSettings })))
+const ModelSettings = lazy(() => import('./file-ops/ModelSettings').then((m) => ({ default: m.ModelSettings })))
+
+type Tab = 'appearance' | 'plugins' | 'ai'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'appearance', label: '外观' },
+  { id: 'plugins', label: '插件' },
+  { id: 'ai', label: 'AI 与模型' },
+]
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -9,6 +21,7 @@ interface SettingsPanelProps {
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { enabled, mode, accentColor, density, setEnabled, setMode, setAccentColor, setDensity } = useThemeStore()
   const [customColor, setCustomColor] = useState(accentColor)
+  const [tab, setTab] = useState<Tab>('appearance')
 
   // R-2：themeStore.enabled 默认关闭时 applyTheme 强制回退深色，
   // 用户在面板内的任何修改都应自动开启主题定制，保证实时生效
@@ -32,7 +45,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Palette size={20} />
-            外观设置
+            设置
           </h2>
           <button
             onClick={onClose}
@@ -42,7 +55,25 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </button>
         </div>
 
+        {/* Tab 切换 */}
+        <div className="flex items-center gap-1 px-4 pt-3 border-b border-border">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`px-3 py-2 text-sm rounded-t-md transition-colors ${
+                tab === t.id
+                  ? 'text-accent border-b-2 border-accent font-medium'
+                  : 'text-text-muted hover:text-text-primary'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* 内容 */}
+        {tab === 'appearance' && (
         <div className="p-6 space-y-6">
           {/* 主题定制总开关（feature flag，R-2） */}
           <div className="flex items-center justify-between gap-4">
@@ -159,6 +190,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             </div>
           </div>
         </div>
+        )}
+
+        {tab === 'plugins' && (
+          <Suspense fallback={<div className="p-6 text-sm text-text-muted">加载中…</div>}>
+            <PluginSettings />
+          </Suspense>
+        )}
+        {tab === 'ai' && (
+          <Suspense fallback={<div className="p-6 text-sm text-text-muted">加载中…</div>}>
+            <ModelSettings />
+          </Suspense>
+        )}
 
         {/* 底部 */}
         <div className="p-4 border-t border-border flex justify-end">

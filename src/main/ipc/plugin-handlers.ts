@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { ipcMain, BrowserWindow } from 'electron'
 import { logger } from '../../utils/logger'
 import { getPluginManager } from '../services/plugin-manager'
 
@@ -70,12 +70,68 @@ export function registerPluginHandlers(): void {
     }
   })
 
+  // ── 模型管理 ──
+
+  ipcMain.handle('models:list', async () => {
+    try {
+      const pm = getPluginManager()
+      await pm.initialize()
+      return { success: true, data: pm.getModelManager().listModels() }
+    } catch (err) {
+      logger.error('PluginHandlers', 'models:list 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('models:download', async (_event, modelId: string) => {
+    try {
+      const pm = getPluginManager()
+      await pm.initialize()
+      const mm = pm.getModelManager()
+      // 异步下载，进度通过 webContents 推送
+      void mm
+        .downloadModel(modelId, (pct) => {
+          for (const w of BrowserWindow.getAllWindows()) {
+            w.webContents.send('model-download-progress', { modelId, progress: pct })
+          }
+        })
+        .catch((err) => {
+          logger.error('PluginHandlers', `模型下载失败: ${modelId}`, err)
+          for (const w of BrowserWindow.getAllWindows()) {
+            w.webContents.send('model-download-progress', {
+              modelId,
+              progress: -1,
+              error: (err as Error).message,
+            })
+          }
+        })
+      return { success: true }
+    } catch (err) {
+      logger.error('PluginHandlers', 'models:download 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('models:verify', async (_event, modelId: string) => {
+    try {
+      const pm = getPluginManager()
+      const ok = await pm.getModelManager().verifyModel(modelId)
+      return { success: true, data: ok }
+    } catch (err) {
+      logger.error('PluginHandlers', 'models:verify 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
   logger.info('PluginHandlers', '插件 IPC 处理器已注册')
 }
 
 /** 注销插件 IPC 处理器 */
 export function unregisterPluginHandlers(): void {
-  const channels = ['plugins:list', 'plugins:get', 'plugins:setEnabled', 'plugins:execute', 'plugins:getMenuItems']
+  const channels = [
+    'plugins:list', 'plugins:get', 'plugins:setEnabled', 'plugins:execute', 'plugins:getMenuItems',
+    'models:list', 'models:download', 'models:verify',
+  ]
   for (const channel of channels) {
     ipcMain.removeHandler(channel)
   }

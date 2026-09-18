@@ -17,7 +17,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['better-sqlite3', 'sharp', 'chokidar', 'electron-store', 'trash', 'wallpaper'],
+              external: ['better-sqlite3', 'sharp', 'chokidar', 'electron-store', 'trash', 'wallpaper', 'onnxruntime-node'],
             },
           },
         },
@@ -41,6 +41,10 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            rollupOptions: {
+              // ONNX / sharp 为原生模块，运行时从 node_modules 解析，不打进 bundle
+              external: ['sharp', 'onnxruntime-node'],
+            },
           },
         },
       },

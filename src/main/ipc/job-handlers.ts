@@ -7,8 +7,37 @@ import type { JobProgress } from '../../types'
 /** 进度订阅清理函数 */
 let progressUnsubscribe: (() => void) | null = null
 
+/** 最大并发作业数（单模型串行） */
+const MAX_CONCURRENT_JOBS = 1
+
 /** 注册 JobRunner IPC 处理器 */
 export function registerJobHandlers(): void {
+  // 创建并入队新作业
+  ipcMain.handle(
+    'jobs:enqueue',
+    async (
+      _event,
+      kind: string,
+      payload: unknown,
+      options?: { priority?: number; items?: Array<{ libraryId: number; imageId: number | null }> },
+    ) => {
+      try {
+        const runner = getJobRunner()
+        const jobId = await runner.enqueue(kind, payload, options)
+
+        // 资源闸门：空闲时自动启动；非空闲时等队列消化
+        if (runner.getRunningCount() < MAX_CONCURRENT_JOBS) {
+          await runner.start(jobId)
+        }
+
+        return { success: true, data: jobId }
+      } catch (err) {
+        logger.error('JobHandlers', 'jobs:enqueue 失败', err)
+        return { success: false, error: (err as Error).message }
+      }
+    },
+  )
+
   // 获取所有作业列表
   ipcMain.handle('jobs:list', async () => {
     try {
@@ -101,7 +130,7 @@ export function registerJobHandlers(): void {
 
 /** 注销 JobRunner IPC 处理器 */
 export function unregisterJobHandlers(): void {
-  const channels = ['jobs:list', 'jobs:get', 'jobs:pause', 'jobs:resume', 'jobs:cancel', 'jobs:subscribeProgress']
+  const channels = ['jobs:enqueue', 'jobs:list', 'jobs:get', 'jobs:pause', 'jobs:resume', 'jobs:cancel', 'jobs:subscribeProgress']
   for (const channel of channels) {
     ipcMain.removeHandler(channel)
   }

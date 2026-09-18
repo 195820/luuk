@@ -1,12 +1,28 @@
 /**
  * 插件宿主 Worker 入口
- * 运行在 Electron utilityProcess 中，通过 MessagePort RPC 与主进程通信
+ * 运行在 Electron utilityProcess 中，通过 MessagePort RPC 与主进程双向通信。
+ *
+ * 职责：
+ * - 承载插件 JS 沙箱（require 编译后的 CJS 入口），提供 luuk.* SDK
+ * - 承载 ONNX 推理（InferencePool，D2：onnxruntime 运行在 utilityProcess）
+ * - image.* 使用 sharp 在本地执行（避免跨进程传大图）
+ * - library/fs/jobs/edit/... 经反向 RPC（callMain）转发到主进程 SDK 宿主
  */
 
+import { createRequire } from 'module'
 import { parentPort } from 'worker_threads'
+import { InferencePool } from '../src/main/plugins/inference-pool'
+import { createPluginSdk } from '../src/main/plugins/worker-sdk'
 import type {
   MemoryStatus,
+  LuukSdk,
+  PluginInstance,
+  MainToWorkerRequest,
+  RpcResponse,
+  RpcError,
 } from '../src/types/plugin'
+
+const require = createRequire(import.meta.url)
 
 // ── 通信端口 ──
 // 本 Worker 由 plugin-host-process 以 utilityProcess 方式启动，通信走
@@ -27,39 +43,59 @@ function getPort(): ParentPortLike | null {
 
 const port = getPort()
 
-// ── 类型守卫：判断消息是否为 RPC 请求 ──
+// ── 内存水位线阈值（由主进程经 fork env 下发，保持与主进程一致） ──
 
-interface RpcRequestMessage {
-  type: 'rpc-request'
-  id: number
-  method: string
-  params?: unknown
+const YELLOW_THRESHOLD_MB = Number(process.env.LUUK_MEM_YELLOW_MB ?? 300)
+const RED_THRESHOLD_MB = Number(process.env.LUUK_MEM_RED_MB ?? 400)
+
+// ── 反向 RPC（Worker → 主进程）──
+
+/** 单次反向调用超时（毫秒） */
+const SDK_CALL_TIMEOUT_MS = 5000
+/** 最大并发在途反向调用（消息风暴防护） */
+const MAX_INFLIGHT = 20
+
+let sdkCallId = 0
+const sdkPending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
+
+function callMain(method: string, params: unknown): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    if (sdkPending.size >= MAX_INFLIGHT) {
+      reject(new Error(`反向 SDK 调用在途过多（>${MAX_INFLIGHT}），请稍后重试`))
+      return
+    }
+    const id = ++sdkCallId
+    const timer = setTimeout(() => {
+      sdkPending.delete(id)
+      reject(new Error(`SDK 调用超时: ${method}`))
+    }, SDK_CALL_TIMEOUT_MS)
+    sdkPending.set(id, { resolve, reject, timer })
+    port?.postMessage({ type: 'sdk-request', channel: 'worker-to-main', id, method, pluginId: currentPluginId(), params })
+  })
 }
 
-function isRpcRequest(msg: unknown): msg is RpcRequestMessage {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    (msg as Record<string, unknown>).type === 'rpc-request'
-  )
+// 当前正在执行 op 的 pluginId（用于给反向调用打标）。单线程 + 串行 execute，
+// 记录最近一次 plugin.execute 的 pluginId 即可满足权限校验需要。
+let activePluginId = ''
+function currentPluginId(): string {
+  return activePluginId
 }
 
-// ── RPC 处理器注册表 ──
+// ── 正向 RPC 处理器（主进程 → Worker）──
 
 type RpcHandler = (params?: unknown) => Promise<unknown>
-
 const handlers = new Map<string, RpcHandler>()
 
 function registerHandler(method: string, handler: RpcHandler): void {
   handlers.set(method, handler)
 }
 
-// ── 内存监控 ──
+// ── 已加载插件实例 ──
 
-/** 黄色水位线（MB） */
-const YELLOW_THRESHOLD_MB = 512
-/** 红色水位线（MB） */
-const RED_THRESHOLD_MB = 768
+const loadedPlugins = new Map<string, { instance: PluginInstance; sdk: LuukSdk }>()
+const inferencePool = new InferencePool()
+
+// ── 内存监控 ──
 
 function getMemoryStatus(): MemoryStatus {
   const mem = process.memoryUsage()
@@ -75,10 +111,7 @@ function getMemoryStatus(): MemoryStatus {
   return {
     level,
     rssMB,
-    threshold: {
-      yellow: YELLOW_THRESHOLD_MB,
-      red: RED_THRESHOLD_MB,
-    },
+    threshold: { yellow: YELLOW_THRESHOLD_MB, red: RED_THRESHOLD_MB },
   }
 }
 
@@ -90,97 +123,131 @@ function getMemoryStats() {
     heapUsed: mem.heapUsed,
     external: mem.external,
     arrayBuffers: mem.arrayBuffers,
+    sessions: inferencePool.stats(),
   }
 }
 
 // ── 注册内置处理器 ──
 
-// 内存相关
 registerHandler('memory.getStatus', async () => getMemoryStatus())
 registerHandler('memory.getStats', async () => getMemoryStats())
+registerHandler('memory.evict', async () => {
+  inferencePool.evictOnMemoryPressure()
+  return { evicted: true }
+})
 
-// 插件生命周期（占位实现）
 registerHandler('plugin.load', async (params) => {
   const { pluginId, entryPath } = params as { pluginId: string; entryPath: string }
-  // TODO: 实际加载插件 JS 沙箱
+  const sdk = createPluginSdk(pluginId, callMain, inferencePool)
+  const mod = require(entryPath)
+  const instance: PluginInstance =
+    typeof mod.activate === 'function' ? mod.activate(sdk) : (mod.default ?? mod)
+  loadedPlugins.set(pluginId, { instance, sdk })
   return { pluginId, entryPath, loaded: true }
 })
 
 registerHandler('plugin.unload', async (params) => {
   const { pluginId } = params as { pluginId: string }
-  // TODO: 实际卸载插件
+  const entry = loadedPlugins.get(pluginId)
+  try {
+    await entry?.instance.deactivate?.()
+  } catch {
+    /* 忽略卸载异常 */
+  }
+  loadedPlugins.delete(pluginId)
   return { pluginId, unloaded: true }
 })
 
 registerHandler('plugin.execute', async (params) => {
-  const { pluginId, opId } = params as {
+  const { pluginId, opId, input } = params as {
     pluginId: string
     opId: string
     input: unknown
   }
-  // TODO: 实际执行插件 Op
-  return { pluginId, opId, output: null }
-})
-
-// 推理相关（占位实现）
-registerHandler('inference.createSession', async (params) => {
-  const { modelId, modelPath } = params as { modelId: string; modelPath: string }
-  // TODO: 创建 ONNX 推理会话
-  return { modelId, modelPath, sessionId: `session-${modelId}` }
-})
-
-registerHandler('inference.run', async (params) => {
-  const { modelId, feeds } = params as {
-    modelId: string
-    feeds: Record<string, unknown>
+  const entry = loadedPlugins.get(pluginId)
+  if (!entry) throw new Error(`插件未加载: ${pluginId}`)
+  if (typeof entry.instance.executeOp !== 'function') {
+    throw new Error(`插件 ${pluginId} 未实现 executeOp`)
   }
-  // TODO: 执行推理
-  return { modelId, feeds, results: {} }
-})
-
-registerHandler('inference.destroySession', async (params) => {
-  const { modelId } = params as { modelId: string }
-  // TODO: 销毁推理会话
-  return { modelId, destroyed: true }
+  // 标记当前执行上下文，供反向 SDK 调用打权限标签
+  const prev = activePluginId
+  activePluginId = pluginId
+  try {
+    return await entry.instance.executeOp(entry.sdk, opId, input)
+  } finally {
+    activePluginId = prev
+  }
 })
 
 // ── 消息处理 ──
 
-async function handleMessage(msg: unknown): Promise<void> {
-  if (!isRpcRequest(msg)) return
+function toRpcError(err: unknown): RpcError {
+  if (err && typeof err === 'object' && 'code' in err) {
+    const e = err as { code?: string; message?: string; name?: string }
+    return { code: e.code || e.name || 'EXECUTION_ERROR', message: e.message || String(err) }
+  }
+  return { code: 'EXECUTION_ERROR', message: err instanceof Error ? err.message : String(err) }
+}
 
+async function handleRpcRequest(msg: MainToWorkerRequest): Promise<void> {
   const { id, method, params } = msg
   const handler = handlers.get(method)
-
-  const response: { id: number; result?: unknown; error?: { code: string; message: string } } = { id }
+  const response: RpcResponse = { type: 'rpc-response', channel: 'main-to-worker', id }
 
   if (!handler) {
-    response.error = {
-      code: 'METHOD_NOT_FOUND',
-      message: `未知 RPC 方法: ${method}`,
-    }
+    response.error = { code: 'METHOD_NOT_FOUND', message: `未知 RPC 方法: ${method}` }
   } else {
     try {
       response.result = await handler(params)
     } catch (err) {
-      response.error = {
-        code: 'HANDLER_ERROR',
-        message: err instanceof Error ? err.message : String(err),
-      }
+      response.error = toRpcError(err)
     }
   }
+  port?.postMessage(response)
+}
 
-  port?.postMessage({ type: 'rpc-response', ...response })
+function handleSdkResponse(msg: RpcResponse): void {
+  const p = sdkPending.get(msg.id)
+  if (!p) return
+  clearTimeout(p.timer)
+  sdkPending.delete(msg.id)
+  if (msg.error) {
+    const err = new Error(msg.error.message)
+    err.name = msg.error.code
+    p.reject(err)
+  } else {
+    p.resolve(msg.result)
+  }
+}
+
+function handleMessage(msg: unknown): void {
+  if (typeof msg !== 'object' || msg === null) return
+  const m = msg as Record<string, unknown>
+
+  // 主进程发来的正向请求
+  if (m.type === 'rpc-request' && m.channel === 'main-to-worker') {
+    void handleRpcRequest(msg as MainToWorkerRequest).catch((err) => {
+      console.error('[plugin-worker] RPC 处理异常:', err)
+    })
+    return
+  }
+
+  // 主进程对我们反向 SDK 调用的回包
+  if (m.type === 'rpc-response' && m.channel === 'worker-to-main') {
+    handleSdkResponse(msg as RpcResponse)
+    return
+  }
 }
 
 // ── 启动 ──
 
 if (port) {
   port.on('message', (msg: unknown) => {
-    // 异步处理，不阻塞消息接收
-    handleMessage(msg).catch((err) => {
+    try {
+      handleMessage(msg)
+    } catch (err) {
       console.error('[plugin-worker] 消息处理异常:', err)
-    })
+    }
   })
 
   // 通知主进程 Worker 已就绪
