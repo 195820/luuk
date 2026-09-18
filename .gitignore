@@ -75,3 +75,10 @@ test-results/
 
 # SDD process files
 .superpowers/
+
+# IDE / agent 本地缓存
+.qoder/
+
+# 调试产物与验证证据（不入库）
+debug_*
+test-evidence/
