@@ -60,7 +60,15 @@ export function createPluginSdk(
           (modelPath && modelPath.trim()) ||
           ((await callMain('sdk.inference.resolveModel', { modelId })) as string)
         const session = await pool.acquire(modelId, resolved, opts as never)
-        return { modelId, modelPath: resolved, created: true, ...(session ? {} : {}) }
+        // 透传模型真实输入/输出张量名：不同导出（如 u2netp 的 `input.1`）名称各异，
+        // 插件须按 inputNames 构造 feeds，避免写死 `input` / `image` 导致推理失败。
+        return {
+          modelId,
+          modelPath: resolved,
+          created: true,
+          inputNames: (session?.inputNames ?? []) as string[],
+          outputNames: (session?.outputNames ?? []) as string[],
+        }
       },
       run: async (modelId, feeds, opts) => {
         const deserialized = deserializeTensors(feeds)

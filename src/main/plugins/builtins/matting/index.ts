@@ -179,9 +179,10 @@ async function extractOne(
   const buf = await sdk.fs.read(p)
 
   // 预处理并推理
-  await sdk.inference.createSession(MODEL_ID, '')
+  const sess = await sdk.inference.createSession(MODEL_ID, '')
+  const inputName = sess.inputNames[0] ?? 'input'
   const tensor = await sdk.image.normalize(buf, MODEL_SIZE)
-  const outputs = await sdk.inference.run(MODEL_ID, { input: tensor }, { priority: 'batch' })
+  const outputs = await sdk.inference.run(MODEL_ID, { [inputName]: tensor }, { priority: 'batch' })
   await sdk.progress.report(55, '合成掩码')
 
   // 后处理：显著图 → 原尺寸 alpha

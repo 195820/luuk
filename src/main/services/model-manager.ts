@@ -113,16 +113,23 @@ export class ModelManager {
     if (existingSize > 0) headers.Range = `bytes=${existingSize}-`
 
     info.state = 'downloading'
-    let response: Response
-    try {
-      response = await fetch(info.url, { headers })
-    } catch (err) {
-      this.markFailed(id)
-      throw new Error(`模型下载请求失败: ${(err as Error).message}`)
+    // 候选源：主 URL + 镜像列表（主源被墙/失败时逐个回退）
+    const candidates = [info.url, ...(info.mirrorUrls ?? [])].filter((u): u is string => Boolean(u))
+    let response: Response | null = null
+    let lastErr = ''
+    for (const candidate of candidates) {
+      try {
+        const r = await fetch(candidate, { headers })
+        if (r.ok || r.status === 206) { response = r; break }
+        lastErr = `HTTP ${r.status}`
+        r.body?.cancel?.()
+      } catch (err) {
+        lastErr = (err as Error).message
+      }
     }
-    if (!response.ok && response.status !== 206) {
+    if (!response) {
       this.markFailed(id)
-      throw new Error(`模型下载失败: HTTP ${response.status}`)
+      throw new Error(`模型下载失败（已尝试 ${candidates.length} 个源）: ${lastErr}`)
     }
     if (!response.body) {
       this.markFailed(id)

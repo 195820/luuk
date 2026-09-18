@@ -30,6 +30,10 @@ function listPluginDirs() {
 /** 复制 plugin.json（及可选资源）到产物目录 */
 function copyManifests() {
   fs.mkdirSync(OUT_DIR, { recursive: true })
+  // 根 package.json 为 "type": "module"；builtins 产物是 CJS（format:'cjs'）。
+  // 在其产物目录写入 {"type":"commonjs"} 边界，确保 plugin-worker 的 require() 正确按 CJS 加载。
+  const boundary = path.join(OUT_DIR, 'package.json')
+  fs.writeFileSync(boundary, JSON.stringify({ type: 'commonjs' }, null, 2) + '\n')
   for (const name of listPluginDirs()) {
     const srcManifest = path.join(SRC_DIR, name, 'plugin.json')
     const dstManifest = path.join(OUT_DIR, name, 'plugin.json')

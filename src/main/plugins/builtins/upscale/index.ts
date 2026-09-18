@@ -9,7 +9,7 @@
 
 import type { LuukSdk, PluginInstance, SerializedTensor } from '../../../../types/plugin'
 
-const MODEL_ID = 'realesr-general-x4v3'
+const MODEL_ID = 'realesrgan-x4plus'
 const TILE_SIZE = 128
 const TILE_OVERLAP = 8
 
@@ -120,7 +120,8 @@ async function upscaleOne(
   const { width: W, height: H, channels: c, data } = decoded
   const srcC = Math.min(c, 3)
 
-  await sdk.inference.createSession(MODEL_ID, '')
+  const sess = await sdk.inference.createSession(MODEL_ID, '')
+  const inputName = sess.inputNames[0] ?? 'image'
 
   const outW = W * scale
   const outH = H * scale
@@ -137,7 +138,7 @@ async function upscaleOne(
       const tensor = buildTileTensor(data, c, W, H, tx, ty, TILE_SIZE)
       const outputs = await sdk.inference.run(
         MODEL_ID,
-        { image: tensor },
+        { [inputName]: tensor },
         { priority: 'batch' },
       )
       const outTile = pickOutput(outputs)

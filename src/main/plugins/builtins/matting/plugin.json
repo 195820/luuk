@@ -12,9 +12,9 @@
     "models": [
       {
         "id": "u2netp",
-        "url": "https://huggingface.co/skytnt/anime-seg/resolve/main/isnetis.onnx",
-        "size": 4480000,
-        "sha256": ""
+        "url": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
+        "size": 4574861,
+        "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"
       }
     ]
   },

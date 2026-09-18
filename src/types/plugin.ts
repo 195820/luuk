@@ -198,6 +198,15 @@ export interface InferenceSessionInfo {
   residentMB: number
 }
 
+/** createSession 返回：模型真实的输入/输出张量名（供插件按名构造 feeds） */
+export interface CreateSessionResult {
+  modelId: string
+  modelPath: string
+  created: boolean
+  inputNames: string[]
+  outputNames: string[]
+}
+
 // ── Worker RPC 协议（双向） ──
 
 /** RPC 错误码 */
@@ -291,7 +300,7 @@ export interface LuukSdk {
     write(path: string, data: Uint8Array): Promise<void>
   }
   inference: {
-    createSession(modelId: string, modelPath: string, opts?: unknown): Promise<unknown>
+    createSession(modelId: string, modelPath: string, opts?: unknown): Promise<CreateSessionResult>
     run(modelId: string, feeds: SerializedTensorMap, opts?: { priority?: 'interactive' | 'batch' }): Promise<SerializedTensorMap>
     destroySession(modelId: string): Promise<void>
   }

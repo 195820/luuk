@@ -1118,13 +1118,13 @@ provider isAvailable() 探测结果
 
 | # | 项目 | 实测结果 | 日期 | 结论 |
 |---|---|---|---|---|
-| R1 | onnxruntime-node 打包 | 待回填 | — | — |
+| R1 | onnxruntime-node 打包 | dev 模式：模块加载 + CPU EP `InferenceSession.create` 对 u2netp（输入名 `input.1`）与 RealESRGAN-x4plus（输入名 `image`，128→512 即 4x）均成功；`scripts/poc-r1-onnx.mjs` 各 3 passed。打包通道（`build:dir` + win-unpacked `.node` 扫描）**待跑** | 2026-09-18 | dev 加载/推理 PASS；打包验证 pending（需 `npm run build:dir`）|
 | R2 | 4650U CLIP 吞吐 | 待回填 | — | — |
-| R3 | 镜像可达性 | 待回填 | — | — |
+| R3 | 镜像可达性 | 本机直连 github/huggingface.co 超时；`hf-mirror.com` / `registry.npmmirror.com` / `modelscope.cn` 直连 200；HTTP 代理 `127.0.0.1:7897` 可用 | 2026-09-18 | 已为 upscale 配 `hf-mirror` 镜像，`downloadModel` 支持 url→mirrorUrls 逐个回退 |
 | R4 | Python 3.14 wheel | 待回填 | — | — |
 | R5 | 1M embedding 查询延迟 | 待回填 | — | — |
 | R6 | 运行时兼容性矩阵 | 待回填 | — | — |
-| R7 | 大图内存峰值 | 待回填 | — | — |
+| R7 | 大图内存峰值 | 本机 Windows 开发机，`process.memoryUsage().rss` 采样，24× 分块串行推理。**ORT CPU mem-arena 开启**：u2netp@320 **599MB**、RealESRGAN@128 **555MB**（均超 C6 500MB）；**关闭 arena（`enableCpuMemArena:false`）**：u2netp@320 **134MB**、RealESRGAN@128 **212MB**（均在红线内）。tile 64（arena 开）RealESRGAN 256MB | 2026-09-18 | **关键缓解 = 关闭 CPU mem-arena**（已写入 `inference-pool.ts` 会话配置），无需缩小分块即满足 C6。注意：本项仅计 ONNX 推理 RSS，未含 4K→16K 输出的整幅像素缓冲（sharp decode/RGBA/输出图），该部分随输出分辨率线性增长，需另配降采样/落盘策略 |
 | R8 | 用户独显占比 | 待回填 | — | — |
 | R9 | API 面验证清单 | 待回填 | — | — |
 

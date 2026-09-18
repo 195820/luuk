@@ -89,6 +89,9 @@ async function main() {
     session = await ort.InferenceSession.create(modelPath, {
       executionProviders: ['cpu'],
       graphOptimizationLevel: 'all',
+      // 与生产 InferencePool 保持一致：关闭 CPU mem-arena 以避免 arena 持续保留内存
+      // （实测：开启时 4K 推理峰值 550–600MB 超红线，关闭后降到 ~150–210MB）
+      enableCpuMemArena: false,
     })
   } catch (err) {
     sampler.stop()

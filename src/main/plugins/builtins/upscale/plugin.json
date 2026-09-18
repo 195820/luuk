@@ -11,10 +11,13 @@
     "gpu": false,
     "models": [
       {
-        "id": "realesr-general-x4v3",
-        "url": "https://huggingface.co/Xenova/real-esrgan/resolve/main/onnx/model.onnx",
-        "size": 4500000,
-        "sha256": ""
+        "id": "realesrgan-x4plus",
+        "url": "https://huggingface.co/crustythesockk/RealESRGAN-x4plus-dynamic/resolve/main/Real-ESRGAN-x4plus.onnx",
+        "mirrorUrls": [
+          "https://hf-mirror.com/crustythesockk/RealESRGAN-x4plus-dynamic/resolve/main/Real-ESRGAN-x4plus.onnx"
+        ],
+        "size": 67051633,
+        "sha256": "20d423a8d76eb833945caa8757af21f464e2300425d47a6f784d3c86155d73a9"
       }
     ]
   },

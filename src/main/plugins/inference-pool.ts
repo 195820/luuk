@@ -54,7 +54,10 @@ export class InferencePool {
       graphOptimizationLevel: 'all',
       executionMode: 'sequential',
       intraOpNumThreads: opts?.intraOpThreads ?? Math.max(1, os.cpus().length - 2),
-      interOpThreads: opts?.interOpThreads ?? 1,
+      interOpNumThreads: opts?.interOpThreads ?? 1,
+      // R7 实测：ORT CPU EP 的内存池（arena）会持续保留已释放内存，4K 推理峰值可达 550–600MB
+      // （超 C6 500MB 红线）；关闭后分配即时归还，峰值降到 ~150–210MB。
+      enableCpuMemArena: false,
     }
 
     const ep: EpKind = opts?.ep ?? 'cpu'
