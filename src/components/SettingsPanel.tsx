@@ -7,13 +7,20 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ onClose }: SettingsPanelProps) {
-  const { mode, accentColor, density, setMode, setAccentColor, setDensity } = useThemeStore()
+  const { enabled, mode, accentColor, density, setEnabled, setMode, setAccentColor, setDensity } = useThemeStore()
   const [customColor, setCustomColor] = useState(accentColor)
+
+  // R-2：themeStore.enabled 默认关闭时 applyTheme 强制回退深色，
+  // 用户在面板内的任何修改都应自动开启主题定制，保证实时生效
+  const ensureThemeEnabled = () => {
+    if (!enabled) setEnabled(true)
+  }
 
   const handleCustomColorChange = (color: string) => {
     setCustomColor(color)
     // 验证 HEX 格式
     if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      ensureThemeEnabled()
       setAccentColor(color)
     }
   }
@@ -37,6 +44,28 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
         {/* 内容 */}
         <div className="p-6 space-y-6">
+          {/* 主题定制总开关（feature flag，R-2） */}
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <label className="text-sm font-medium block">启用主题定制</label>
+              <span className="text-xs text-text-muted">关闭时回退默认深色主题</span>
+            </div>
+            <button
+              role="switch"
+              aria-checked={enabled}
+              onClick={() => setEnabled(!enabled)}
+              className={`relative w-10 h-5 rounded-full border transition-colors shrink-0 ${
+                enabled ? 'bg-accent border-accent' : 'bg-overlay-lighter border-border'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 size-3.5 rounded-full bg-white transition-all ${
+                  enabled ? 'left-[22px]' : 'left-0.5'
+                }`}
+              />
+            </button>
+          </div>
+
           {/* 主题模式 */}
           <div>
             <label className="text-sm font-medium mb-3 block">主题模式</label>
@@ -48,7 +77,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               ] as const).map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}
-                  onClick={() => setMode(value)}
+                  onClick={() => { ensureThemeEnabled(); setMode(value) }}
                   className={`
                     flex flex-col items-center gap-2 p-3 rounded-lg border transition-all
                     ${mode === value
@@ -71,7 +100,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               {ACCENT_PRESETS.map((preset) => (
                 <button
                   key={preset.color}
-                  onClick={() => setAccentColor(preset.color)}
+                  onClick={() => { ensureThemeEnabled(); setAccentColor(preset.color) }}
                   className={`
                     relative w-full aspect-square rounded-lg border-2 transition-all
                     ${accentColor === preset.color
@@ -114,7 +143,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
               ] as const).map(({ value, label, desc }) => (
                 <button
                   key={value}
-                  onClick={() => setDensity(value)}
+                  onClick={() => { ensureThemeEnabled(); setDensity(value) }}
                   className={`
                     flex flex-col items-start p-3 rounded-lg border transition-all text-left
                     ${density === value

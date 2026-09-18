@@ -231,10 +231,10 @@ export class PluginHostProcess {
     this.worker = null
     this.startPromise = null
 
-    // 等待退出事件（最多 5 秒）
+    // 等待退出事件（最多 1 秒；退出清理路径不能被 worker 拖住，主进程侧另有超时兑底）
     await Promise.race([
       exitPromise,
-      new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+      new Promise<void>((resolve) => setTimeout(resolve, 1000)),
     ])
   }
 }

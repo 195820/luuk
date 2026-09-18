@@ -129,6 +129,7 @@
   --sidebar-ring: rgba(255, 255, 255, 0.15);
 
   /* 默认密度 */
+  --density-scale: 1;
   --density-padding: 12px;
   --density-gap: 8px;
 }
@@ -137,10 +138,39 @@
    浅色主题变量（data-theme="light"）
    ═══════════════════════════════════════════════════════ */
 [data-theme="light"] {
-  --background:       #ffffff;
-  --foreground:       #1a1a1a;
-  --card:             #f5f5f5;
-  --card-foreground:  #1a1a1a;
+  /* ── 设计 Token 覆盖：画布 / 玻璃 / 文字 / 描边（UI 实际消费的是 --color-*） ── */
+  --color-canvas:           #f2f3f6;
+  --color-canvas-raised:    #e6e8ec;
+  --color-canvas-tertiary:  #ffffff;
+  --color-glass-l1:         rgba(255, 255, 255, 0.68);
+  --color-glass-l2:         rgba(255, 255, 255, 0.82);
+  --color-glass-l3:         rgba(255, 255, 255, 0.92);
+  --color-text-primary:     rgba(24, 24, 28, 0.92);
+  --color-text-secondary:   rgba(24, 24, 28, 0.62);
+  --color-text-muted:       rgba(24, 24, 28, 0.46);
+  --color-text-dim:         rgba(24, 24, 28, 0.32);
+  --color-border:           rgba(20, 22, 30, 0.09);
+  --color-border-default:   rgba(20, 22, 30, 0.14);
+  --color-border-hover:     rgba(20, 22, 30, 0.22);
+  --color-border-glass:     rgba(20, 22, 30, 0.10);
+  --color-glass-border:     rgba(20, 22, 30, 0.12);
+  --color-overlay-dark:     rgba(120, 125, 140, 0.25);
+  --color-overlay-darker:   rgba(120, 125, 140, 0.35);
+  --color-overlay-darkest:  rgba(120, 125, 140, 0.5);
+  --color-overlay-light:    rgba(0, 0, 0, 0.03);
+  --color-overlay-lighter:  rgba(0, 0, 0, 0.05);
+  --color-overlay-selected: rgba(90, 100, 200, 0.12);
+  --color-dialog:           #ffffff;
+  --color-star-empty:       rgba(20, 22, 30, 0.18);
+  --color-accent-text:      #4c3dc0;
+  --shadow-glass:    0 8px 32px rgba(30, 34, 60, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --shadow-glass-lg: 0 16px 48px rgba(30, 34, 60, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+
+  /* ── shadcn 语义变量 ── */
+  --background:       var(--color-canvas);
+  --foreground:       var(--color-text-primary);
+  --card:             var(--color-glass-l1);
+  --card-foreground:  var(--color-text-primary);
   --popover:          #ffffff;
   --popover-foreground: #1a1a1a;
   --primary:          var(--color-accent);
@@ -152,16 +182,16 @@
   --accent:           rgba(0, 0, 0, 0.05);
   --accent-foreground: #1a1a1a;
   --destructive:      #DC2626;
-  --border:           rgba(0, 0, 0, 0.1);
-  --input:            rgba(0, 0, 0, 0.1);
+  --border:           var(--color-border);
+  --input:            var(--color-border);
   --ring:             rgba(0, 0, 0, 0.15);
-  --sidebar: #f5f5f5;
-  --sidebar-foreground: #1a1a1a;
+  --sidebar: var(--color-glass-l1);
+  --sidebar-foreground: var(--color-text-primary);
   --sidebar-primary: var(--color-accent);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: rgba(0, 0, 0, 0.05);
   --sidebar-accent-foreground: #1a1a1a;
-  --sidebar-border: rgba(0, 0, 0, 0.1);
+  --sidebar-border: var(--color-border);
   --sidebar-ring: rgba(0, 0, 0, 0.15);
 }
 
@@ -178,9 +208,16 @@
 /* ═══════════════════════════════════════════════════════
    密度预设（data-density）
    ═══════════════════════════════════════════════════════ */
-[data-density="compact"]    { --density-scale: 0.75; --density-padding: 8px;  --density-gap: 6px;  }
+[data-density="compact"]    { --density-scale: 0.85; --density-padding: 8px;  --density-gap: 6px;  }
 [data-density="comfortable"] { --density-scale: 1;    --density-padding: 12px; --density-gap: 8px;  }
-[data-density="spacious"]   { --density-scale: 1.5;  --density-padding: 16px; --density-gap: 12px; }
+[data-density="spacious"]   { --density-scale: 1.12; --density-padding: 16px; --density-gap: 12px; }
+
+/* 密度接线：顶栏内边距与子项间距跟随密度变量
+   （非 layer 规则，优先级高于 header 上的 px-4/gap-3 工具类） */
+header {
+  padding-inline: var(--density-padding);
+  gap: var(--density-gap);
+}
 
 /* ═══════════════════════════════════════════════════════
    液态玻璃工具类
@@ -189,8 +226,8 @@
   background-color: var(--color-glass-l1);
   background-image: var(--glass-noise);
   backdrop-filter: blur(var(--blur-l1)) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: var(--shadow-glass);
   border-radius: var(--radius-lg);
 }
 
@@ -198,8 +235,8 @@
   background-color: var(--color-glass-l2);
   background-image: var(--glass-noise);
   backdrop-filter: blur(var(--blur-l2)) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: var(--shadow-glass);
   border-radius: var(--radius-lg);
 }
 
@@ -207,8 +244,8 @@
   background-color: var(--color-glass-l3);
   background-image: var(--glass-noise);
   backdrop-filter: blur(var(--blur-l3)) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: var(--shadow-glass-lg);
   border-radius: var(--radius-xl);
 }
 
@@ -260,10 +297,10 @@ body {
    统一按钮系统（4 级尺寸阶梯）
    ═══════════════════════════════════════════════════════ */
 
-/* 图标按钮 36x36 — 工具栏/操作栏 */
+/* 图标按钮 36x36 — 工具栏/操作栏（尺寸随密度 scale） */
 @utility btn-icon {
-  width: 36px;
-  height: 36px;
+  width: calc(36px * var(--density-scale, 1));
+  height: calc(36px * var(--density-scale, 1));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -292,10 +329,10 @@ body {
   color: var(--color-accent-text);
 }
 
-/* 小图标按钮 28x28 — 树节点操作/关闭按钮 */
+/* 小图标按钮 28x28 — 树节点操作/关闭按钮（尺寸随密度 scale） */
 @utility btn-icon-sm {
-  width: 28px;
-  height: 28px;
+  width: calc(28px * var(--density-scale, 1));
+  height: calc(28px * var(--density-scale, 1));
   display: flex;
   align-items: center;
   justify-content: center;

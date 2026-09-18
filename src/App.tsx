@@ -684,60 +684,28 @@ function App() {
 
       setCurrentLibrary(library.id)
 
-      // 事件驱动：监听扫描进度事件，等待扫描完成（替代 setTimeout 轮询）
-      const scanComplete = new Promise<void>((resolve) => {
-        const unsubscribe = window.electronAPI.onScanProgress((progress: any) => {
-          if (progress?.status === 'complete' || progress?.isScanning === false) {
-            unsubscribe()
-            // 延迟一帧确保主进程已完成 DB 写入
-            setTimeout(resolve, 200)
-          }
-        })
-        // 安全超时：60 秒后自动解除
-        setTimeout(() => { unsubscribe(); resolve() }, 60_000)
-      })
-
-      await scanComplete
-
-      // 扫描完成后加载数据
-      try {
-        const currentLibs = useImageStore.getState().libraries
-        const updatedLib = currentLibs.find(l => l.id === library.id)
-
-        if (updatedLib && updatedLib.imageCount > 0) {
-          const state = useImageStore.getState()
-          if (state.currentLibraryId !== library.id) {
-            setCurrentLibrary(library.id)
-            await new Promise(resolve => setTimeout(resolve, 300))
-          }
-
-          const currentState = useImageStore.getState()
-          if (!currentState.currentLibraryId) {
-            setCurrentLibrary(library.id)
-            await new Promise(resolve => setTimeout(resolve, 300))
-          }
-
-          await loadFolderTree()
-          const treeState = useImageStore.getState().folderTree
-
-          await loadImages()
-          const imagesState = useImageStore.getState().images
-
-          if (imagesState.length === 0 && treeState.length === 0) {
-            setCurrentLibrary(null)
-            await new Promise(resolve => setTimeout(resolve, 100))
-            setCurrentLibrary(library.id)
-            await new Promise(resolve => setTimeout(resolve, 300))
+      // 扫描在后台进行，不阻塞界面：完成后自动刷新库数据；若用户已切走则只刷新库列表
+      const refreshAfterScan = async () => {
+        try {
+          await loadLibraries()
+          if (useImageStore.getState().currentLibraryId === library.id) {
             await loadFolderTree()
             await loadImages()
           }
-
-          await loadLibraries()
+        } catch (err) {
+          logger.error('App', '扫描完成后刷新失败', err)
         }
-      } catch (err) {
-        logger.error('App', '加载数据失败', err)
       }
-
+      let fallbackTimer: ReturnType<typeof setTimeout> | undefined
+      const unsubscribe = window.electronAPI.onScanProgress((progress: any) => {
+        if (progress?.status === 'complete' || progress?.isScanning === false) {
+          unsubscribe()
+          if (fallbackTimer) clearTimeout(fallbackTimer)
+          void refreshAfterScan()
+        }
+      })
+      // 安全超时：进度事件丢失时 60s 后再刷新一次作为保底
+      fallbackTimer = setTimeout(() => { unsubscribe(); void refreshAfterScan() }, 60_000)
     } catch (err: any) {
       if (err?.message?.includes('UNIQUE constraint failed') || err?.message?.includes('库已存在')) {
         setError('该文件夹已经被添加过了，无需重复添加')
@@ -991,7 +959,7 @@ function App() {
           <h1
             className="text-heading font-semibold tracking-tight whitespace-nowrap shrink-0"
             style={{
-              background: 'linear-gradient(135deg, #edeaff 0%, var(--color-accent) 100%)',
+              background: 'linear-gradient(135deg, var(--color-accent-text) 0%, var(--color-accent) 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
               backgroundClip: 'text',

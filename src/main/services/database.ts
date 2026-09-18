@@ -1131,7 +1131,8 @@ export class ThumbnailsDB {
       CREATE INDEX IF NOT EXISTS idx_images_created_time ON images(created_time);
       CREATE INDEX IF NOT EXISTS idx_images_modified_time ON images(modified_time);
       CREATE INDEX IF NOT EXISTS idx_images_indexed_time ON images(indexed_time);
-      CREATE INDEX IF NOT EXISTS idx_images_phash ON images(phash);
+      -- idx_images_phash 在 migratePhashColumn() 中创建：老库 images 表无 phash 列时，
+      -- 在此处建索引会让整段 exec 抛错导致初始化失败
 
       CREATE TABLE IF NOT EXISTS thumbnails (
         image_id INTEGER NOT NULL,
@@ -1185,6 +1186,8 @@ export class ThumbnailsDB {
       if (!columnNames.includes('phash')) {
         this.db.exec('ALTER TABLE images ADD COLUMN phash TEXT');
       }
+      // 列就绪后再建索引（新库/老库均幂等）
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_images_phash ON images(phash)');
     } catch (e) {
       logger.error('ThumbnailsDB', '迁移 phash 字段失败', e);
     }
@@ -1437,11 +1440,18 @@ export class ThumbnailsDB {
       params.push(`%${criteria.fileName.trim()}%`);
     }
 
-    // 格式过滤：formats 为小写无点扩展名数组
+    // 格式过滤：formats 为小写无点扩展名数组；jpg/jpeg 互为等价
+    //（扫描入库用 sharp metadata.format，.jpg 文件存为 JPEG）
     if (criteria.formats && criteria.formats.length > 0) {
-      const placeholders = criteria.formats.map(() => '?').join(',');
+      const fmts = new Set<string>();
+      for (const f of criteria.formats.map(s => String(s).toLowerCase())) {
+        fmts.add(f);
+        if (f === 'jpg') fmts.add('jpeg');
+        else if (f === 'jpeg') fmts.add('jpg');
+      }
+      const placeholders = [...fmts].map(() => '?').join(',');
       clauses.push(`LOWER(format) IN (${placeholders})`);
-      params.push(...criteria.formats);
+      params.push(...fmts);
     }
 
     // 尺寸范围

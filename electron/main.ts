@@ -10,7 +10,7 @@ import { registerPluginHandlers, unregisterPluginHandlers } from '../src/main/ip
 import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
 import { initJobRunner, getJobRunner } from '../src/main/services/job-runner'
 import { getPluginManager } from '../src/main/services/plugin-manager'
-import { closeAllDatabases, getMasterDB } from '../src/main/services/database'
+import { getMasterDB } from '../src/main/services/database'
 import { logger } from '../src/utils/logger'
 import { getImageService } from '../src/main/services/image-service'
 import { resolveMediaToken, stopMediaRegistryCleanup } from '../src/main/services/media-registry'
@@ -164,7 +164,12 @@ function createWindow() {
       mainWindow?.maximize()
     }
   })
-  ipcMain.on('window-close', () => mainWindow?.close())
+  ipcMain.on('window-close', () => {
+    // 用 destroy() 而非 close()：close() 会等渲染进程 unload/ack，刚做完加删库/看图等重活时
+    // 渲染主线程常卡在长任务，把用户可见的窗口关闭拖到数秒（实测 1.5~7s）。
+    // destroy() 强制立即关窗，仍会触发 closed → window-all-closed → shutdownApp → exit。
+    mainWindow?.destroy()
+  })
   ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false)
 
   // 全屏控制
@@ -192,8 +197,8 @@ function createWindow() {
         throw new Error('无效协议')
       }
       mainWindow.loadURL(devUrl)
-      // 仅在开发模式自动打开 DevTools
-      if (process.env.NODE_ENV !== 'production') {
+      // 仅在开发模式自动打开 DevTools（启动脚本可通过 NO_AUTO_DEVTOOLS=1 屏蔽）
+      if (process.env.NODE_ENV !== 'production' && process.env.NO_AUTO_DEVTOOLS !== '1') {
         mainWindow.webContents.openDevTools()
       }
     } catch {
@@ -262,62 +267,92 @@ app.whenReady().then(async () => {
   })
 })
 
-/** 退出清理中等待异步关闭的最大时长（毫秒） */
-const SHUTDOWN_TIMEOUT_MS = 2000
+/** 退出清理中单个异步步骤的最大时长（毫秒），超时跳过不阻塞后续收尾 */
+const SHUTDOWN_STEP_TIMEOUT_MS = 1000
+/** 全局看门狗（毫秒）：无论卡在哪一步都强制退出，彻底消灭“关闭无响应” */
+const SHUTDOWN_WATCHDOG_MS = 3000
 /** 已启动的退出清理 Promise（多条退出路径共享同一份清理，幂等） */
 let shutdownPromise: Promise<void> | null = null
 /** 是否已完成一次真正 quit（防止 before-quit preventDefault 形成循环） */
 let quitCommitted = false
 
+/** 给异步清理步骤加超时保护 + 耗时日志，便于定位卡点 */
+function shutdownStep(name: string, fn: () => Promise<void>): Promise<void> {
+  const start = Date.now()
+  let timer: NodeJS.Timeout | undefined
+  return Promise.race([
+    fn().then(() => logger.info('Main', `关闭步骤完成: ${name} (${Date.now() - start}ms)`)),
+    new Promise<void>(resolve => { timer = setTimeout(() => {
+      logger.warn('Main', `关闭步骤超时 (${SHUTDOWN_STEP_TIMEOUT_MS}ms)，跳过: ${name}`)
+      resolve()
+    }, SHUTDOWN_STEP_TIMEOUT_MS) }),
+  ]).finally(() => { if (timer) clearTimeout(timer) }) // 避免晚到的超时回调在步骤已完成后再误报
+}
+
 /**
  * 应用退出清理（幂等，可安全重复调用）
  * 顺序：① 停用 keepalive（IPC / interval / ffmpeg / 插件 worker）→
- *       ② 中止运行中作业并等待（2s 超时兜底）→ ③ 最后关闭数据库。
- * 保证 closeAllDatabases 之前，不再有 ffmpeg spawn 等异步任务存活。
+ *       ② 中止运行中作业并等待 → ③ 最后关闭数据库。
+ * 每个异步步骤独立超时 + 全局看门狗强制退出，保证窗口关闭后进程必然终止。
  */
 function shutdownApp(): Promise<void> {
   if (!shutdownPromise) {
+    // 全局看门狗：超时后强制终止进程（正常路径下 finally 会清除）
+    const watchdog = setTimeout(() => {
+      logger.error('Main', `关闭总超时 (${SHUTDOWN_WATCHDOG_MS}ms)，强制退出 app.exit(0)`)
+      app.exit(0)
+    }, SHUTDOWN_WATCHDOG_MS)
+
     shutdownPromise = (async () => {
-      // 1) 禁止新工作：注销 IPC 处理器 + 停止 keepalive 定时器/子进程（同步段立即生效）
-      unregisterLibraryHandlers()
-      unregisterFileHandlers()
-      unregisterSearchHandlers()
-      unregisterTagHandlers()
-      unregisterPluginHandlers()
-      unregisterJobHandlers()
-
-      libraryMonitor.stop()
-      stopMediaRegistryCleanup()
-      killActiveFfmpeg()
+      const startedAt = Date.now()
       try {
-        // 插件关闭：同步段即停止内存监控并 kill 插件 worker
-        await getPluginManager().shutdown()
-      } catch (err) {
-        logger.error('Main', 'PluginManager 关闭异常', err)
-      }
+        // 1) 禁止新工作：注销 IPC 处理器 + 停止 keepalive 定时器/子进程（同步段立即生效）
+        unregisterLibraryHandlers()
+        unregisterFileHandlers()
+        unregisterSearchHandlers()
+        unregisterTagHandlers()
+        unregisterPluginHandlers()
+        unregisterJobHandlers()
 
-      // 2) 中止运行中的作业并落库为 paused；等待带超时，避免拖住退出
-      try {
-        await Promise.race([
-          getJobRunner().shutdown(),
-          new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),
-        ])
-      } catch (err) {
-        logger.error('Main', 'JobRunner 关闭异常', err)
-      }
+        libraryMonitor.stop()
+        stopMediaRegistryCleanup()
+        killActiveFfmpeg()
 
-      // 3) 数据库最后关闭——此时不再有挂起的异步读写
-      closeAllDatabases()
+        // 2) 插件系统关闭（内部 kill worker 进程）；带独立超时，避免 exit 事件不触发时拖住退出
+        await shutdownStep('PluginManager', async () => {
+          try {
+            await getPluginManager().shutdown()
+          } catch (err) {
+            logger.error('Main', 'PluginManager 关闭异常', err)
+          }
+        })
+
+        // 3) 中止运行中的作业并落库为 paused
+        await shutdownStep('JobRunner', async () => {
+          try {
+            await getJobRunner().shutdown()
+          } catch (err) {
+            logger.error('Main', 'JobRunner 关闭异常', err)
+          }
+        })
+
+        // 4) 数据库不在退出路径上主动 close：若后台扫描正在写入，db.close() 会等待写事务
+        //    完成而阻塞主进程数秒（实测清理阶段曾耗时 ~7s）。改为交给 app.exit 直接终止进程，
+        //    已提交事务已落盘（默认回滚日志模式），下次启动由 SQLite 自动回滚未完成事务，不丢数据。
+        logger.info('Main', `退出收尾完成，进程即将退出 (总耗时 ${Date.now() - startedAt}ms)`)
+      } finally {
+        clearTimeout(watchdog)
+      }
     })()
   }
   return shutdownPromise
 }
 
 app.on('window-all-closed', () => {
-  // 非 macOS：启动清理（幂等，真正阻塞式收尾在 before-quit）后直接退出
+  // 非 macOS：清理完成后用 app.exit 强制终止——app.quit 会走优雅卸载（等待连接析构/子进程回收），
+  // 后台扫描写库时可达数秒；exit 直接终止进程，已提交数据不丢
   if (process.platform !== 'darwin') {
-    void shutdownApp()
-    app.quit()
+    shutdownApp().finally(() => app.exit(0))
   }
 })
 
@@ -327,7 +362,7 @@ app.on('before-quit', (event) => {
   event.preventDefault()
   void shutdownApp().finally(() => {
     quitCommitted = true
-    app.quit()
+    app.exit(0)
   })
 })
 

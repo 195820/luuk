@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { Search, X, Loader2, Bookmark, BookmarkCheck, Clock, Trash2 } from 'lucide-react'
 import { useSearchStore } from '../stores/searchStore'
@@ -40,6 +41,29 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
   const [showHistory, setShowHistory] = useState(false)
   const [showPresetInput, setShowPresetInput] = useState(false)
   const [presetName, setPresetName] = useState('')
+
+  // R-1：面板以 portal 浮层渲染在 header 之外，不受 h-12 固定高度裁剪
+  const anchorRef = useRef<HTMLDivElement>(null)
+  const [panelPos, setPanelPos] = useState({ top: 52, left: 12, width: 640 })
+
+  const updatePanelPos = useCallback(() => {
+    const el = anchorRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    // 以 header 底边为基准，避免锚点行在 header 内垂直居中时浮层与 header 重叠
+    const headerBottom = el.closest('header')?.getBoundingClientRect().bottom ?? rect.bottom
+    const width = Math.min(640, window.innerWidth - 24)
+    // 右对齐触发按钮，越界时收回视口内
+    const left = Math.max(12, Math.min(rect.right - width, window.innerWidth - width - 12))
+    setPanelPos({ top: Math.max(rect.bottom, headerBottom) + 6, left, width })
+  }, [])
+
+  useEffect(() => {
+    if (!active) return
+    updatePanelPos()
+    window.addEventListener('resize', updatePanelPos)
+    return () => window.removeEventListener('resize', updatePanelPos)
+  }, [active, updatePanelPos])
 
   // 切换单位时同步字节值
   const factor = sizeUnit === 'MB' ? 1024 * 1024 : 1024
@@ -87,12 +111,18 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
     }
   }
 
+  const openFromButton = () => {
+    openPanel()
+    // 展开前按当前触发按钮位置计算浮层锚点
+    requestAnimationFrame(updatePanelPos)
+  }
+
   return (
     <div className="w-full" onKeyDown={handleKeyDown}>
       {/* 触发按钮行：搜索图标 + 状态统计 */}
-      <div className="flex items-center gap-2 mb-2">
+      <div ref={anchorRef} className="flex items-center gap-2 mb-2">
         <button
-          onClick={() => active ? closePanel() : openPanel()}
+          onClick={() => active ? closePanel() : openFromButton()}
           className={`btn-text ${active ? 'primary' : ''}`}
           title="搜索（Ctrl+F）"
         >
@@ -106,17 +136,20 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
         )}
       </div>
 
-      {/* 折叠面板 */}
-      <AnimatePresence initial={false}>
-        {active && (
+      {/* 折叠面板：portal 到 body 的 fixed 浮层（R-1 修复，不受 header 裁剪） */}
+      {createPortal(
+        <AnimatePresence initial={false}>
+          {active && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
+            key="search-panel"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="fixed z-50"
+            style={{ top: panelPos.top, left: panelPos.left, width: panelPos.width }}
           >
-            <div className="glass-l1 border border-border rounded-lg p-4 mb-3 space-y-3">
+            <div className="glass-l2 border border-border rounded-lg p-4 space-y-3 shadow-2xl">
               {/* 文件名 + 搜索历史 */}
               <div className="space-y-1">
                 <div className="flex items-center gap-3">
@@ -375,8 +408,10 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
               )}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }
