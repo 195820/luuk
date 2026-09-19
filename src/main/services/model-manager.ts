@@ -14,11 +14,20 @@ import { logger } from '../../utils/logger'
  * 模型文件存储于 %APPDATA%\luuk\models\ 目录。
  */
 export class ModelManager {
-  private readonly modelsDir: string
+  /**
+   * [P2-18] 模型目录解析器：支持传入固定字符串或运行期函数。
+   * 传函数时每次使用都重新读取（用户改 `models.directory` 设置后无需重启即生效）。
+   */
+  private readonly modelsDirResolver: () => string
   private readonly models = new Map<string, ModelInfo>()
 
-  constructor(modelsDir: string) {
-    this.modelsDir = modelsDir
+  constructor(modelsDir: string | (() => string)) {
+    this.modelsDirResolver = typeof modelsDir === 'string' ? () => modelsDir : modelsDir
+  }
+
+  /** 当前模型目录（运行期解析） */
+  private get modelsDir(): string {
+    return this.modelsDirResolver()
   }
 
   /** 注册模型到清单（幂等：同 id 会覆盖） */

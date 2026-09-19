@@ -44,6 +44,12 @@
 - **P3**: 媒体类型检测逻辑重复 5 处、`any` 类型泛滥
 
 ### 修复
+- **Phase 8 AI 插件系统缺陷修复（M1–M5，2026-09-19，分支 `fix/phase8-defects`）**：
+  - **M1 批处理与资源上限**：P0-1 批处理主链闭合（handler 解析绝对 `paths`、`skipped` 归 failed、多选 >20 走 `jobsEnqueue`、入队 toast）；P0-2 upscale 输出像素预算守卫（>40M 抛业务错 + dst 分配兼底）；P0-3 内存水位线阈值口径/阈值统一。
+  - **M2 权限**：P1-4 `edit.write` 绕过路径守卫；P1-5 移除 `activePluginId` 改为逐调用传自身 pluginId（防并发串位）；P2-12 `createSession` 忽略外部 modelPath + 模型所有权校验。
+  - **M3 生命周期**：P1-6 Worker 崩溃后清 `loadedInWorker` + 自愈重载；P1-8 `verifyModel` 空 sha256 不删文件/大小写修正/成功回写 + manifest 格式断言 + 启动回填；P1-9 `JobRunner` 自泵；P1-11 exit 监听跨实例守卫 + `setEnabled` 成功标志后置。
+  - **M4 并发与资源**：P1-7 SDK 反向调用分级/动态超时 + 迟到响应幂等丢弃（`plugin.cancel` 降级后续项）；P1-10 `InferencePool` 创建锁/LRU 驱逐/按插件销毁 + 内存压力驱逐接线。
+  - **M5 算法质量与测试补盲**：P2-13 upscale 量纲改全局 min/max（跳过非有限、全非有限报错）+ `realScale===scale` 断言 + 解码强制 sRGB；P2-14 matting 改绝对量纲 alpha；P2-15 张量视图 byteOffset + int64 + 尺寸校验；P2-16 删 `WorkerRpcRequest` 已移除 `inference.*` 示例；P2-17 右键菜单按 op 可用性过滤/置灰；P2-18 builtins 产物断言 + `models.directory` 运行期读取；后处理抽纯函数并补 29 例单测。全量 43 文件 393 用例绿、tsc 无错。
 - **删除库失败**：`MasterDB.removeLibrary` 先清理 favorites/favorite_folders/history 依赖行再删库，避免 FOREIGN KEY 约束拒绝删除
 - **浏览历史无缩略图/打不开**：乐观插入补齐 id 等元数据；历史跳转在未命中预览窗口时按 relative_path 兜底
 

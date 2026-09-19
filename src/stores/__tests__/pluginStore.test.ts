@@ -72,3 +72,53 @@ describe('pluginStore · op 可见性三条件（Suggestion #16）', () => {
     expect(usePluginStore.getState().isOpVisible('ghost', 'x')).toBe(false)
   })
 })
+
+describe('P2-17 · pluginStore.getOpAvailability（区分隐藏与置灰需下载模型）', () => {
+  beforeEach(() => {
+    usePluginStore.setState({ plugins: [], models: [], pluginsEnabled: true, loaded: true })
+  })
+
+  it('已激活 + 模型已下载 → visible、无需模型', () => {
+    usePluginStore.setState({
+      plugins: [plugin({ id: 'a', ops: ['a.run'], models: ['m1'] })],
+      models: [{ id: 'm1', name: 'm1', size: 1, sha256: '', state: 'downloaded' } as ModelInfo],
+    })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.run')).toEqual({ visible: true, needsModel: false })
+  })
+
+  it('已激活但模型未下载 → visible、needsModel（展示但置灰）', () => {
+    usePluginStore.setState({
+      plugins: [plugin({ id: 'a', ops: ['a.run'], models: ['m1'] })],
+      models: [{ id: 'm1', name: 'm1', size: 1, sha256: '', state: 'not-downloaded' } as ModelInfo],
+    })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.run')).toEqual({ visible: true, needsModel: true })
+  })
+
+  it('feature flag 关闭 → 完全隐藏', () => {
+    usePluginStore.setState({
+      plugins: [plugin({ id: 'a', ops: ['a.run'], models: ['m1'] })],
+      pluginsEnabled: false,
+    })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.run')).toEqual({ visible: false, needsModel: false })
+  })
+
+  it('插件未激活 → 完全隐藏（即使有模型需求也不置灰）', () => {
+    usePluginStore.setState({ plugins: [plugin({ id: 'a', ops: ['a.run'], models: ['m1'], state: 'idle' as any })] })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.run')).toEqual({ visible: false, needsModel: false })
+  })
+
+  it('op 不属于插件 / 未知插件 → 隐藏', () => {
+    usePluginStore.setState({ plugins: [plugin({ id: 'a', ops: ['a.run'] })] })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.other').visible).toBe(false)
+    expect(usePluginStore.getState().getOpAvailability('ghost', 'x').visible).toBe(false)
+  })
+
+  it('isOpVisible 与可用性一致（= visible && !needsModel）', () => {
+    usePluginStore.setState({
+      plugins: [plugin({ id: 'a', ops: ['a.run'], models: ['m1'] })],
+      models: [{ id: 'm1', name: 'm1', size: 1, sha256: '', state: 'not-downloaded' } as ModelInfo],
+    })
+    expect(usePluginStore.getState().getOpAvailability('a', 'a.run').needsModel).toBe(true)
+    expect(usePluginStore.getState().isOpVisible('a', 'a.run')).toBe(false)
+  })
+})

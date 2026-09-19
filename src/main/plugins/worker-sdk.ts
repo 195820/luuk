@@ -92,7 +92,12 @@ export function createPluginSdk(
     image: {
       decode: async (buf) => {
         const sharp = require('sharp')
-        const { data, info } = await sharp(buf).raw().toBuffer({ resolveWithObject: true })
+        // [P2-13] 统一转 sRGB 三通道：灰度/调色板/CMYK 源图若按原生通道数输出，
+        // 消费侧（upscale buildTileTensor / matting compositeAlpha）按 RGB 步进读取会产生伪彩色。
+        const { data, info } = await sharp(buf)
+          .toColourspace('srgb')
+          .raw()
+          .toBuffer({ resolveWithObject: true })
         return {
           width: info.width,
           height: info.height,

@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Pencil, FolderInput, Copy, Image as WallpaperIcon, Trash2, FolderSearch, ClipboardCopy, ScanSearch, Tag, Columns2, Download, FolderHeart, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MenuItemDefinition } from '../../types/plugin'
+import { usePluginStore } from '../../stores/pluginStore'
 
 interface FileContextMenuProps {
   x: number
@@ -18,6 +19,8 @@ interface FileContextMenuProps {
 
 export function FileContextMenu({ x, y, onAction, onClose, compareEnabled, pluginMenuItems, context }: FileContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null)
+  // [P2-17] op 可用性选择器（区分隐藏与置灰需下载模型）
+  const getOpAvailability = usePluginStore((s) => s.getOpAvailability)
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -56,9 +59,12 @@ export function FileContextMenu({ x, y, onAction, onClose, compareEnabled, plugi
     return true
   })
 
-  // 插件贡献项：按当前上下文过滤（缺省视为多选网格）
+  // 插件贡献项：按当前上下文过滤（缺省视为多选网格）+ [P2-17] 可用性过滤（不满足三条件则隐藏）
   const ctx = context ?? 'grid-multi'
-  const pluginItems = (pluginMenuItems ?? []).filter((m) => m.context.includes(ctx))
+  const pluginItems = (pluginMenuItems ?? [])
+    .filter((m) => m.context.includes(ctx))
+    .map((m) => ({ m, avail: getOpAvailability(m.pluginId ?? '', m.op) }))
+    .filter((x) => x.avail.visible)
 
   return (
     <div
@@ -87,14 +93,19 @@ export function FileContextMenu({ x, y, onAction, onClose, compareEnabled, plugi
       {pluginItems.length > 0 && (
         <>
           <div className="my-1 h-px bg-border/40" />
-          {pluginItems.map((m) => (
+          {pluginItems.map(({ m, avail }) => (
             <button
               key={`${m.pluginId}:${m.op}`}
-              className="flex w-full items-center gap-3 px-3 py-1.5 text-sm hover:bg-accent/10"
-              onClick={() => { onAction(`plugin:${m.pluginId}:${m.op}`); onClose() }}
+              disabled={avail.needsModel}
+              className={cn(
+                'flex w-full items-center gap-3 px-3 py-1.5 text-sm',
+                avail.needsModel ? 'cursor-not-allowed opacity-50' : 'hover:bg-accent/10',
+              )}
+              onClick={() => { if (avail.needsModel) return; onAction(`plugin:${m.pluginId}:${m.op}`); onClose() }}
             >
               <Wand2 className="h-4 w-4 text-accent" />
               <span className="flex-1 text-left">{m.label}</span>
+              {avail.needsModel && <span className="text-xs text-muted-foreground">需下载模型</span>}
             </button>
           ))}
         </>

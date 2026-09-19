@@ -7,7 +7,12 @@
  *   - 边缘复制填充，输出按 stride 拼回，丢弃 overlap 冗余边界避免接缝累积
  */
 
-import type { LuukSdk, PluginInstance, SerializedTensor } from '../../../../types/plugin'
+import type { LuukSdk, PluginInstance } from '../../../../types/plugin'
+import {
+  buildTileTensor,
+  pickOutput,
+  mergeTile,
+} from './post'
 
 const MODEL_ID = 'realesrgan-x4plus'
 const TILE_SIZE = 128
@@ -30,91 +35,6 @@ interface UpscaleInput {
   params?: { scale?: number }
 }
 
-/** 从解码像素 (RGB raw) 构建 NCHW float32 张量（[0,1]），边缘复制填充到 T×T */
-function buildTileTensor(
-  data: Uint8Array,
-  srcChannels: number,
-  W: number,
-  H: number,
-  tx: number,
-  ty: number,
-  T: number,
-): SerializedTensor {
-  const plane = T * T
-  const f = new Float32Array(3 * plane)
-  for (let j = 0; j < T; j++) {
-    const sy = Math.min(H - 1, Math.max(0, ty + j))
-    for (let i = 0; i < T; i++) {
-      const sx = Math.min(W - 1, Math.max(0, tx + i))
-      const s = (sy * W + sx) * srcChannels
-      const d = j * T + i
-      f[d] = data[s] / 255
-      f[plane + d] = data[s + 1] / 255
-      f[2 * plane + d] = data[s + 2] / 255
-    }
-  }
-  return { dataType: 'float32', dims: [1, 3, T, T], data: f.buffer }
-}
-
-/** 挑选输出张量（[1,3,oH,oW]） */
-function pickOutput(outputs: Record<string, SerializedTensor>): SerializedTensor {
-  const list = Object.values(outputs).filter((t) => t.dims.length === 4)
-  const t = list[0] ?? Object.values(outputs)[0]
-  if (!t) throw new Error('超分模型无输出张量')
-  return t
-}
-
-/** 将输出张量按 tile 内部 [0, dy*SCALE)×[0, dx*SCALE) 区域拼接回全尺寸 RGBA 缓冲 */
-function mergeTile(
-  out: SerializedTensor,
-  dst: Uint8Array,
-  dstW: number,
-  dx: number,
-  dy: number,
-  destX: number,
-  destY: number,
-): void {
-  const buf = out.data instanceof ArrayBuffer ? out.data : out.data.buffer
-  const oH = out.dims[2]
-  const oW = out.dims[3]
-  const plane = oH * oW
-  const isFloat = out.dataType === 'float32' || out.dataType === 'float64'
-  const f32 = isFloat ? new Float32Array(buf as ArrayBuffer) : null
-  const u8 = !isFloat ? new Uint8Array(buf as ArrayBuffer) : null
-
-  const copyW = Math.min(dx, oW)
-  const copyH = Math.min(dy, oH)
-
-  for (let j = 0; j < copyH; j++) {
-    for (let i = 0; i < copyW; i++) {
-      const s = j * oW + i
-      let r: number
-      let g: number
-      let b: number
-      if (f32) {
-        // float 输出可能是 [0,1] 或 [0,255]，按首个像素判定量纲
-        const maxed = f32[0] <= 1.001
-        r = f32[s] * (maxed ? 255 : 1)
-        g = f32[plane + s] * (maxed ? 255 : 1)
-        b = f32[2 * plane + s] * (maxed ? 255 : 1)
-      } else {
-        r = u8![s]
-        g = u8![plane + s]
-        b = u8![2 * plane + s]
-      }
-      const d = ((destY + j) * dstW + (destX + i)) * 4
-      dst[d] = clamp255(r)
-      dst[d + 1] = clamp255(g)
-      dst[d + 2] = clamp255(b)
-      dst[d + 3] = 255
-    }
-  }
-}
-
-function clamp255(v: number): number {
-  return Math.min(255, Math.max(0, Math.round(v)))
-}
-
 async function upscaleOne(
   sdk: LuukSdk,
   p: string,
@@ -126,7 +46,6 @@ async function upscaleOne(
   const buf = await sdk.fs.read(p)
   const decoded = await sdk.image.decode(buf)
   const { width: W, height: H, channels: c, data } = decoded
-  const srcC = Math.min(c, 3)
 
   const sess = await sdk.inference.createSession(MODEL_ID, '')
   const inputName = sess.inputNames[0] ?? 'image'
@@ -157,6 +76,7 @@ async function upscaleOne(
   const tilesY = Math.ceil(H / stride)
   const totalTiles = tilesX * tilesY
   let done = 0
+  let scaleVerified = false
 
   for (let ty = 0; ty < H; ty += stride) {
     for (let tx = 0; tx < W; tx += stride) {
@@ -169,6 +89,15 @@ async function upscaleOne(
       const outTile = pickOutput(outputs)
       // 推导实际放大倍率（模型固定倍率）
       const realScale = outTile.dims[3] / TILE_SIZE
+      // [P2-13] dst 缓冲已按请求 scale 分配；若模型实际倍率不符，拼贴会错位/溢出——首块即断并报错
+      if (!scaleVerified) {
+        if (Math.abs(realScale - scale) > 1e-6) {
+          throw new Error(
+            `模型实际倍率 ${realScale}x 与请求倍率 ${scale}x 不一致（${MODEL_ID} 为固定倍率模型）`,
+          )
+        }
+        scaleVerified = true
+      }
       const dx = Math.min(stride, W - tx)
       const dy = Math.min(stride, H - ty)
       mergeTile(outTile, dst, outW, dx * realScale, dy * realScale, tx * scale, ty * scale)
@@ -194,7 +123,6 @@ async function upscaleOne(
     params: { scale },
     format: 'png',
   })
-  void srcC
   return { path: p, editId }
 }
 

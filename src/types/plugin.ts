@@ -229,7 +229,7 @@ export interface MainToWorkerRequest {
   type: 'rpc-request'
   channel: 'main-to-worker'
   id: number              // 主进程侧递增
-  method: string          // 'plugin.load' | 'plugin.execute' | 'inference.run' | 'memory.getStatus' ...
+  method: string          // 'plugin.load' | 'plugin.unload' | 'plugin.execute' | 'memory.getStatus' | 'memory.evict' ...(推理在 Worker 内执行，不经此 RPC)
   params?: unknown
 }
 
@@ -259,14 +259,13 @@ export type MainIncoming = WorkerToMainRequest | RpcResponse
 
 /**
  * @deprecated 保留旧单向类型别名以兼容既有引用，新代码使用 MainToWorkerRequest。
+ * [P2-16] 移除此前列出的 `inference.createSession` / `inference.run` / `inference.destroySession` 示例：
+ * 推理已在 Worker 内经 InferencePool 执行（D2），不再是 main→worker 的 RPC 方法，保留会误导契约。
  */
 export type WorkerRpcRequest =
   | { id: number; method: 'plugin.load'; params: { pluginId: string; entryPath: string } }
   | { id: number; method: 'plugin.unload'; params: { pluginId: string } }
   | { id: number; method: 'plugin.execute'; params: { pluginId: string; opId: string; input: unknown } }
-  | { id: number; method: 'inference.createSession'; params: { modelId: string; modelPath: string } }
-  | { id: number; method: 'inference.run'; params: { modelId: string; feeds: Record<string, unknown> } }
-  | { id: number; method: 'inference.destroySession'; params: { modelId: string } }
   | { id: number; method: 'memory.getStatus' }
   | { id: number; method: 'memory.getStats' }
 

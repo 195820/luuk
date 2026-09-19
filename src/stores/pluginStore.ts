@@ -22,6 +22,13 @@ interface PluginState {
   setPluginsFeatureEnabled: (enabled: boolean) => Promise<void>
   downloadModel: (modelId: string) => Promise<void>
   isOpVisible: (pluginId: string, opId: string) => boolean
+  /**
+   * [P2-17] op 可用性（区分“隐藏”与“置灰需下载模型”）：
+   *   visible=false            → 插件未启用/未激活/不贡献该 op → 菜单不展示
+   *   visible=true,needsModel   → 插件已激活但所需模型未下载 → 展示但置灰 + “需下载模型”
+   *   visible=true,needsModel=false → 完全可用
+   */
+  getOpAvailability: (pluginId: string, opId: string) => { visible: boolean; needsModel: boolean }
 }
 
 /** 判断插件所需模型是否均已下载（无模型需求视为满足） */
@@ -94,13 +101,21 @@ export const usePluginStore = create<PluginState>((set, get) => ({
     }))
   },
 
-  isOpVisible: (pluginId, opId) => {
+  getOpAvailability: (pluginId, opId) => {
     const { plugins, models, pluginsEnabled } = get()
-    if (!pluginsEnabled) return false
     const plugin = plugins.find((p) => p.manifest.id === pluginId)
-    if (!plugin || plugin.state !== 'activated') return false
+    if (!plugin) return { visible: false, needsModel: false }
     const hasOp = (plugin.manifest.contributes?.ops ?? []).some((op) => op.id === opId)
-    if (!hasOp) return false
-    return modelsReady(plugin, models)
+    if (!hasOp) return { visible: false, needsModel: false }
+    // feature flag 关 或 插件未激活 → 完全隐藏
+    if (!pluginsEnabled || plugin.state !== 'activated') return { visible: false, needsModel: false }
+    // 已激活但所需模型未下载 → 展示但置灰
+    if (!modelsReady(plugin, models)) return { visible: true, needsModel: true }
+    return { visible: true, needsModel: false }
+  },
+
+  isOpVisible: (pluginId, opId) => {
+    const { visible, needsModel } = get().getOpAvailability(pluginId, opId)
+    return visible && !needsModel
   },
 }))

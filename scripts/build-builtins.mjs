@@ -48,6 +48,25 @@ const entryPoints = listPluginDirs().map((name) =>
   path.join(SRC_DIR, name, 'index.ts'),
 )
 
+/**
+ * [P2-18] 构建产物断言：每个内置插件目录必须生成 <name>/index.js。
+ * 避免直接跑 electron-builder（跳过 build:builtins）时打包出“无插件”的静默产物。
+ */
+function verifyArtifacts() {
+  const names = listPluginDirs()
+  if (names.length === 0) return
+  const missing = names.filter(
+    (name) => !fs.existsSync(path.join(OUT_DIR, name, 'index.js')),
+  )
+  if (missing.length > 0) {
+    throw new Error(
+      `[build-builtins] 产物缺失：${missing.map((n) => `${n}/index.js`).join(', ')}。`
+        + `请确保构建链包含 build:builtins（不要直接运行 electron-builder）。`,
+    )
+  }
+  console.log(`[build-builtins] 产物校验通过：${names.length} 个内置插件`)
+}
+
 const commonOptions = {
   bundle: true,
   platform: 'node',
@@ -82,6 +101,7 @@ async function run() {
       outbase: SRC_DIR,
       outdir: OUT_DIR,
     })
+    verifyArtifacts()
     console.log('[build-builtins] 构建完成')
   }
 }

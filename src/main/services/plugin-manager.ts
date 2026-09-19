@@ -68,10 +68,10 @@ export class PluginManager {
 
     this.loader = new PluginLoader(builtinDir, thirdPartyDir)
 
-    // 模型目录：优先用户配置，回退到 userData/models
-    const modelsDir =
-      getSetting('models.directory') || path.join(userDataPath, 'models')
-    this.modelManager = new ModelManager(modelsDir)
+    // [P2-18] 模型目录运行期解析：传函数而非固定字符串，用户改 `models.directory` 后无需重启即生效
+    this.modelManager = new ModelManager(
+      () => getSetting('models.directory') || path.join(userDataPath, 'models'),
+    )
 
     this.hostProcess = new PluginHostProcess()
     // 统一下发内存水位线阈值（Worker 与主进程一致），从设置读取，未配置时回退默认值
