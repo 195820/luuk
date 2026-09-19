@@ -6,9 +6,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "predev": "node scripts/build-builtins.mjs",
+    "predev": "npm run clean:electron && node scripts/build-builtins.mjs",
+    "clean:electron": "node -e \"for (const d of ['dist','dist-electron']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "build:builtins": "node scripts/build-builtins.mjs",
-    "build": "tsc && vite build && npm run build:builtins && electron-builder",
+    "build": "npm run clean:electron && tsc && vite build && npm run build:builtins && electron-builder",
+    "prebuild:dir": "npm run clean:electron",
     "build:dir": "vite build && npm run build:builtins && electron-builder --dir",
     "preview": "vite preview",
     "test": "vitest",
