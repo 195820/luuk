@@ -100,9 +100,9 @@ D:\luuk\
 │                               #   ensure-test-native（vitest 原生模块 ABI）、smoke-archiver
 ├── tests/playwright/           # Playwright E2E（连 CDP 9222）
 ├── test-library/               # 生成式测试图库（set01~set10，每库 .ivlib/thumbs.db）
-├── docs/                       # 文档中心（索引见 docs/README.md）
+├── docs/                       # 文档中心（索引见 docs/README.md；plans/ 存活跃计划与归档过程稿）
 ├── dist/ · dist-electron/ · release/   # 构建输出（dist-electron/plugins/builtins 为插件产物）
-└── .qoder/plans/               # IDE 过程稿（不受 git 跟踪，勿作为事实来源；权威版已并入 docs/）
+└── .qoder/                     # IDE 缓存目录（不受 git 跟踪）；原过程稿已并入 docs/plans/
 ```
 
 ## 🔑 关键设计
