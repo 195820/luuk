@@ -184,7 +184,7 @@ D:\luuk\
 | 文档分层与归档规范 | [docs/README.md](docs/README.md) |
 | Phase 8+ AI/爬虫方向设计（Phase 9-11） | [docs/plans/ai-crawler-direction-2026-q4.md](docs/plans/ai-crawler-direction-2026-q4.md) |
 | 当前待办人工验证 | [docs/plans/Phase8人工验收清单](docs/plans/Phase8人工验收清单-2026-09-19.md) · [docs/plans/回归测试计划](docs/plans/回归测试计划-2026-09-13.md) |
-| 媒体性能改造（已实施待提交） | [docs/archive/媒体加载性能提升方案-2026-09.md](docs/archive/媒体加载性能提升方案-2026-09.md) |
+| 媒体性能改造（已提交 `6df2c18`） | [docs/archive/媒体加载性能提升方案-2026-09.md](docs/archive/媒体加载性能提升方案-2026-09.md) |
 | 用户指南 / 部署 / 排障 | [docs/guides/](docs/guides/) |
 
 **文档纪律**：完成一个 Phase/方案后，回写 `roadmap.md` + `CHANGELOG.md`，实施计划移入 `docs/archive/`（`status: archived`）——本仓库曾因"实施快于文档"发生漂移，勿再犯。

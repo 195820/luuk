@@ -27,7 +27,7 @@ docs/
     ├── code-review-2026-q3-q4-phase5-7.md   # Phase 5-7 代码评审报告
     ├── phase-5-completion.md                # Phase 5 完成报告
     ├── defect-summary-2026-09-15.md         # 回归缺陷修复总结（7/10，余量已闭环）
-    ├── 媒体加载性能提升方案-2026-09.md        # 媒体改造方案（已实施，代码待提交；唯一权威版）
+    ├── 媒体加载性能提升方案-2026-09.md        # 媒体改造方案（已实施已提交 `6df2c18`；唯一权威版）
     ├── 测试方案.md · 多媒体模块重构方案/测试计划 · 文件操作阶段测试执行记录
     └── superpowers/             # 历史 plan/spec（含 phase4-and-beyond、Phase 8 实施计划）
 ```
