@@ -67,7 +67,7 @@ D:\luuk\
 ├── src/
 │   ├── main/           # 主进程后端：ipc/ services/ plugins/(AI 子系统) utils/
 │   ├── components/    # UI 组件（含 file-ops/ui/layout 子目录）
-│   ├── stores/        # Zustand 状态（12 个 store）
+│   ├── stores/        # Zustand 状态（11 个 store + index 导出）
 │   ├── hooks/ types/ utils/
 │   ├── App.tsx
 │   ├── main.tsx

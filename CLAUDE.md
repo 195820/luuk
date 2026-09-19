@@ -34,7 +34,7 @@ npm run preview        # 预览构建结果
 │  + Liquid Glass)：网格/瀑布流/查看器/对比/搜索  │
 │  /标签/统计/直方图/导出/幻灯片/设置三 Tab        │
 ├─────────────────────────────────────────────────┤
-│  状态管理 (Zustand，12 个 store)：imageStore    │
+│  状态管理 (Zustand，11 个 store)：imageStore    │
 │  (核心) + selection/view/tag/search/history/    │
 │  similar/slideshow/theme/plugin/audio           │
 ├─────────────────────────────────────────────────┤
@@ -100,9 +100,9 @@ D:\luuk\
 │                               #   ensure-test-native（vitest 原生模块 ABI）、smoke-archiver
 ├── tests/playwright/           # Playwright E2E（连 CDP 9222）
 ├── test-library/               # 生成式测试图库（set01~set10，每库 .ivlib/thumbs.db）
-├── docs/                       # 文档中心（索引见 docs/README.md；plans/ 存活跃计划与归档过程稿）
+├── docs/                       # 文档中心（索引见 docs/README.md；plans/ 存活跃计划，历史过程稿见 archive/）
 ├── dist/ · dist-electron/ · release/   # 构建输出（dist-electron/plugins/builtins 为插件产物）
-└── .qoder/                     # IDE 缓存目录（不受 git 跟踪）；原过程稿已并入 docs/plans/
+└── .qoder/                     # IDE 缓存目录（不受 git 跟踪）；原过程稿已并入 docs/archive/
 ```
 
 ## 🔑 关键设计

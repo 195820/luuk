@@ -7,7 +7,7 @@
 ## [未发布]
 
 ### 新增
-- **媒体加载性能提升（2026-09-19，已提交 `6df2c18`）**：缩略图/preview 出口由 base64 data URL 改稳定 `media://` URL（HMAC-SHA1 确定性 token + 进程级随机密钥）；协议层流式响应（`stream:true`）+ ETag/304 + Range（含 suffix）+ Cache-Control；`loadFullImage` 下线；sharp/ffmpeg 限流与临时文件泄漏治理；扫描批量事务化；Lightbox preview→原图双图层渐进；Masonry 视口窗口化；方向感知预取。CDP 真机验证 29/29（`scripts/cdp-verify-media.mjs`）；方案与基线见 `docs/archive/媒体加载性能提升方案-2026-09.md`
+- **媒体加载性能提升（2026-09-19，已提交至 `fix/phase8-defects`（`6df2c18`），未发版）**：缩略图/preview 出口由 base64 data URL 改稳定 `media://` URL（HMAC-SHA1 确定性 token + 进程级随机密钥）；协议层流式响应（`stream:true`）+ ETag/304 + Range（含 suffix）+ Cache-Control；`loadFullImage` 下线；sharp/ffmpeg 限流与临时文件泄漏治理；扫描批量事务化；Lightbox preview→原图双图层渐进；Masonry 视口窗口化；方向感知预取。CDP 真机验证 29/29（`scripts/cdp-verify-media.mjs`）；方案与基线见 `docs/archive/媒体加载性能提升方案-2026-09.md`
 - **图片对比模式**（Phase 4 Task 1-2）：网格多选 2 张图片后右键「对比」，打开并排/滑块双模式对比视图，共享变换同步缩放平移，自研 `compare-transform.ts` 纯函数变换计算
 - **全屏沉浸式模式**（Phase 4 Task 3）：F11 切换系统全屏，全屏时隐藏头部/底部/文件夹侧边栏，主进程转发原生全屏事件保持渲染端同步
 - **相邻图预加载**（Phase 4 Task 4）：`useAdjacentPreload` hook，150ms 防抖 + ±1/±2 优先级，快速翻页自动跳过中间图，令牌缓存避免重复注册

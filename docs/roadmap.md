@@ -242,7 +242,7 @@ CREATE TABLE album_items (
 | 隐患 | 影响 | 状态 |
 |------|------|------|
 | 收藏/历史以 `image_path` 字符串为主键 | 文件重命名/移动后引用失效 | ✅ 已解决 — 路径级联更新机制（Phase 1） |
-| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 已大幅拆分 — 现共 12 个 store（selection/view/tag/search/history/similar/slideshow/theme/plugin/audio 独立），imageStore 仍为核心但职责收窄，后续按需继续拆分 |
+| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 已大幅拆分 — 现共 11 个 store（selection/view/tag/search/history/similar/slideshow/theme/plugin/audio 独立），imageStore 仍为核心但职责收窄，后续按需继续拆分 |
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
 | `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论；2026-09 媒体改造后 token 同会话内确定（HMAC），但密钥进程级随机，重启仍失效 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
