@@ -158,6 +158,9 @@ export class PluginSdkHost {
     pluginId: string,
     p: Record<string, any>,
   ): Promise<number> {
+    // P1-4：edit.write 不得绕过路径守卫——先校验 sourcePath 落在库内，
+    // 输出根由 edits-service 按 libraryId 反查权威 rootPath（忽略插件传入目录）。
+    this.assertWithinLibrary(String(p.sourcePath))
     const out = p.outputBuffer
     const buf =
       out instanceof ArrayBuffer

@@ -34,6 +34,19 @@ export class EditsService {
     const format = options?.format ?? 'png'
     const outputPath = this.getOutputPath(sourcePath, op, format)
 
+    // 二次校验（P1-4）：输出路径必须落在该库根目录内。
+    // 即使 sourcePath 已被上游守卫，仍以 libraryId 反查的权威 rootPath 为准，
+    // 忽略插件传入目录，防 sourcePath/libraryId 被构造成越权写入。
+    const lib = this.db.getLibrary(libraryId)
+    if (!lib) {
+      throw new Error(`库不存在，无法写入编辑: ${libraryId}`)
+    }
+    const root = path.resolve(lib.rootPath).toLowerCase()
+    const outResolved = path.resolve(outputPath).toLowerCase()
+    if (outResolved !== root && !outResolved.startsWith(root + path.sep.toLowerCase())) {
+      throw new Error(`编辑输出越权：${outputPath} 不在库根 ${lib.rootPath} 内`)
+    }
+
     // 确保输出目录存在
     const outputDir = path.dirname(outputPath)
     fs.mkdirSync(outputDir, { recursive: true })

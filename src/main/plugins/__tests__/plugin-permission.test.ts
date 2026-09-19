@@ -80,4 +80,24 @@ describe('插件权限拒绝（G-2 · §5.11 三类违规）', () => {
     const host = makeHost(libRoot, ['fs.read.library'])
     await expect(host.handleCall(req('sdk.edit.write', { sourcePath: 'a', op: 'o', outputBuffer: new Uint8Array([1]) }))).rejects.toThrow(/缺少权限/)
   })
+
+  // P1-4：edit.write 不得绕过路径守卫
+  it('P1-4 · edit.write 越界 sourcePath 被路径守卫拒绝', async () => {
+    const host = makeHost(libRoot, ['edit.write'])
+    await expect(
+      host.handleCall(req('sdk.edit.write', {
+        libraryId: 1, imageId: 1, sourcePath: outside, op: 'autotone', outputBuffer: new Uint8Array([1]),
+      })),
+    ).rejects.toThrow(/路径越权/)
+  })
+
+  it('P1-4 · edit.write 库内 sourcePath 通过并落库', async () => {
+    const inside = path.join(libRoot, 'in.jpg')
+    fs.writeFileSync(inside, 'x')
+    const host = makeHost(libRoot, ['edit.write'])
+    const id = await host.handleCall(req('sdk.edit.write', {
+      libraryId: 1, imageId: 1, sourcePath: inside, op: 'autotone', outputBuffer: new Uint8Array([1]),
+    }))
+    expect(id).toBe(1)
+  })
 })

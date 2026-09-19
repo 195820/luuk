@@ -18,8 +18,8 @@ import type { InferencePool } from './inference-pool'
 
 const require = createRequire(import.meta.url)
 
-/** 反向 RPC 调用函数签名 */
-export type CallMainFn = (method: string, params: unknown) => Promise<unknown>
+/** 反向 RPC 调用函数签名（P1-5：pluginId 显式透传，不再依赖 Worker 全局上下文） */
+export type CallMainFn = (method: string, params: unknown, pluginId: string) => Promise<unknown>
 
 /** Phase 8 占位 API 调用时抛出的错误 */
 class NotImplemented extends Error {
@@ -37,29 +37,34 @@ class NotImplemented extends Error {
  */
 export function createPluginSdk(
   pluginId: string,
-  callMain: CallMainFn,
+  rawCallMain: CallMainFn,
   pool: InferencePool,
 ): LuukSdk {
+  // P1-5：以闭包持有自身 pluginId，每次反向调用显式透传，消除全局 activePluginId 串位
+  const call = (method: string, params: unknown): Promise<unknown> => rawCallMain(method, params, pluginId)
+  // P2-12：本插件已合法建立会话的 modelId 集合。run/destroy 仅限本集合内，
+  // 因 createSession 必经 resolveModel（主进程要求 inference 权限），故 run 传递性受权限门约束，
+  // 并防止无 inference 权限的插件借用他插件已建会话跨插件跑推理。
+  const ownedModels = new Set<string>()
   return {
     library: {
-      query: (opts) => callMain('sdk.library.query', opts) as Promise<unknown>,
-      writeEmbedding: (opts) => callMain('sdk.library.writeEmbedding', opts) as Promise<unknown>,
+      query: (opts) => call('sdk.library.query', opts) as Promise<unknown>,
+      writeEmbedding: (opts) => call('sdk.library.writeEmbedding', opts) as Promise<unknown>,
     },
     fs: {
       read: async (path) => {
-        const buf = await callMain('sdk.fs.read', { path }) as Uint8Array
+        const buf = await call('sdk.fs.read', { path }) as Uint8Array
         return buf
       },
-      write: (path, data) => callMain('sdk.fs.write', { path, data }) as Promise<void>,
+      write: (path, data) => call('sdk.fs.write', { path, data }) as Promise<void>,
     },
     inference: {
-      createSession: async (modelId, modelPath, opts) => {
-        // 路径解析经主进程（含下载校验），随后在 Worker 本地建立 ONNX 会话。
-        // 插件通常只知 modelId，传空 modelPath 由主进程 ModelManager 解析本地路径。
-        const resolved =
-          (modelPath && modelPath.trim()) ||
-          ((await callMain('sdk.inference.resolveModel', { modelId })) as string)
+      createSession: async (modelId, _modelPath, opts) => {
+        // P2-12：忽略插件传入的 modelPath（防越权加载任意 .onnx），
+        // 仅接受主进程 sdk.inference.resolveModel 返回的权威本地路径（含下载/SHA256 校验与 inference 权限门）。
+        const resolved = (await call('sdk.inference.resolveModel', { modelId })) as string
         const session = await pool.acquire(modelId, resolved, opts as never)
+        ownedModels.add(modelId)
         // 透传模型真实输入/输出张量名：不同导出（如 u2netp 的 `input.1`）名称各异，
         // 插件须按 inputNames 构造 feeds，避免写死 `input` / `image` 导致推理失败。
         return {
@@ -71,11 +76,18 @@ export function createPluginSdk(
         }
       },
       run: async (modelId, feeds, opts) => {
+        // P2-12：未在本插件 createSession 建立的模型不得直接推理
+        if (!ownedModels.has(modelId)) {
+          throw new Error(`推理未授权：模型 ${modelId} 未经本插件 createSession 建立（缺 inference 权限或越权复用）`)
+        }
         const deserialized = deserializeTensors(feeds)
         const outputs = await pool.run(modelId, deserialized, opts?.priority ?? 'batch')
         return serializeTensors(outputs)
       },
-      destroySession: (modelId) => pool.destroy(modelId) as Promise<void>,
+      destroySession: (modelId) => {
+        ownedModels.delete(modelId)
+        return pool.destroy(modelId) as Promise<void>
+      },
     },
     image: {
       decode: async (buf) => {
@@ -128,23 +140,23 @@ export function createPluginSdk(
     },
     jobs: {
       enqueue: (kind, payload, opts) =>
-        callMain('sdk.jobs.enqueue', { kind, payload, opts }) as Promise<string>,
+        call('sdk.jobs.enqueue', { kind, payload, opts }) as Promise<string>,
     },
     edit: {
       write: (params) =>
-        callMain('sdk.edit.write', { pluginId, ...params }) as Promise<number>,
+        call('sdk.edit.write', params) as Promise<number>,
     },
     progress: {
-      report: (pct, message) => callMain('sdk.progress.report', { pct, message }) as Promise<void>,
+      report: (pct, message) => call('sdk.progress.report', { pct, message }) as Promise<void>,
     },
     log: {
-      info: (msg) => callMain('sdk.log.info', { msg }) as Promise<void>,
-      warn: (msg) => callMain('sdk.log.warn', { msg }) as Promise<void>,
-      error: (msg) => callMain('sdk.log.error', { msg }) as Promise<void>,
+      info: (msg) => call('sdk.log.info', { msg }) as Promise<void>,
+      warn: (msg) => call('sdk.log.warn', { msg }) as Promise<void>,
+      error: (msg) => call('sdk.log.error', { msg }) as Promise<void>,
     },
     settings: {
-      get: (key) => callMain('sdk.settings.get', { key }) as Promise<unknown>,
-      set: (key, value) => callMain('sdk.settings.set', { key, value }) as Promise<void>,
+      get: (key) => call('sdk.settings.get', { key }) as Promise<unknown>,
+      set: (key, value) => call('sdk.settings.set', { key, value }) as Promise<void>,
     },
     // Phase 8 占位：调用即抛 NOT_IMPLEMENTED
     browser: {

@@ -58,7 +58,11 @@ const MAX_INFLIGHT = 20
 let sdkCallId = 0
 const sdkPending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>()
 
-function callMain(method: string, params: unknown): Promise<unknown> {
+function callMain(method: string, params: unknown, pluginId: string): Promise<unknown> {
+  // P1-5/S3：硬断言 pluginId，禁止裸调用（只能由 createPluginSdk 闭包传入真实 id）
+  if (!pluginId) {
+    return Promise.reject(new Error(`callMain 缺少 pluginId：${method}`))
+  }
   return new Promise((resolve, reject) => {
     if (sdkPending.size >= MAX_INFLIGHT) {
       reject(new Error(`反向 SDK 调用在途过多（>${MAX_INFLIGHT}），请稍后重试`))
@@ -70,15 +74,8 @@ function callMain(method: string, params: unknown): Promise<unknown> {
       reject(new Error(`SDK 调用超时: ${method}`))
     }, SDK_CALL_TIMEOUT_MS)
     sdkPending.set(id, { resolve, reject, timer })
-    port?.postMessage({ type: 'sdk-request', channel: 'worker-to-main', id, method, pluginId: currentPluginId(), params })
+    port?.postMessage({ type: 'sdk-request', channel: 'worker-to-main', id, method, pluginId, params })
   })
-}
-
-// 当前正在执行 op 的 pluginId（用于给反向调用打标）。单线程 + 串行 execute，
-// 记录最近一次 plugin.execute 的 pluginId 即可满足权限校验需要。
-let activePluginId = ''
-function currentPluginId(): string {
-  return activePluginId
 }
 
 // ── 正向 RPC 处理器（主进程 → Worker）──
@@ -176,14 +173,9 @@ registerHandler('plugin.execute', async (params) => {
   if (typeof entry.instance.executeOp !== 'function') {
     throw new Error(`插件 ${pluginId} 未实现 executeOp`)
   }
-  // 标记当前执行上下文，供反向 SDK 调用打权限标签
-  const prev = activePluginId
-  activePluginId = pluginId
-  try {
-    return await entry.instance.executeOp(entry.sdk, opId, input)
-  } finally {
-    activePluginId = prev
-  }
+  // P1-5：不再设置全局 activePluginId；SDK 实例由 createPluginSdk(pluginId,…) 闭包携带自身 id，
+  // 反向调用逐次显式透传，并发 execute 不再串位。
+  return await entry.instance.executeOp(entry.sdk, opId, input)
 })
 
 // ── 消息处理 ──
