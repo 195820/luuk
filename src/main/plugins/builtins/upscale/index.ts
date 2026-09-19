@@ -13,6 +13,14 @@ const MODEL_ID = 'realesrgan-x4plus'
 const TILE_SIZE = 128
 const TILE_OVERLAP = 8
 
+/**
+ * 输出像素预算上限（P0-2 防 OOM 熔断）。
+ * 峰值内存 ≈ dst(N·4) + image.encode 入口 Buffer.from 复制(N·4) + PNG 输出(~0.4·N·4)，
+ * N=输出像素数。40M 像素峰值 ≈ 380MB，对齐 R7 实测 Worker 500MB 红线保留 ~25% 余量；
+ * 超过则抛可展示错误而非分配打爆 utilityProcess → MAX_CRASHES 熔断（需重启才恢复）。
+ */
+const MAX_OUT_PIXELS = 40_000_000
+
 /** executeOp 输入负载 */
 interface UpscaleInput {
   paths?: string[]
@@ -125,7 +133,24 @@ async function upscaleOne(
 
   const outW = W * scale
   const outH = H * scale
-  const dst = new Uint8Array(outW * outH * 4)
+
+  // P0-2：分配 dst 前校验输出像素预算，避免整幅 RGBA + encode 复制打爆 Worker 触发熔断
+  const outPixels = outW * outH
+  if (outPixels > MAX_OUT_PIXELS) {
+    throw new Error(
+      `输出过大(${outW}x${outH} ≈ ${Math.round(outPixels / 1_000_000)}M 像素)，超过安全预算 ${Math.round(MAX_OUT_PIXELS / 1_000_000)}M；请改用 2x 倍率或先缩放原图后重试`,
+    )
+  }
+
+  // 兜底：预算内仍可能因内存碎片/并发分配失败 → 转业务错误而非崩溃
+  let dst: Uint8Array
+  try {
+    dst = new Uint8Array(outW * outH * 4)
+  } catch (err) {
+    throw new Error(
+      `内存不足，无法分配输出缓冲(${outW}x${outH})：${(err as Error).message}`,
+    )
+  }
 
   const stride = TILE_SIZE - TILE_OVERLAP
   const tilesX = Math.ceil(W / stride)

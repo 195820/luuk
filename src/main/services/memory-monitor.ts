@@ -6,7 +6,12 @@ import type { MemoryLevel, MemoryStatus } from '../../types/plugin'
 export interface MemoryMonitorOptions {
   yellowMB: number
   redMB: number
+  /** 插件 Worker 进程单独的红色硬上限（MB），与聚合口径各司其职（P0-3） */
+  workerRedMB?: number
 }
+
+/** 插件 Worker 进程在 app.getAppMetrics() 中的服务名（与 plugin-host-process fork 的 serviceName 对齐） */
+const WORKER_SERVICE_NAME = 'luuk-plugin-worker'
 
 /**
  * 三级内存水位线监控器
@@ -17,6 +22,7 @@ export interface MemoryMonitorOptions {
 export class MemoryMonitor extends EventEmitter {
   private yellowMB: number
   private redMB: number
+  private workerRedMB: number
   private currentLevel: MemoryLevel = 'green'
   private currentRssMB: number = 0
   private timer: ReturnType<typeof setInterval> | null = null
@@ -25,6 +31,7 @@ export class MemoryMonitor extends EventEmitter {
     super()
     this.yellowMB = options.yellowMB
     this.redMB = options.redMB
+    this.workerRedMB = options.workerRedMB ?? 500
   }
 
   /** 获取当前内存状态 */
@@ -69,6 +76,28 @@ export class MemoryMonitor extends EventEmitter {
       /* 非 Electron 环境或 API 不可用 → 回退 */
     }
     return Math.round(process.memoryUsage().rss / 1024 / 1024)
+  }
+
+  /**
+   * 插件 Worker 进程单独 RSS（MB）（P0-3）。
+   * 与 aggregateRssMB 同源 API，零额外 IPC；Worker 未启动/取不到时返回 0。
+   */
+  getWorkerRssMB(serviceName: string = WORKER_SERVICE_NAME): number {
+    try {
+      if (app?.isReady?.()) {
+        const m = app.getAppMetrics().find((x) => x.name === serviceName)
+        const kb = m?.memory?.workingSetSize ?? 0
+        if (kb > 0) return Math.round(kb / 1024)
+      }
+    } catch {
+      /* 非 Electron 环境或 API 不可用 → 视为 0 */
+    }
+    return 0
+  }
+
+  /** Worker 进程是否超其单独红色硬上限（与聚合口径任一命中即拒绝 AI） */
+  isWorkerRed(serviceName?: string): boolean {
+    return this.getWorkerRssMB(serviceName) >= this.workerRedMB
   }
 
   /** 启动定时刷新，默认 5000ms 间隔 */

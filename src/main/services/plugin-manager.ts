@@ -6,6 +6,7 @@ import { logger } from '../../utils/logger'
 import { getSetting } from './settings-service'
 import { getMasterDB } from './database'
 import { getJobRunner } from './job-runner'
+import { getImageService } from './image-service'
 import { PluginLoader } from '../plugins/plugin-loader'
 import { PluginHostProcess } from '../plugins/plugin-host-process'
 import { PluginSdkHost } from '../plugins/plugin-sdk-host'
@@ -18,9 +19,11 @@ import type {
   MemoryStatus,
 } from '../../types/plugin'
 
-/** 内存水位线默认阈值（MB） */
-const DEFAULT_YELLOW_MB = 300
-const DEFAULT_RED_MB = 400
+/** 内存水位线默认阈值（MB）——聚合口径（P0-3 重标定：Electron 多进程工作集聚合的合理区间）*/
+const DEFAULT_YELLOW_MB = 1500
+const DEFAULT_RED_MB = 2500
+/** 插件 Worker 进程单独红色硬上限默认值（R7 实测峰值上限）*/
+const DEFAULT_WORKER_RED_MB = 500
 
 /** 内存监控刷新间隔（毫秒） */
 const MEMORY_MONITOR_INTERVAL_MS = 5000
@@ -71,11 +74,15 @@ export class PluginManager {
     this.modelManager = new ModelManager(modelsDir)
 
     this.hostProcess = new PluginHostProcess()
-    // 统一下发内存水位线阈值（Worker 与主进程一致）
-    this.hostProcess.setMemoryThresholds(DEFAULT_YELLOW_MB, DEFAULT_RED_MB)
+    // 统一下发内存水位线阈值（Worker 与主进程一致），从设置读取，未配置时回退默认值
+    const yellowMB = getSetting('memory.yellowMB') ?? DEFAULT_YELLOW_MB
+    const redMB = getSetting('memory.redMB') ?? DEFAULT_RED_MB
+    const workerRedMB = getSetting('memory.workerRedMB') ?? DEFAULT_WORKER_RED_MB
+    this.hostProcess.setMemoryThresholds(yellowMB, redMB)
     this.memoryMonitor = new MemoryMonitor({
-      yellowMB: DEFAULT_YELLOW_MB,
-      redMB: DEFAULT_RED_MB,
+      yellowMB,
+      redMB,
+      workerRedMB,
     })
     this.editsService = new EditsService(getMasterDB())
 
@@ -206,7 +213,7 @@ export class PluginManager {
     }
   }
 
-  /** 为插件声明的每个 op 注册 ai.{op} 作业处理器 */
+  /** 为插件声明的每个 op 注册 ai.{op} 作业处理器（P0-1 批处理链闭合） */
   private registerOpHandlers(pluginId: string): void {
     const plugin = this.loader.getPlugin(pluginId)
     const ops = plugin?.manifest.contributes?.ops ?? []
@@ -214,11 +221,27 @@ export class PluginManager {
     for (const op of ops) {
       const jobKind = `ai.${op.id}`
       runner.registerHandler(jobKind, async (item) => {
-        await this.hostProcess.rpc('plugin.execute', {
+        // 解析绝对路径，与交互式 pluginsExecute 的输入形态统一（P0-1）
+        // imageId 为 null（库级 op）时保留 { libraryId, item }，由插件侧显式支持
+        const input =
+          item.imageId != null
+            ? {
+                paths: [getImageService().getImagePath(item.libraryId, item.imageId)],
+                libraryId: item.libraryId,
+                imageId: item.imageId,
+              }
+            : { libraryId: item.libraryId, item }
+
+        const res = (await this.hostProcess.rpc('plugin.execute', {
           pluginId,
           opId: op.id,
-          input: { libraryId: item.libraryId, imageId: item.imageId, item },
-        })
+          input,
+        })) as { skipped?: boolean } | undefined
+
+        // skipped 语义：插件未真正处理任何文件 → 抛错使 job_item 落 failed，杜绝"零工作却 done"
+        if (res && res.skipped) {
+          throw new Error(`插件 ${pluginId} 未处理任何文件（skipped），作业项判定为失败`)
+        }
       })
     }
   }
@@ -237,11 +260,12 @@ export class PluginManager {
       throw new Error(`插件未启用: ${pluginId}`)
     }
 
-    // 内存红色水位线 → 拒绝执行，避免 OOM
-    if (this.memoryMonitor.isRed()) {
+    // 内存水位线闸门（P0-3）：聚合口径 red 或 Worker 口径 red 任一命中即拒绝，避免 OOM
+    if (this.memoryMonitor.isRed() || this.memoryMonitor.isWorkerRed()) {
       const status = this.memoryMonitor.getStatus()
+      const workerRss = this.memoryMonitor.getWorkerRssMB()
       throw new Error(
-        `内存水位线过高（${status.rssMB}MB ≥ ${status.threshold.red}MB），拒绝执行`
+        `内存水位线过高（聚合 ${status.rssMB}MB ≥ ${status.threshold.red}MB 或 Worker ${workerRss}MB 超上限），拒绝执行`
       )
     }
 

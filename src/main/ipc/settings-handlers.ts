@@ -8,6 +8,9 @@ const ALLOWED_KEYS = [
   'ai.enabled',
   'crawler.enabled',
   'models.directory',
+  'memory.yellowMB',
+  'memory.redMB',
+  'memory.workerRedMB',
 ] as const
 
 type AllowedKey = (typeof ALLOWED_KEYS)[number]

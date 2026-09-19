@@ -92,7 +92,16 @@ function App() {
     setSortOrder,
     applySort,
     setError,
+    notice,
+    setNotice,
   } = useImageStore()
+
+  // 轻量提示自动消失（3.5s）
+  useEffect(() => {
+    if (!notice) return
+    const t = setTimeout(() => setNotice(null), 3500)
+    return () => clearTimeout(t)
+  }, [notice, setNotice])
 
   // 视图状态（独立 store）
   const {
@@ -1532,6 +1541,13 @@ function App() {
 
       {/* AI 作业进度条 */}
       <JobProgressBar />
+
+      {/* 轻量提示 toast（后台作业入队等），自动消失 */}
+      {notice && (
+        <div className="fixed bottom-20 right-6 z-50 max-w-sm px-4 py-3 rounded-lg bg-muted border border-border text-text-primary text-sm shadow-lg">
+          {notice}
+        </div>
+      )}
 
       {/* 库统计面板 */}
       {showStatsPanel && currentLibraryId !== null && currentLibraryId > 0 && (

@@ -64,6 +64,8 @@ interface ImageState {
   // UI 状态（isLoading/error 与数据加载耦合，保留在此）
   isLoading: boolean
   error: string | null
+  /** 轻量提示（成功/信息类），与全屏 error 空态区分，用于后台作业入队等反馈 */
+  notice: string | null
 
   // 扫描进度
   scanProgress: ScanProgress
@@ -114,6 +116,7 @@ interface ImageState {
   // UI 操作（isLoading/error 保留）
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  setNotice: (notice: string | null) => void
 
   // 排序操作
   setSortBy: (sortBy: 'relative_path' | 'created_time' | 'modified_time' | 'file_size' | 'width' | 'height' | 'rating') => void
@@ -154,6 +157,7 @@ export const useImageStore = create<ImageState>((set, get) => ({
   thumbnailCache: new Map(),
   isLoading: false,
   error: null,
+  notice: null,
   scanProgress: {
     isScanning: false,
     currentFile: '',
@@ -589,6 +593,10 @@ export const useImageStore = create<ImageState>((set, get) => ({
   // 设置错误
   setError: (error: string | null) => {
     set({ error })
+  },
+
+  setNotice: (notice: string | null) => {
+    set({ notice })
   },
 
   // 加载收藏文件夹中的图片

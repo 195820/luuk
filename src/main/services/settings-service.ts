@@ -23,6 +23,10 @@ interface SettingsSchema {
   'ai.enabled': boolean;
   'crawler.enabled': boolean;
   'models.directory': string;
+  // P0-3 — 内存水位线阈值（MB）：聚合口径（全应用）+ Worker 口径（插件进程）
+  'memory.yellowMB': number;
+  'memory.redMB': number;
+  'memory.workerRedMB': number;
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -40,6 +44,10 @@ const DEFAULTS: SettingsSchema = {
   'ai.enabled': false,
   'crawler.enabled': false,
   'models.directory': '',
+  // P0-3 默认阈值：聚合口径 1500/2500（Electron 多进程工作集），Worker 口径硬上限 500（R7 实测）
+  'memory.yellowMB': 1500,
+  'memory.redMB': 2500,
+  'memory.workerRedMB': 500,
 };
 
 let instance: Store<SettingsSchema> | null = null;

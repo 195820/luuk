@@ -199,6 +199,32 @@ export function ImageGrid({
     if (action.startsWith('plugin:')) {
       const [, pluginId, op] = action.split(':')
       const relPaths = selectedPaths.size > 0 ? Array.from(selectedPaths) : [imagePath]
+
+      // 后台批处理阈值：多选量超过此值改走持久化作业队列（P0-1）
+      const BATCH_THRESHOLD = 20
+      if (relPaths.length > BATCH_THRESHOLD) {
+        // 相对路径 → imageId 映射，构造 jobsEnqueue 的 items（handler 侧再解析绝对路径）
+        const pathToId = new Map<string, number>()
+        for (const img of images) {
+          if (img.imagePath && img.id != null) pathToId.set(img.imagePath, Number(img.id))
+        }
+        const items = relPaths.map((p) => ({ libraryId, imageId: pathToId.get(p) ?? null }))
+        try {
+          const res = await window.electronAPI.jobsEnqueue(`ai.${op}`, { op, pluginId }, { items })
+          if (!res.success) {
+            useImageStore.getState().setError(`后台作业入队失败: ${res.error}`)
+          } else {
+            // [S1] 用户感知：轻量提示 + JobProgressBar 依进度事件自动展示
+            useImageStore.getState().setNotice(`已加入后台队列（${items.length} 项），可在底部进度面板查看`)
+            useSelectionStore.getState().clearSelection()
+          }
+        } catch (err) {
+          useImageStore.getState().setError(`后台作业入队异常: ${(err as Error).message}`)
+        }
+        setContextMenu(null)
+        return
+      }
+
       try {
         const abs = await Promise.all(
           relPaths.map((p) => window.electronAPI.getImagePathByRelativePath(libraryId, p)),

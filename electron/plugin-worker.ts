@@ -97,6 +97,13 @@ const inferencePool = new InferencePool()
 
 // ── 内存监控 ──
 
+/**
+ * 本 Worker 进程自身 RSS（口径=单进程 process.memoryUsage().rss）。
+ * 阈值经主进程 fork env（LUUK_MEM_YELLOW_MB/RED_MB）下发，与主进程聚合口径同源常量。
+ * 注：这是“本进程”口径，主进程另有“全应用聚合”口径（app.getAppMetrics 求和）；
+ * AI 执行硬闸门的“聚合 red || Worker red”判定在主进程侧完成（见 plugin-manager.executeOp），
+ * 本方法仅供展示/诊断，二者标注来源以免混用（P0-3）。
+ */
 function getMemoryStatus(): MemoryStatus {
   const mem = process.memoryUsage()
   const rssMB = Math.round(mem.rss / 1024 / 1024)

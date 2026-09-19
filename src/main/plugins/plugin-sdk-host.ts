@@ -62,6 +62,9 @@ const ALLOWED_SETTING_KEYS = new Set([
   'ai.enabled',
   'crawler.enabled',
   'models.directory',
+  'memory.yellowMB',
+  'memory.redMB',
+  'memory.workerRedMB',
 ])
 
 export class PluginSdkHost {
