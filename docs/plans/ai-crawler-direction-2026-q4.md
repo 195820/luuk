@@ -2,17 +2,20 @@
 title: AI 插件化能力与爬虫模块方向性设计
 description: Phase 8+ 插件化 AI（索引/修图/生图/补图）与图片采集的架构方向、宿主运行时、数据模型草案与风险验证清单
 type: design
-status: draft
+status: current
 created: 2026-09-13
 revised: 2026-09-13
-related_plan: implementation-plan-2026-q3-q4.md
+updated: 2026-09-19
+related_plan: ../archive/implementation-plan-2026-q3-q4.md
 ---
 
 # AI 插件化能力与爬虫模块方向性设计（Phase 8+）
 
 > **本文只定方向，不拆任务、不给工时。** 工时与任务级验收标准留待评审通过后的 `implementation-plan-2027-q1.md`。
 > **需求来源**：[requirements.md](../../requirements.md) 第二阶段 5/6 节与 Phase 3 · [docs/roadmap.md](../roadmap.md) 第五节 #32-#36、#38
-> **前序文档**：[implementation-plan-2026-q3-q4.md](./implementation-plan-2026-q3-q4.md)（Phase 5-7，已全部完成）
+> **前序文档**：[implementation-plan-2026-q3-q4.md](../archive/implementation-plan-2026-q3-q4.md)（Phase 5-7，已全部完成）
+>
+> **实施状态（2026-09-19）**：本文仍为 Phase 9-11 的活跃方向设计。已落地部分：**Phase 8 已全部交付**（插件宿主/SDK/推理池/JobRunner/模型管理/三内置插件，含 2026-09-19 M1-M5 缺陷修复，分支 `fix/phase8-defects`；实施计划见 [archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md](../archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md)，人工验收进行中）。PoC 进底：R1/R3/R7 已回填实测值，R2/R4/R5/R6/R8/R9 待回填；§16 的 Q1/Q2/Q3/Q7 尚未决策。
 
 ---
 
@@ -66,7 +69,7 @@ Phase 1-7 已交付一个功能完整的本地图库查看器。下一阶段的�
 | # | 约束 | 来源 | 对设计的强制影响 |
 |---|---|---|---|
 | C1 | 库规模 100 万-200 万张 / 10TB+ / 2-3 块硬盘 | requirements.md 用户场景表 | AI 全量索引是**数十小时级离线作业**，不是「点个按钮等几秒」的功能。必须有持久化、断点续跑、优先级调度 |
-| C2 | 参考机 Ryzen 5 PRO 4650U（6C/12T，核显）+ 16GB + NVMe 512GB | [implementation-plan](./implementation-plan-2026-q3-q4.md) 附录 A 实机采集 | **无独显**，CPU 推理为主，GPU 加速收益有限。这条直接决定了 D2 扩散类的可行性判定 |
+| C2 | 参考机 Ryzen 5 PRO 4650U（6C/12T，核显）+ 16GB + NVMe 512GB | [implementation-plan](../archive/implementation-plan-2026-q3-q4.md) 附录 A 实机采集 | **无独显**，CPU 推理为主，GPU 加速收益有限。这条直接决定了 D2 扩散类的可行性判定 |
 | C3 | 性能红线：启动 <3s / 内存 <500MB / 滚动 ≥30FPS | [roadmap.md](../roadmap.md) 第九节 | 推理不得进渲染进程；向量不得全量常驻内存；插件宿主必须懒启动 |
 | C4 | 内容为高清写真 | requirements.md | **上传原图不可接受**，本地优先。**例外**：纯文生图不上传任何原图，隐私风险 ≈ 0，可单独定策略（见 6.4） |
 | C5 | 判别式与生成式算力差 2-3 个数量级 | 外部实测参考值，见 6.2 | 修图（单次前向）本地可做；生图/补图（迭代去噪 20-50 步）在无独显机器上不可做，必须走可替换的 provider 插件 |
@@ -78,7 +81,7 @@ C6 值得单独强调：510MB 这个数字**已经超过 500MB 红线的全部�
 
 ## 3. 顶层决策记录
 
-体例沿用 [implementation-plan](./implementation-plan-2026-q3-q4.md) Task 5.0 / 7.1 的决策记录格式：**决策 / 理由 / 被否决的替代方案 / 失效条件**。
+体例沿用 [implementation-plan](../archive/implementation-plan-2026-q3-q4.md) Task 5.0 / 7.1 的决策记录格式：**决策 / 理由 / 被否决的替代方案 / 失效条件**。
 
 ### D1 优先线：基础设施先行
 
@@ -1052,7 +1055,7 @@ provider isAvailable() 探测结果
 
 ## 15. 待验证风险清单（PoC）
 
-评审通过后优先执行。脚本约定放 `scripts/`（沿用 `bench-scan.mjs` / `bench-hash-window.mjs` 命名风格），实测数据回填附录 A，**禁止填估算值**（沿用 [implementation-plan](./implementation-plan-2026-q3-q4.md) 附录 A 的纪律）。
+评审通过后优先执行。脚本约定放 `scripts/`（沿用 `bench-scan.mjs` / `bench-hash-window.mjs` 命名风格），实测数据回填附录 A，**禁止填估算值**（沿用 [implementation-plan](../archive/implementation-plan-2026-q3-q4.md) 附录 A 的纪律）。
 
 | # | 风险 | 测量协议 | 失败时的改道方案 |
 |---|---|---|---|

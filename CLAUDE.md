@@ -4,179 +4,187 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 📦 项目概述
 
-一个专为**大量高清写真图片和多媒体文件**（视频/音频）设计的本地图片查看器，基于 Electron + React + TypeScript。
-支持通过 `media://` 自定义协议流式加载大媒体文件（令牌映射机制）。
+一个专为**大量高清写真图片和多媒体文件**（视频/音频）设计的本地查看器，基于 Electron + React + TypeScript。支持通过 `media://` 自定义协议（HMAC 确定性令牌 + 流式响应 + HTTP 缓存）加载大媒体文件，并内置 **Phase 8 AI 插件系统**（超分/抠图/自动色调，ONNX 本地推理 + 后台作业）。
+
+功能主线（Phase 1-8）已全部交付；当前状态与遗留项以 [docs/roadmap.md](docs/roadmap.md) 为准，变更历史以 [CHANGELOG.md](CHANGELOG.md) 为准。
 
 ## 🔧 开发命令
 
 ```bash
 conda activate imageviewer  # 激活 Conda 环境（Node.js、Python 运行时依赖）
 npm install            # 安装依赖
-npm run dev            # 开发模式（自动打开 DevTools）
-npm run build          # 构建前端 + Electron 打包
-npm run build:dir      # 仅构建前端（不打包）
+npm run dev            # Vite 开发服务器（自动开 DevTools；设 NO_AUTO_DEVTOOLS=1 禁用）
+npm run test           # Vitest watch
+npm run test:run       # Vitest 单次运行（当前基线：43 文件 / 393 用例全绿）
+npm run test:coverage  # 覆盖率报告
+npm run build:builtins # 仅编译内置插件（predev/build 会自动执行）
+npm run build          # tsc --noEmit → vite build → build:builtins → electron-builder（nsis 安装包）
+npm run build:dir      # 同上但 electron-builder --dir（win-unpacked，不产安装包，调试用）
 npm run preview        # 预览构建结果
 ```
 
 > **注意**：所有 `npm` 命令执行前，必须先激活 `imageviewer` Conda 环境，否则 Node.js / Python 版本可能不匹配。
+> 提交前必过 `npx tsc --noEmit` + `npm run test:run`。
 
 ## 🏗️ 架构设计
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           UI 层 (React 19)                       │
-│  Tailwind CSS v4 + Liquid Glass                 │
-│  shadcn/ui (Radix UI) 组件                      │
-│  Motion (Framer Motion) 动画                     │
-│  Lucide React 图标                              │
-│  Geist Sans + Geist Mono 字体                   │
-│  FolderTree │ ImageGrid (虚拟滚动)              │
-│  ImageViewer (缩放/旋转/翻转/幻灯片/视频播放)   │
+│  UI 层 (React 19 + Tailwind v4 + shadcn/ui     │
+│  + Liquid Glass)：网格/瀑布流/查看器/对比/搜索  │
+│  /标签/统计/直方图/导出/幻灯片/设置三 Tab        │
 ├─────────────────────────────────────────────────┤
-│         状态管理 (Zustand)                       │
-│  imageStore (核心) | audioStore | historyStore    │
+│  状态管理 (Zustand，12 个 store)：imageStore    │
+│  (核心) + selection/view/tag/search/history/    │
+│  similar/slideshow/theme/plugin/audio           │
 ├─────────────────────────────────────────────────┤
-│         IPC 通信 (library-handlers.ts)           │
-│  getLibraries | getFolderTree | getThumbnail    │
-│  getMediaUrl (media:// token, 统一用于图片/视频/音频) │
+│  IPC 层（src/main/ipc/ 7 个 handler 文件）      │
+│  library │ file │ search │ tag │ settings │     │
+│  job │ plugin                                   │
 ├─────────────────────────────────────────────────┤
-│           数据层                                  │
-│  MasterDB (master.db) - 库/收藏/标签/历史        │
-│  ThumbnailsDB (thumbs.db) - 图片元数据/缩略图    │
-│  位置：%APPDATA%\luuk\master.db + {库}\.ivlib\  │
+│  media:// 协议层（electron/main.ts）            │
+│  HMAC 确定性 token │ file/thumb 双 kind │      │
+│  流式 + Range + ETag/304 + Cache-Control        │
+├─────────────────────────────────────────────────┤
+│  AI 插件子系统（Phase 8，懒启动，默认关闭）     │
+│  PluginManager ↔ utilityProcess Worker          │
+│  （MessagePort 双向 RPC / luuk.* SDK /          │
+│   InferencePool / JobRunner / ModelManager）    │
+├─────────────────────────────────────────────────┤
+│  数据层：MasterDB（库/收藏/标签/历史/jobs/edits │
+│  /folder_covers…）+ 分库 thumbs.db（元数据/     │
+│  WebP 缩略图/pHash）+ LRU 200MB + sharp         │
 └─────────────────────────────────────────────────┘
 ```
+
+详细架构参考 [docs/reference/架构设计.md](docs/reference/架构设计.md)。
 
 ## 📁 核心目录结构
 
 ```
 D:\luuk\
-├── electron/                   # Electron 主进程
-│   ├── main.ts                 # 主入口，窗口创建，IPC 注册，media:// 协议
-│   └── preload.ts              # 预加载脚本，暴露 electronAPI
+├── electron/                   # Electron 进程入口
+│   ├── main.ts                 # 主进程：窗口、IPC 注册、media:// 协议（流式/Range/ETag）、关机编排
+│   ├── preload.ts              # 暴露 window.electronAPI（含 plugins/jobs/models/settings）
+│   └── plugin-worker.ts        # 插件 utilityProcess Worker（SDK 代理 + RPC）
 ├── src/
-│   ├── main/                   # 后端服务
-│   │   ├── services/
-│   │   │   ├── database.ts      # MasterDB + ThumbnailsDB
-│   │   │   ├── image-service.ts # 统一服务接口（单例）
-│   │   │   ├── scanner.ts       # 库扫描 + 增量更新
-│   │   │   ├── thumbnailer.ts   # 缩略图生成 (Sharp)
-│   │   │   ├── media-registry.ts # media:// 协议令牌注册表
-│   │   │   └── cache.ts         # LRU 内存缓存 (200MB)
-│   │   └── ipc/
-│   │       └── library-handlers.ts  # IPC 处理器
+│   ├── main/                   # 主进程后端（非渲染代码）
+│   │   ├── ipc/                # 7 个 handler：library/file/search/tag/settings/job/plugin
+│   │   ├── services/           # 15 个服务：database、image-service、scanner、thumbnailer、
+│   │   │                       #   cache、media-registry、file-service、export-service、
+│   │   │                       #   settings-service、library-monitor、plugin-manager、
+│   │   │                       #   job-runner、memory-monitor、model-manager、edits-service
+│   │   ├── plugins/            # 插件子系统：plugin-loader、plugin-host-process、
+│   │   │   │                   #   plugin-sdk-host、worker-sdk、inference-pool
+│   │   │   └── builtins/       # 内置插件：autotone / matting / upscale（后处理抽 post.ts 纯函数）
+│   │   └── utils/              # exif、histogram、phash、media、path-safe
 │   ├── components/             # React 组件
-│   │   ├── ImageViewer.tsx      # 查看器（缩放/平移/旋转/翻转/幻灯片/视频播放）
-│   │   ├── ImageGrid.tsx        # 网格视图（虚拟滚动）
-│   │   ├── ImageGridItem.tsx    # 网格单项
-│   │   ├── MasonryGrid.tsx      # 瀑布流视图
-│   │   ├── FolderTree.tsx       # 文件夹树
-│   │   ├── SortControl.tsx      # 排序控制
-│   │   ├── RatingStars.tsx      # 评分组件（查看器星标）
-│   │   ├── RecentHistory.tsx    # 侧边栏"最近浏览"
-│   │   ├── ScanProgress.tsx     # 扫描进度
-│   │   ├── layout/
-│   │   │   ├── AppHeader.tsx    # 应用头部
-│   │   │   ├── AppSidebar.tsx   # 侧边栏
-│   │   │   ├── AppFooter.tsx    # 应用底部
-│   │   │   └── SlideshowBar.tsx # 幻灯片控制栏
-│   │   ├── library/
-│   │   │   └── LibraryPanel.tsx # 库面板
-│   │   └── hooks/
-│   │       ├── useAppLogic.ts   # 应用逻辑 hook
-│   │       └── useDebugLog.ts   # 调试日志 hook
-│   ├── stores/                 # Zustand 状态管理
-│   │   ├── imageStore.ts        # 图片数据 store（核心）
-│   │   ├── audioStore.ts        # 音频播放 store
-│   │   ├── historyStore.ts      # 浏览历史 store
-│   │   └── index.ts             # 统一导出
-│   ├── utils/
-│   │   ├── sort.ts              # 排序工具
-│   │   ├── media.ts             # 媒体类型检测工具
-│   │   └── format.ts            # 格式化工具函数（文件大小等）
-│   ├── types/
-│   │   └── index.ts             # TypeScript 类型定义
-│   ├── global.d.ts              # 全局类型声明
-│   └── index.css                # 全局样式 (Tailwind v4 + Liquid Glass + shadcn/ui)
-├── dist/                       # Vite 构建输出
-├── dist-electron/              # Electron 构建输出
-└── release/                    # 安装包输出
+│   │   ├── ImageGrid / ImageGridItem / MasonryGrid   # 网格（虚拟滚动+多选）/ 瀑布流（窗口化）
+│   │   ├── ImageViewer / ImageLightbox / CompareViewer  # 查看器（YARL，preview 渐进）/ 对比
+│   │   ├── AudioViewer / AudioPlayer / AudioCard / SlideshowAudio / PlaylistEditor
+│   │   ├── SearchPanel / TagCloudPanel / SimilarImagesPanel / StatsPanel / HistogramChart
+│   │   ├── SettingsPanel（主题/插件/模型三 Tab）/ CachePanel / JobProgressBar
+│   │   ├── FolderTree / RecentHistory / ScanProgress / MediaFilter / SortControl / RatingStars / TagDialog
+│   │   ├── file-ops/           # FileContextMenu、BatchRenameDialog、ExportDialog、
+│   │   │                       #   RecycleBinView、PluginSettings、ModelSettings
+│   │   ├── layout/SlideshowBar │ ui/（shadcn 基础件）│ hooks/useDebugLog
+│   │   └── App.tsx             # 应用壳：头部/侧栏/布局/全局快捷键（无独立 AppHeader 等）
+│   ├── hooks/useAdjacentPreload.ts   # 方向感知 ±3 预加载 + 视频首 1MB Range 预热
+│   ├── stores/                 # 12 个 Zustand store（见架构图）
+│   ├── utils/                  # 渲染端工具：sort/group/media/format/compare-transform/highlight
+│   ├── types/                  # index.ts（Domain 类型）+ plugin.ts（插件 SDK 契约）
+│   └── index.css               # Tailwind v4 @theme 设计 token + Liquid Glass
+├── scripts/                    # build-builtins.mjs（esbuild 编译内置插件 + 产物断言）、
+│                               #   bench-scan / bench-hash-window / bench-media-memory、
+│                               #   cdp-verify-*（CDP 真机验证）、generate-test-data、
+│                               #   ensure-test-native（vitest 原生模块 ABI）、smoke-archiver
+├── tests/playwright/           # Playwright E2E（连 CDP 9222）
+├── test-library/               # 生成式测试图库（set01~set10，每库 .ivlib/thumbs.db）
+├── docs/                       # 文档中心（索引见 docs/README.md）
+├── dist/ · dist-electron/ · release/   # 构建输出（dist-electron/plugins/builtins 为插件产物）
+└── .qoder/plans/               # IDE 过程稿（不受 git 跟踪，勿作为事实来源；权威版已并入 docs/）
 ```
 
 ## 🔑 关键设计
 
-### 前端技术栈
-- **样式方案**：Tailwind CSS v4 + Liquid Glass（`@theme` 统一管理设计 token，三级玻璃深度 `glass-l1/l2/l3`）
-- **组件库**：shadcn/ui (基于 Radix UI 的无头组件)
-- **动画库**：Motion (Framer Motion)，核心交互动画（FolderTree 展开/折叠、ImageViewer 信息面板、按钮微交互）
-- **图标库**：Lucide React（替换所有手写 SVG）
-- **字体**：Geist Sans + Geist Mono（通过 `@fontsource-variable` 引入可变字体）
-- **残留 CSS**：仅保留 `src/components/ImageLightbox.css`（YARL 查看器覆盖样式）和 `src/index.css`（Tailwind + 全局自定义样式）
+### 媒体加载链路（media://，2026-09 性能改造）
+- **统一 URL 通道**：图片/视频/音频/缩略图/preview 全部走 `media://TOKEN`，不再有 base64/data URL；`getThumbnail(s)` 返回 URL 字符串（无缩略图返回 **空串 `''`** 且不注册 token——前端占位判定依赖此 falsy 契约）；`loadFullImage` 已下线
+- **确定性令牌**（`media-registry.ts`）：`HMAC-SHA1(sessionSecret, 资源标识)` 前 32 位 hex，密钥每次启动随机 → 同会话内同一资源同一 URL（命中 HTTP 缓存），对外不可预测；条目 `kind: 'file' | 'thumb'`，访问驱动 LRU，容量 50000 / TTL 2h
+- **协议响应**（`main.ts`）：特权含 `stream: true`；file 分支 `createReadStream → Readable.toWeb()` 流式 + `ETag`/304 + Range（含 suffix）→ 206，200 手动带 `Content-Length`；thumb 分支 `Cache-Control: immutable`；错误拆分 404/500
+- **缩略图三级缓存**：内存 LRU（值统一 `Uint8Array`，默认 200MB 可调 100-1000）→ thumbs.db（WebP BLOB，含 `preview` 1200px 档）→ sharp 实时生成（`sharp.concurrency` 限流核数-2；ffmpeg 并发信号量 ≤2）
+- **Lightbox 渐进加载**：preview 图层先上屏，原图 `img.decode()` 预热后双图层交叉淡入（`src`/`key` 不变，避免 YARL 子树重挂载）
+- 媒体类型判断一律以 `getMediaTypeFromPath()`（扩展名）为准，数据库 `media_type` 可能不准确
 
-### 多媒体支持
-- **统一加载**：所有媒体类型（图片/视频/音频）统一使用 `getMediaUrl` IPC 返回 `media://TOKEN` URL，避免 base64 全量加载导致 OOM
-- **流式协议**：`media://` 自定义协议在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册为 standard/secure/supportFetchAPI。协议处理器使用 `fs.promises` 直读文件，支持 HTTP Range 请求。URL 中的令牌为纯小写 hex，不受浏览器 authority 小写化影响
-- **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名判断（比数据库更可靠）
-- **安全检查**：IPC 处理器限制访问范围在已注册库路径内
-- **数据库路径清理**：`mapLibrary` 中使用 `.trim().replace(/\r/g, '')` 清理库路径中的不可见字符
+### AI 插件子系统（Phase 8）
+- **进程模型**：主进程 `PluginManager` 装配一切；插件跑在 `utilityProcess` Worker，MessagePort 双向 RPC（`channel` 分域、requestId 命名空间隔离）；崩溃熔断 `MAX_CRASHES=3`，exit 监听带实例守卫、崩溃后自愈重载
+- **SDK**：插件只允许用 `luuk.*`（`worker-sdk.ts` → `plugin-sdk-host.ts`），权限比对 `plugin.json` 的 `permissions[]`；每次调用显式携带自身 pluginId（禁止全局"当前插件"态，防并发串位）；`edit.write`/`fs` 强制 `assertWithinLibrary` 路径守卫
+- **推理**：`InferencePool` 会话池——同名创建锁、交互式插队、EP 回退 CPU（**必须关 CPU mem-arena 保留内存，否则 4K 推理超 500MB 红线**）、LRU 驱逐、按插件销毁
+- **内存闸门**：双口径——全应用聚合 RSS（yellow=1500/red=2500MB，可配置 `memory.*`）与 Worker RSS（`memory.workerRedMB` 默认 500）任一 red 即拒绝 executeOp；red 事件触发 `memory.evict`；阈值常量在 `plugin-manager.ts`
+- **作业**：`JobRunner` 持久化 jobs/job_items（迁移 v2），优先级/暂停/取消/断点续跑（重启 running→paused）；收尾/取消/暂停三处统一 `pump()` 自泵。渲染层多选 >20 张走 `jobsEnqueue` 后台批处理，单项交互走 `pluginsExecute`；handler 必须收到解析好的绝对 `paths`，插件返回 `skipped:true` 归为 failed（杜绝假成功）
+- **模型**：`ModelManager` 流式 SHA256 校验 + 断点续传 + `url→mirrorUrls` 回退；`verifyModel` 空 sha256 只校存在性**不删文件**；启动回填下载状态
+- **内置插件**：autotone（零模型）、matting（u2netp）、upscale（RealESRGAN-x4plus 分块，输出像素预算 40M 上限）；后处理为 `post.ts` 纯函数（可单测）；TypeScript 源码经 `scripts/build-builtins.mjs`（esbuild）编译到 `dist-electron/plugins/builtins/<name>/index.js`，构建后有产物断言
+- Feature flag `plugins.enabled` 默认 false，设置面板开启
 
-### 数据库架构
-- **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史
-- **thumbs.db**: 每个库独立的分库，存储图片元数据、缩略图缓存（WebP 格式）
-- 库路径使用 `.ivlib` 隐藏目录存储数据库文件
+### 数据与文件操作
+- **双库**：`master.db`（`%APPDATA%\luuk\`）存库注册/收藏/标签/历史/folder_covers/jobs/edits/deleted_files；每库 `.ivlib/thumbs.db` 存图片元数据 + WebP 缩略图 + pHash。`removeLibrary` 先清依赖行再删（FK）
+- **文件操作**：复制/移动/重命名/删除走系统回收站（trash），操作后路径级联同步 master.db + thumbs.db，每步失败有逆向补偿；所有路径必须校验在已注册库根内
+- **非破坏性编辑**：AI 编辑输出到库内 `_edits/` 版本链（edits 表），不改原图
+- **扫描**：增量（大小+mtime 双条件跳过）、批量预载记录、后台非阻塞（`library-scan-finished` 广播）；pHash 回填驱动相似图查找
 
-### 缩略图缓存链路
-```
-内存 LRU 缓存 (200MB) → thumbs.db 数据库缓存 → 原图实时生成 (Sharp)
-```
-扫描阶段预生成：`scanner.ts` 在扫描完成后自动批量生成缩略图并存入数据库，避免首次打开时实时生成的延迟
-缓存 Key 格式：`${libraryId}-${imageId}`，确保跨库隔离
+### 前端
+- 样式：Tailwind CSS v4 + shadcn/ui (Radix) + Motion + Lucide，`@theme` 设计 token（`index.css`）；**禁止新建 `.css`/`.module.css`**（ImageLightbox.css 除外）
+- 主题：`themeStore`（persist）同步写 `document.documentElement` 的 `data-theme`/密度 class + CSS 变量，深浅色/强调色/密度实时切换
+- 虚拟滚动 `@tanstack/react-virtual`；瀑布流按视口窗口化渲染；缩略图 `<img decoding="async">` + 方向感知预热
+- 快捷键统一在 `App.tsx`（捕获阶段监听，绕过 YARL stopPropagation）+ `ImageViewer.tsx` 局部
 
-### 文件夹树实现
-- 使用路径分隔符 `/` 统一存储（兼容 Windows/Unix）
-- 递归构建：从图片相对路径提取文件夹层级
-- 支持展开/折叠，点击筛选图片
+## 🧪 测试规范
 
-### 收藏系统
-- 虚拟收藏库 ID: `FAVORITE_LIBRARY_ID = -1`
-- 单图收藏：单独标记的图片
-- 文件夹收藏：整个文件夹标记为收藏
-- 收藏数据存储在 master.db，图片详情从原库获取
-
-### 收藏视图模式
-- `favoriteViewMode: 'folder' | 'single'`
-- **文件夹收藏模式** (`'folder'`): 显示收藏文件夹树和其中的图片
-- **单图收藏模式** (`'single'`): 显示不属于任何收藏文件夹的单图收藏
-- 视图切换时会自动重置索引为 0，并清除选中的文件夹状态
-- 查看器中按 `F` 键收藏图片后，会自动切换到单图收藏视图模式
+- **单测**：Vitest，与被测文件同目录 `__tests__/`；当前基线 **43 文件 / 393 用例**（以实跑为准）；`npm run test:run` 必须全绿
+- **better-sqlite3 ABI**：Electron 与系统 Node ABI 不同，vitest 通过 `scripts/ensure-test-native.mjs` + `vitest.config.ts` nativeBinding 解耦（勿回退）
+- **真机验证**：`scripts/cdp-verify-*.mjs` 通过 Playwright `connectOverCDP` 连开发中 Electron（9222），不占用鼠标键盘；`npm run dev` 后用 `NO_AUTO_DEVTOOLS=1` 可免 DevTools 干扰
+- **E2E**：`tests/playwright/`（配置 `tests/playwright.config.ts`）
+- 性能基线：`scripts/bench-scan.mjs` / `bench-media-memory.mjs`；测试数据 `scripts/generate-test-data.cjs` → `test-library/`
+- 新功能不得突破性能红线：启动 <3s、单插件 Worker 内存 <500MB、滚动 ≥30FPS
 
 ## 📝 开发注意事项
 
-1. **Electron 下载**: 使用镜像源（项目已配置 `.npmrc`）
-2. **路径处理**: 使用 `path.normalize()` 处理跨平台路径
-3. **IPC 通信**: 前端通过 `window.electronAPI` 调用后端功能
-4. **状态管理**: `imageStore.ts` 是核心 store，`audioStore.ts` 管理音频播放状态，`historyStore.ts` 管理浏览历史
-5. **虚拟滚动**: 使用 `@tanstack/react-virtual`，只渲染可见区域
-6. **数据库清理**: 应用退出时调用 `closeAllDatabases()` 释放资源
-7. **自定义协议**: `media://` 在 `app.whenReady()` 之前通过 `protocol.registerSchemesAsPrivileged` 注册。URL 中的路径编码采用令牌映射（`src/main/services/media-registry.ts`），避免浏览器对 URL authority 强制小写化破坏编码
-8. **Native 模块**: 使用 `electron-rebuild` 重建 better-sqlite3 和 sharp 等原生模块
-9. **媒体类型**: 优先使用文件扩展名判断（`getMediaTypeFromPath`），数据库中 `media_type` 可能不准确
-10. **样式开发**: 项目已全面迁移到 Tailwind CSS v4 + shadcn/ui，禁止新建 `.css` / `.module.css` 文件（ImageLightbox.css 除外）。设计 token 通过 `@theme` 块在 `src/index.css` 中统一定义
+1. **路径处理**：Windows 路径注意 `.trim().replace(/\r/g,'')` 清理（库路径入库前）；比较路径统一分隔符 `/`
+2. **IPC 返回值**：`Map` 经 IPC 序列化为空对象——批量接口返回 `Record`（如 `getThumbnails`）；`getImages` 直接返回数组
+3. **media:// URL 规范化**：Chromium 会把 `media://TOKEN` 规范化为 `media://TOKEN/`，CDP/字符串匹配按 token 子串匹配
+4. **URL authority 小写化**：令牌必须全小写 hex（HMAC hex 天然满足）
+5. **sharp rotate**：无参 `.rotate()`（auto-orient）保留 JPEG shrink-on-load；带角度的 `.rotate(angle)` 会禁用，需重评估
+6. **Native 模块**：better-sqlite3 / sharp / onnxruntime-node 经 `electron-rebuild`；`npmRebuild:false` + asarUnpack `.node`；Electron 下载用镜像源（`.npmrc`）
+7. **退出编排**：`shutdownApp()` 顺序 stop→kill ffmpeg→pluginManager→jobRunner→关库，窗口关闭走 `destroy()`（有超时兜底），勿新增未清理的 `setInterval`
+8. **数据库**：应用退出释放 `closeAllDatabases()`；批量写用 `db.transaction`（better-sqlite3 事务必须同步执行，异步生成→攒结果→同步提交两段式）
+9. **插件开发**：manifest 声明 `permissions`/`contributes.menuItems`/`requires.models`（sha256 为 64 位 hex）；Worker 内禁止直接 require onnxruntime——推理必须走 `luuk.inference`（宿主集中管控内存是全部治理成立的前提）
+10. **状态管理**：新跨页状态优先落独立 store 或扩展现有 store，勿再膨胀 imageStore；store 间引用用 `useXStore.getState()`
 
 ## ⌨️ 快捷键
 
-| 快捷键 | 功能 |
-|--------|------|
-| `←/→` | 上一张/下一张 |
-| `Home/End` | 第一张/最后一张 |
-| `0` | 适应窗口 |
-| `1` | 实际大小 |
-| `R` | 重置缩放/旋转/翻转 |
-| `H/V` | 水平/垂直翻转 |
-| `I` | 显示图片信息 |
-| `F` | 收藏/取消收藏 |
-| `Esc` | 关闭查看器 |
-| `Space` | 幻灯片播放 |
-| `F5` | 切换视图模式 |
-| `F6` | 切换文件夹侧边栏 |
-| `F11` | 全屏沉浸式模式 |
+| 快捷键 | 功能 | 快捷键 | 功能 |
+|--------|------|--------|------|
+| `←/→` | 上一张/下一张 | `0` / `1` | 适应窗口 / 实际大小 |
+| `Home/End` | 第一张/最后一张 | `R` | 重置缩放/旋转/翻转 |
+| `H` / `V` | 水平 / 垂直翻转 | `I` | 显示图片信息（EXIF/直方图） |
+| `F` | 收藏/取消收藏 | `Esc` | 关闭查看器 |
+| `Space` | 幻灯片播放 | `Ctrl+R` | 幻灯片顺序/随机切换 |
+| `Ctrl+Space` | 音频播放/暂停 | `Ctrl+F` | 搜索面板开合 |
+| `F5` | 切换视图模式 | `F6` | 切换文件夹侧边栏 |
+| `F11` | 全屏沉浸式模式 | | |
+
+（以 `src/App.tsx` / `src/components/ImageViewer.tsx` 实际绑定为准；`docs/README.md` 同步维护）
+
+## 📚 文档索引
+
+| 想了解 | 看哪里 |
+|--------|--------|
+| 项目现状 / 遗留项 / 进行中 | [docs/roadmap.md](docs/roadmap.md)（唯一任务规划来源）|
+| 变更历史 | [CHANGELOG.md](CHANGELOG.md) |
+| 详细架构（AI 插件/媒体链路/DB/服务） | [docs/reference/架构设计.md](docs/reference/架构设计.md) |
+| 文档分层与归档规范 | [docs/README.md](docs/README.md) |
+| Phase 8+ AI/爬虫方向设计（Phase 9-11） | [docs/plans/ai-crawler-direction-2026-q4.md](docs/plans/ai-crawler-direction-2026-q4.md) |
+| 当前待办人工验证 | [docs/plans/Phase8人工验收清单](docs/plans/Phase8人工验收清单-2026-09-19.md) · [docs/plans/回归测试计划](docs/plans/回归测试计划-2026-09-13.md) |
+| 媒体性能改造（已实施待提交） | [docs/archive/媒体加载性能提升方案-2026-09.md](docs/archive/媒体加载性能提升方案-2026-09.md) |
+| 用户指南 / 部署 / 排障 | [docs/guides/](docs/guides/) |
+
+**文档纪律**：完成一个 Phase/方案后，回写 `roadmap.md` + `CHANGELOG.md`，实施计划移入 `docs/archive/`（`status: archived`）——本仓库曾因"实施快于文档"发生漂移，勿再犯。

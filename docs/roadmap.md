@@ -3,7 +3,7 @@ title: 开发路线图
 description: 项目功能优化与开发任务总览 — 优先级、进度、执行顺序、技术选型建议
 type: roadmap
 status: current
-updated: 2026-09-13
+updated: 2026-09-19
 ---
 
 # 开发路线图
@@ -139,7 +139,7 @@ updated: 2026-09-13
 
 ## 五、Phase 3 — AI / 爬虫（需确认）
 
-> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: draft`，待评审）。下表工时为旧估算，**以该设计文档的分期路线为准**（Phase 8-11），工时留待 `implementation-plan-2027-q1.md`。
+> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: current`）。**Phase 8 已于 2026-09-18/19 交付**（实施计划归档于 [archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md](archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md)，缺陷修复 M1-M5 见 CHANGELOG「修复」节，人工验收进行中：[plans/Phase8人工验收清单](plans/Phase8人工验收清单-2026-09-19.md)）。下表工时为旧估算，Phase 9-11 仍以该设计文档的分期路线为准，工时留待 `implementation-plan-2027-q1.md`。
 
 | # | 功能 | 预计工时 |
 |---|------|----------|
@@ -242,10 +242,11 @@ CREATE TABLE album_items (
 | 隐患 | 影响 | 状态 |
 |------|------|------|
 | 收藏/历史以 `image_path` 字符串为主键 | 文件重命名/移动后引用失效 | ✅ 已解决 — 路径级联更新机制（Phase 1） |
-| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 部分拆分 — 已拆出 `selectionStore`（多选）+ `viewStore`（视图/布局），主体仍有 541 行，后续按需继续拆分 |
+| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 已大幅拆分 — 现共 12 个 store（selection/view/tag/search/history/similar/slideshow/theme/plugin/audio 独立），imageStore 仍为核心但职责收窄，后续按需继续拆分 |
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
-| `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论 |
+| `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论；2026-09 媒体改造后 token 同会话内确定（HMAC），但密钥进程级随机，重启仍失效 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
+| AI 推理内存峰值可能越性能红线 | Worker 熔断/系统卡死 | ✅ Phase 8 M1-M5 已治理 — 水位线双闸门（聚合 yellow=1500/red=2500MB 可配置 + Worker RSS 硬闸门 500MB）、InferencePool LRU 驱逐、upscale 像素预算 40M 上限；常量见 `plugin-manager.ts` |
 
 ### 工程化欠账
 
@@ -258,8 +259,8 @@ CREATE TABLE album_items (
 任何新功能不得突破以下约束（来自 requirements.md）：
 
 - 启动时间 < 3s
-- 内存占用 < 500MB
-- 滚动帧率 ≥ 30 FPS
+- 内存占用 < 500MB（**Phase 8 实测口径**：此红线按单插件 Worker 进程衡量，`memory.workerRedMB` 默认 500；全应用聚合水位线 `memory.yellowMB`/`memory.redMB` 默认 1500/2500，均为可配置设置项，常量见 `src/main/services/plugin-manager.ts`）
+- 滚动帧率 ≥ 30 FPS（2026-09 媒体性能改造的验收目标：滚动 P95 帧时间 <16.7ms，待人工实测确认）
 
 ---
 
@@ -279,6 +280,32 @@ CREATE TABLE album_items (
 
 **第七轮 (2 天)**：~~archiver 依赖引入 → 导出服务 → 批量 ZIP → 格式转换 → ExportDialog UI → 幻灯片增强~~（2026-09-12 完成，Phase 7 Task 7.0/7.1/7.2 全部完成，135 测试通过）
 
+**第八轮**：~~Phase 8 AI 插件系统~~（2026-09-18 骨架交付 `59c12e1`，遗留项回填 `932ca12`）→ ~~Phase 8 缺陷修复 M1-M5~~（2026-09-19，分支 `fix/phase8-defects`，`c885f4d`..`b1c83b7`，P0-1~P2-19 全部实施，43 文件 393 用例全绿）。代码已交付，**人工验收进行中**（[plans/Phase8人工验收清单](plans/Phase8人工验收清单-2026-09-19.md)）。
+
+**穿插修复轮**：2026-09-13~18 两轮回归——`0db1c02` 7 项缺陷；`07c1c3d` 搜索 jpg 归一/浅色主题/密度/后台扫描/关闭卡顿（对应 [archive/defect-summary-2026-09-15.md](archive/defect-summary-2026-09-15.md) 的 R-1/R-2/R-3）；ABI 测试基建解耦 `9e7de8f`。
+
 ---
 
-**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22
+## 十一、已知遗留项（2026-09-19 汇总）
+
+| # | 项 | 来源 | 状态/触发条件 |
+|---|---|---|---|
+| L1 | upscale 逐带（band）流式写盘——放宽 40M 像素预算上限 | Phase8 M1/P0-2 降级 | 需 `edit.write` SDK 契约变更，后续项 |
+| L2 | `plugin.cancel` 协作式逐瓦片即时取消 | Phase8 M4/P1-7 降级 | 需 SDK 取消令牌契约变更；当前作业项跑完即停 |
+| L3 | matting 真实含主体照片的抠图画质抽检 | CHANGELOG 遗留项 | test-library 为无主体生成图，需人工实拍验 |
+| L4 | ai-crawler PoC R2/R4/R5/R6/R8/R9 实测回填；Q1/Q2/Q3/Q7 设计决策 | plans/ai-crawler-direction §15/§16 | Phase 9 开工前必须定案 |
+| L5 | 安装包随 Phase8 M1-M5 与媒体性能改动重新打包；首启建库/升级路径人工验 | 回归计划 §6.4 | 09-18 已产 138.8MB Setup + CDP 冒烟 6/6；代码再次变更后需重打 |
+| L6 | 回归计划 M0~M8 人工 UI 走查（DEF-2~9 在新构建上复验） | [plans/回归测试计划-2026-09-13.md](plans/回归测试计划-2026-09-13.md) §6.4 | 待人工 |
+| L7 | 媒体性能人工 DevTools 项：memory cache 命中、P95 帧时间、大视频(>1GB) seek、退出 temp 终清 | archive/媒体加载性能提升方案 §三 | CDP 29/29 已验自动化可达项，余下需人工 |
+| L8 | P2-2 缩略图生成迁 utilityProcess | 同上 | 数据不达标（扫描期主进程 >50ms 长任务）才做 |
+| L9 | TC-THUMB-004/005、TC-GRID-001~004、TC-PERF-001~003 待手动执行 | archive/测试方案.md（工程化欠账） | 模板已建，待执行 |
+
+## 十二、进行中（2026-09-19）
+
+- **媒体加载性能提升**：P0-1/P0-2/P1-1/P1-2/P1-3/P2-1 已全部实施，`scripts/cdp-verify-media.mjs` 真机验证 29/29 通过；代码在 `fix/phase8-defects` 工作树**待提交**。方案与基线详见 [archive/媒体加载性能提升方案-2026-09.md](archive/媒体加载性能提升方案-2026-09.md)。
+- **Phase 8 人工验收**：☐ 项进行中，完成后本项与第八轮状态同步更新。
+- **AI 修图批处理体验验证**：>20 张多选入队后台批处理（P0-1 交付）的真实场量验证随人工验收清单一并进行。
+
+---
+
+**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22｜**Phase 8/回归/媒体性能回写**：2026-09-19

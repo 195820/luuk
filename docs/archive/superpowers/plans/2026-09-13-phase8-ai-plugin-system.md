@@ -1,3 +1,11 @@
+---
+title: Phase 8 — AI 插件化能力实施计划
+description: 插件宿主 + JobRunner + 三个内置插件（autotone/matting/upscale）的 Task 级实施计划（已交付，含 M1-M5 缺陷修复）
+type: plan
+status: archived
+updated: 2026-09-19
+---
+
 # Phase 8 — AI 插件化能力实施计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

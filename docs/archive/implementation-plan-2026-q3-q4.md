@@ -2,9 +2,10 @@
 title: 实施计划 2026-Q3/Q4
 description: Phase 5-7 功能实施路线图 — 时间线、依赖、验收标准
 type: plan
-status: reviewed
+status: archived
 created: 2026-09-12
 revised: 2026-09-12
+updated: 2026-09-19
 ---
 
 # 实施计划 2026-Q3/Q4

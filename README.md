@@ -17,11 +17,22 @@ npm run dev
 ### 构建
 
 ```bash
-# 构建前端和 Electron
+# 完整构建（tsc → vite → 内置插件编译 → electron-builder 安装包）
 npm run build
 
-# 仅构建前端
+# 构建但不打包安装包（win-unpacked，调试用）
 npm run build:dir
+
+# 仅编译内置插件（dev/build 会自动执行）
+npm run build:builtins
+```
+
+### 测试
+
+```bash
+npm run test         # Vitest watch
+npm run test:run     # 单次全量（基线 43 文件 / 393 用例）
+npm run test:coverage
 ```
 
 ## 📋 技术栈
@@ -36,62 +47,44 @@ npm run build:dir
 - **wavesurfer.js** - 音频波形可视化
 
 ### 后端 (Electron)
-- **Electron 40** - 跨平台框架
+- **Electron 40** - 跨平台框架（含 utilityProcess 插件宿主）
 - **better-sqlite3** - 高性能数据库
 - **sharp** - 图片处理
+- **onnxruntime-node** - 本地 AI 推理（超分/抠图）
 - **chokidar** - 文件监听
 - **electron-store** - 配置存储
-- **media:// 协议** - 流式加载媒体文件（令牌映射 + Range 请求）
+- **media:// 协议** - 流式加载媒体文件（HMAC 确定性令牌 + Range + HTTP 缓存）
 - **electron-rebuild** - 原生模块重建
 
 ## 📁 项目结构
 
 ```
 D:\luuk\
-├── electron/           # Electron 主进程和预加载脚本
+├── electron/           # Electron 进程（主/预加载/插件 Worker）
 │   ├── main.ts
-│   └── preload.ts
-├── src/               # React 前端代码
-│   ├── components/    # UI 组件
-│   ├── stores/        # Zustand 状态
-│   ├── types/         # TypeScript 类型
-│   ├── utils/         # 工具函数
+│   ├── preload.ts
+│   └── plugin-worker.ts
+├── src/
+│   ├── main/           # 主进程后端：ipc/ services/ plugins/(AI 子系统) utils/
+│   ├── components/    # UI 组件（含 file-ops/ui/layout 子目录）
+│   ├── stores/        # Zustand 状态（12 个 store）
+│   ├── hooks/ types/ utils/
 │   ├── App.tsx
 │   ├── main.tsx
 │   └── index.css
-├── dist/              # 构建输出
-├── dist-electron/     # Electron 构建输出
-├── release/           # 打包输出
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── electron-builder.json
+├── scripts/            # 构建/基准/CDP 验证脚本
+├── tests/              # Playwright E2E
+├── dist/ dist-electron/ release/
+└── docs/               # 文档中心（索引见 docs/README.md）
 ```
 
 ## 🎯 核心功能
 
-### 第一阶段 (MVP)
-- ✅ 快速加载大图
-- ✅ 缩放/平移
-- ✅ 缩略图网格视图
-- ✅ 懒加载
-- ✅ 多库管理
+网格/瀑布流浏览、图片对比、全屏沉浸、视频/音频流式播放、收藏/评分/标签/历史、高级搜索、pHash 相似图、EXIF/直方图/统计、回收站/批量重命名/壁纸、ZIP 导出、幻灯片增强、主题皮肤、缓存管理、**AI 插件系统**（超分/抠图/自动色调 + 后台批处理作业）。
 
-### 后续功能
-- AI 修图（超分辨率、去水印）
-- 图片爬虫
-- 跨库搜索
+## 📝 项目状态与规划
 
-## 📝 开发计划
-
-| 周次 | 任务 |
-|------|------|
-| 第 1 周 | 项目搭建、Electron+React 脚手架 |
-| 第 2 周 | 核心图片查看组件（缩放/平移） |
-| 第 3 周 | 缩略图网格视图 + 懒加载 |
-| 第 4 周 | 多库管理 + 数据库设计 |
-| 第 5 周 | 缩略图缓存系统 |
-| 第 6 周 | 测试优化、打包发布 |
+Phase 1-8 已交付；现状、遗留项与待办见 [docs/roadmap.md](docs/roadmap.md)，开发指引见 [CLAUDE.md](CLAUDE.md)。
 
 ## 🔧 环境要求
 

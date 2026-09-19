@@ -1,3 +1,11 @@
+---
+title: 缺陷修复总结 — 2026-09-15
+description: 回归测试 DEF-1~DEF-10 首轮修复记录（7/10 通过，剩余 R-1/R-2/R-3 已由 07c1c3d 闭环）
+type: review
+status: archived
+updated: 2026-09-15
+---
+
 # 缺陷修复总结 — 2026-09-15
 
 ## 已通过（7/10）

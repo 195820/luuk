@@ -2,8 +2,8 @@
 title: Phase 4 及后续阶段方向规划
 description: 四轮主线完成后的后续阶段划分建议 — 阶段目标、任务归属、顺序理由、风险与依赖，供审查的大方向规划（非 Task 级实施计划）
 type: plan
-status: current
-updated: 2026-08-31
+status: archived
+updated: 2026-09-19
 ---
 
 # Phase 4 及后续阶段方向规划
