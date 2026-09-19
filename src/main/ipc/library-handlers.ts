@@ -1,7 +1,6 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron';
 import path from 'path';
 import { getImageService } from '../services/image-service';
-import { getMimeTypeFromPath } from '../utils/media';
 import { registerMediaUrl } from '../services/media-registry';
 import { readExif } from '../utils/exif';
 import type { ThumbnailSize, ImageQueryOptions, ScanResult, Library, Favorite } from '../../types';
@@ -303,6 +302,15 @@ export function registerLibraryHandlers(): void {
     return result;
   });
 
+  // 获取预览图 URL（灯箱渐进加载，1200px）
+  ipcMain.handle('getPreview', async (
+    _event: Electron.IpcMainInvokeEvent,
+    libraryId: number,
+    imageId: number
+  ): Promise<string> => {
+    return service.getPreview(libraryId, imageId);
+  });
+
   // 切换收藏状态
   ipcMain.handle('toggleFavorite', async (
     _event: Electron.IpcMainInvokeEvent,
@@ -405,19 +413,6 @@ export function registerLibraryHandlers(): void {
     } catch {
       return false;
     }
-  });
-
-  // 加载完整图片文件为 data URL（限制在库目录内）
-  ipcMain.handle('loadFullImage', async (
-    _event: Electron.IpcMainInvokeEvent,
-    filePath: string
-  ): Promise<string> => {
-    const resolvedPath = validateLibraryAccess(filePath);
-    const fs = await import('fs');
-    const buffer = await fs.promises.readFile(resolvedPath);
-    const mimeType = getMimeTypeFromPath(resolvedPath);
-    const base64 = buffer.toString('base64');
-    return `data:${mimeType};base64,${base64}`;
   });
 
   // 获取媒体文件 URL（用于视频/音频流式播放）
@@ -718,10 +713,10 @@ const IPC_HANDLER_NAMES = [
   'getFavoriteFolderTree', 'isFavoriteFolder',
   'getFavoriteFolderImages', 'getFavoriteFolderImageCount',
   'getSingleFavoriteImages', 'getSingleFavoriteCount',
-  'getThumbnail', 'getThumbnails', 'toggleFavorite', 'getFavorites',
+  'getThumbnail', 'getThumbnails', 'getPreview', 'toggleFavorite', 'getFavorites',
   'setFavoriteRating', 'addHistory', 'getHistory', 'clearHistory',
   'getCacheStats', 'getCacheConfig', 'setCacheLimit', 'clearCache', 'readFile', 'fileExists',
-  'loadFullImage', 'getMediaUrl', 'getAudioUrl', 'getMediaPath',
+  'getMediaUrl', 'getAudioUrl', 'getMediaPath',
   'extractVideoMetadata', 'generateVideoThumbnail',
   'getLibraryStats', 'getImageExif',
   'updateScanProgress', 'clearScanProgress',

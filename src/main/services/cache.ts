@@ -2,7 +2,7 @@
  * LRU 缓存条目
  */
 interface CacheEntry {
-  value: string;
+  value: string | Uint8Array;
   entrySize: number;
   lastAccess: number;
 }
@@ -35,11 +35,13 @@ export class LRUCache {
   /**
    * 设置缓存
    */
-  set(imageId: string | number, size: string, value: string): void {
+  set(imageId: string | number, size: string, value: string | Uint8Array): void {
     const key = this.makeKey(imageId, size);
 
-    // 估算大小 (base64 字符串约等于原始大小的 1.33 倍)
-    const entrySize = Math.ceil(value.length * 0.75);
+    // 估算大小：string 按 UTF-16 约 0.75 倍字节；Uint8Array 直接取 byteLength
+    const entrySize = typeof value === 'string'
+      ? Math.ceil(value.length * 0.75)
+      : value.byteLength;
 
     // 如果缓存已存在，先删除旧条目
     if (this.cache.has(key)) {
@@ -71,7 +73,7 @@ export class LRUCache {
   /**
    * 获取缓存
    */
-  get(imageId: string | number, size: string): string | undefined {
+  get(imageId: string | number, size: string): string | Uint8Array | undefined {
     const key = this.makeKey(imageId, size);
     const entry = this.cache.get(key);
 

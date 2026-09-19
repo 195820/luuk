@@ -89,10 +89,10 @@ export function ImageGrid({
   }, [loadPluginState])
 
   // 过滤掉音频文件（音频在底部独立区域显示）
-  const displayImages = images.filter((img) => {
+  const displayImages = useMemo(() => images.filter((img) => {
     const mt = img.mediaType
     return mt !== 'audio'
-  })
+  }), [images])
 
   // 分组数据
   const groupedData = useMemo(() => {
@@ -163,6 +163,36 @@ export function ImageGrid({
       return () => element.removeEventListener('scroll', handleScroll)
     }
   }, [handleScroll])
+
+  // P2-1: 方向感知缩略图批量预热——可视行区间变化时，向滚动方向前瞻若干行
+  // 调用批量 getThumbnails（返回值丢弃），让主进程提前把 DB 读/sharp 生成填入 LRU，
+  // 后续卡片挂载的单个 getThumbnail 直接命中，降低进入视口的等待。
+  const vItems = virtualizer.getVirtualItems()
+  const rangeStart = vItems.length ? vItems[0].index : 0
+  const rangeEnd = vItems.length ? vItems[vItems.length - 1].index : -1
+  const prevWarmRowRef = useRef(0)
+  const lastWarmKeyRef = useRef('')
+  useEffect(() => {
+    if (rangeEnd < rangeStart || columns === 0 || isFavoriteLibrary || !libraryId) return
+    const dir = rangeStart >= prevWarmRowRef.current ? 1 : -1
+    prevWarmRowRef.current = rangeStart
+    const ahead = 4 // 前瞻 4 行
+    const loRow = dir >= 0 ? rangeStart : Math.max(0, rangeStart - ahead)
+    const hiRow = dir >= 0 ? Math.min(rowCount - 1, rangeEnd + ahead) : rangeEnd
+    const lo = loRow * columns
+    const hi = Math.min(displayImages.length, (hiRow + 1) * columns)
+    const key = `${lo}:${hi}`
+    if (key === lastWarmKeyRef.current) return
+    lastWarmKeyRef.current = key
+    const ids: number[] = []
+    for (let i = lo; i < hi; i++) {
+      const id = displayImages[i]?.id
+      if (typeof id === 'number' && id > 0) ids.push(id)
+    }
+    if (ids.length) {
+      window.electronAPI?.getThumbnails?.(libraryId, ids, 'medium')?.catch(() => {})
+    }
+  }, [rangeStart, rangeEnd, columns, displayImages, libraryId, isFavoriteLibrary, rowCount])
 
   // Ctrl/Shift 多选点击处理
   const handleItemClick = useCallback((image: ImageGridItem, e: React.MouseEvent) => {

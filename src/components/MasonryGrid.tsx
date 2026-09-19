@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
+import { useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo } from 'react'
 import { ImageGridItemComponent } from './ImageGridItem'
 import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
@@ -35,6 +35,21 @@ interface MasonryGridProps {
   hasMore?: boolean
 }
 
+// P1-1: 二分查找——tops 为递增数组，返回第一个 >= target 的索引
+function lowerBound(tops: number[], target: number): number {
+  let lo = 0
+  let hi = tops.length
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1
+    if (tops[mid] < target) lo = mid + 1
+    else hi = mid
+  }
+  return lo
+}
+
+// 视口上下缓冲（px），避免滚动边缘白屏
+const VIEWPORT_OVERSCAN = 800
+
 export function MasonryGrid({
   images,
   selectedId,
@@ -57,6 +72,19 @@ export function MasonryGrid({
   const [columnHeights, setColumnHeights] = useState<number[]>([])
   const [columnTops, setColumnTops] = useState<number[][]>([])
   const scrollRestoreRef = useRef<boolean>(true)
+
+  // ─── P1-1: 视口窗口化状态（rAF 节流） ───
+  const [viewportTop, setViewportTop] = useState(0)
+  const [viewportBottom, setViewportBottom] = useState(0)
+  const rafPendingRef = useRef(false)
+
+  // 读取当前滚动容器视口范围
+  const measureViewport = useCallback(() => {
+    const el = parentRef.current
+    if (!el) return
+    setViewportTop(el.scrollTop)
+    setViewportBottom(el.scrollTop + el.clientHeight)
+  }, [])
 
   // 多选 + 右键菜单
   const { selectedPaths, lastSelectedPath, toggleSelection, selectRange } = useSelectionStore()
@@ -96,12 +124,13 @@ export function MasonryGrid({
     const updateWidth = () => {
       if (parentRef.current) {
         setContainerWidth(parentRef.current.clientWidth)
+        measureViewport()
       }
     }
     updateWidth()
     window.addEventListener('resize', updateWidth)
     return () => window.removeEventListener('resize', updateWidth)
-  }, [])
+  }, [measureViewport])
 
   // 将图片分配到各列（瀑布流算法）
   useEffect(() => {
@@ -138,6 +167,11 @@ export function MasonryGrid({
   // 计算总高度（所有列中最高的一列）
   const totalHeight = columnHeights.length > 0 ? Math.max(...columnHeights) : 0
 
+  // P1-1: 布局变化（列分配/总高度/宽度）后重测视口，首帧即可正确窗口化
+  useLayoutEffect(() => {
+    measureViewport()
+  }, [columns, totalHeight, containerWidth, thumbnailSize, measureViewport])
+
   // 库变化时重置滚动位置
   useEffect(() => {
     if (parentRef.current) {
@@ -156,6 +190,14 @@ export function MasonryGrid({
 
   // 监听滚动事件
   const handleScroll = useCallback(() => {
+    // P1-1: rAF 节流更新视口（避免每帧 setState）
+    if (!rafPendingRef.current) {
+      rafPendingRef.current = true
+      requestAnimationFrame(() => {
+        rafPendingRef.current = false
+        measureViewport()
+      })
+    }
     if (parentRef.current && onScrollChange) {
       onScrollChange(parentRef.current.scrollTop)
     }
@@ -166,7 +208,7 @@ export function MasonryGrid({
         onLoadMore()
       }
     }
-  }, [onScrollChange, onLoadMore, hasMore])
+  }, [onScrollChange, onLoadMore, hasMore, measureViewport])
 
   useEffect(() => {
     const element = parentRef.current
@@ -289,6 +331,13 @@ export function MasonryGrid({
           {columns.map((column, columnIndex) => {
             const columnTop = columnTops[columnIndex] || []
 
+            // P1-1: 二分定位视口区间（含上下 overscan），只渲染可见切片
+            const vTop = viewportTop - VIEWPORT_OVERSCAN
+            const vBottom = viewportBottom + VIEWPORT_OVERSCAN
+            const start = Math.max(0, lowerBound(columnTop, vTop) - 1)
+            const end = Math.min(column.length, lowerBound(columnTop, vBottom) + 1)
+            const visible = column.slice(start, end)
+
             return (
               <div
                 key={`column-${columnIndex}`}
@@ -298,14 +347,15 @@ export function MasonryGrid({
                   width: `${thumbnailSize}px`,
                 }}
               >
-                {column.map((image, itemIndex) => {
+                {visible.map((image, offset) => {
+                  const itemIndex = start + offset
                   const top = columnTop[itemIndex] || 0
                   const aspectRatio = image.aspectRatio || (image.height && image.width ? image.height / image.width : 1)
                   const itemHeight = thumbnailSize * aspectRatio + 8
 
                   return (
                     <div
-                      key={`${image.id}-${columnIndex}-${itemIndex}`}
+                      key={image.id}
                       className="absolute left-0 w-full"
                       style={{
                         height: `${itemHeight}px`,

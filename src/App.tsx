@@ -1349,6 +1349,7 @@ function App() {
                 }}
                 mediaType={(currentImage as any).mediaType || 'image'}
                 libraryId={viewerLibraryId || undefined}
+                imageId={currentImage?.id}
                 imagePath={viewerImagePath}
                 isFavorite={viewerIsFavorite}
                 onFavoriteChange={() => handleToggleFavorite()}

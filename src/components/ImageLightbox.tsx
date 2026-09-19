@@ -23,9 +23,12 @@ interface ImageLightboxProps {
   onError?: () => void
   /** GIF 暂停：为 true 时用 canvas 覆盖当前帧，冻结动画 */
   paused?: boolean
+  /** 灯箱渐进加载：用于获取 preview URL */
+  libraryId?: number
+  imageId?: number
 }
 
-export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, onError, paused = false }: ImageLightboxProps) {
+export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, onError, paused = false, libraryId, imageId }: ImageLightboxProps) {
   const [rotation, setRotation] = useState(0)
   const [flipH, setFlipH] = useState(false)
   const [flipV, setFlipV] = useState(false)
@@ -33,6 +36,10 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
   const containerRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+
+  // ─── P1-3: Preview 双图层渐进加载 ───
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewVisible, setPreviewVisible] = useState(false)
 
   // 使用 ref 存储回调，避免 effect 因回调变化而重新执行导致无限循环
   const onImageLoadedRef = useRef(onImageLoaded)
@@ -85,6 +92,29 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
     reportedSrcRef.current = null
   }, [src])
 
+  // P1-3: 获取 preview URL（跳过 GIF）
+  useEffect(() => {
+    if (!src || !libraryId || !imageId) {
+      setPreviewUrl(null); setPreviewVisible(false); return
+    }
+    // GIF 跳过 preview 层
+    if (src.toLowerCase().includes('.gif')) {
+      setPreviewUrl(null); setPreviewVisible(false); return
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        // @ts-ignore
+        const url = await window.electronAPI?.getPreview?.(libraryId, imageId)
+        if (!cancelled && url) {
+          setPreviewUrl(url)
+          setPreviewVisible(true)
+        }
+      } catch { /* preview 不可用不影响主流程 */ }
+    })()
+    return () => { cancelled = true }
+  }, [src, libraryId, imageId])
+
   // 监听 YARL 渲染的图片，获取 naturalWidth/naturalHeight
   useEffect(() => {
     // src 为空时不执行，避免无限循环
@@ -126,6 +156,8 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
       const report = () => {
         if (reportedSrcRef.current === src) {
           onImageLoadedRef.current?.(img.naturalWidth, img.naturalHeight)
+          // P1-3: 原图已加载，淡出 preview 层
+          setPreviewVisible(false)
         }
       }
 
@@ -286,6 +318,20 @@ export function ImageLightbox({ src, alt: _alt, width, height, onImageLoaded, on
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden">
+      {/* P1-3: Preview 图层（先上屏，原图加载后 CSS opacity 淡出） */}
+      {previewUrl && (
+        <img
+          src={previewUrl}
+          alt=""
+          decoding="async"
+          className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
+          style={{
+            opacity: previewVisible ? 1 : 0,
+            transition: 'opacity 150ms ease',
+          }}
+          onLoad={() => { /* preview 自身加载完成，等待 full 图 */ }}
+        />
+      )}
       {/* 旋转/翻转层：包裹 YARL 的 slide 区域 */}
       <div className="w-full h-full" style={transformStyle}>
         <Lightbox

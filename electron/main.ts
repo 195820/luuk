@@ -2,6 +2,9 @@ import { app, BrowserWindow, ipcMain, protocol, Menu } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import fs from 'fs'
+import { createReadStream } from 'fs'
+import { Readable } from 'stream'
+import crypto from 'crypto'
 import { registerLibraryHandlers, unregisterLibraryHandlers } from '../src/main/ipc/library-handlers'
 import { registerFileHandlers, unregisterFileHandlers } from '../src/main/ipc/file-handlers'
 import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ipc/search-handlers'
@@ -14,9 +17,9 @@ import { getPluginManager } from '../src/main/services/plugin-manager'
 import { getMasterDB } from '../src/main/services/database'
 import { logger } from '../src/utils/logger'
 import { getImageService } from '../src/main/services/image-service'
-import { resolveMediaToken, stopMediaRegistryCleanup } from '../src/main/services/media-registry'
+import { resolveMediaEntry, stopMediaRegistryCleanup } from '../src/main/services/media-registry'
 import { libraryMonitor } from '../src/main/services/library-monitor'
-import { killActiveFfmpeg } from '../src/main/services/thumbnailer'
+import { killActiveFfmpeg, cleanupThumbnailTempDirs } from '../src/main/services/thumbnailer'
 import { MIME_TYPES } from '../src/types'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -36,29 +39,53 @@ protocol.registerSchemesAsPrivileged([
       secure: true,
       supportFetchAPI: true,
       corsEnabled: true,
+      stream: true,
     },
   },
 ])
 
 /**
  * 处理 media:// 协议请求
- * 使用 fs 直接读取文件，支持 HTTP Range 请求（视频 seek 必需）
+ * 流式响应 + HTTP Range + ETag/304 缓存
  * URL 格式：media://TOKEN（TOKEN 为纯小写 hex 令牌）
  */
 function registerMediaProtocol() {
   protocol.handle('media', async (request) => {
-    // URL 格式：media://TOKEN（浏览器会对 TOKEN 做小写化，hex 纯小写无影响）
     const token = request.url.slice('media://'.length).replace(/\/+$/, '')
-    const resolvedPath = resolveMediaToken(token)
+    const entry = resolveMediaEntry(token)
 
-    if (!resolvedPath) {
+    if (!entry) {
       return new Response(JSON.stringify({ error: 'unknown_token', token }), {
         status: 404, headers: { 'Content-Type': 'application/json' },
       })
     }
 
+    // ─── Thumb 分支：缩略图资源（小体积 WebP，无需 Range） ───
+    if (entry.kind === 'thumb') {
+      try {
+        const imageService = getImageService()
+        const bytes = await imageService.getThumbnailBytes(entry.libraryId, entry.imageId, entry.size as any)
+        if (!bytes) {
+          return new Response('Not Found', { status: 404 })
+        }
+        return new Response(bytes as unknown as BodyInit, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/webp',
+            'Content-Length': String(bytes.byteLength),
+            'Cache-Control': 'public, max-age=604800, immutable',
+          },
+        })
+      } catch {
+        return new Response('Internal Server Error', { status: 500 })
+      }
+    }
+
+    // ─── File 分支：原图/视频/音频（流式响应 + Range + ETag/304） ───
+    const resolvedPath = entry.filePath
+
     try {
-      // 安全检查：只允许访问已注册库目录下的文件（Windows 大小写不敏感）
+      // 安全检查：只允许访问已注册库目录下的文件
       try {
         const libs = getImageService().getLibraries()
         const allowedPaths = libs.map(lib => path.resolve(lib.rootPath))
@@ -76,59 +103,100 @@ function registerMediaProtocol() {
         })
       }
 
-      const stat = await fs.promises.stat(resolvedPath)
-      const ext = path.extname(resolvedPath).toLowerCase()
-      const contentType = MIME_TYPES[ext] || 'application/octet-stream'
-      const rangeHeader = request.headers.get('range')
-
-      // 处理 Range 请求（视频 seek 依赖此功能）
-      if (rangeHeader) {
-        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/)
-        if (match) {
-          const start = parseInt(match[1])
-          const end = match[2] ? parseInt(match[2]) : stat.size - 1
-
-          if (start >= stat.size) {
-            return new Response(null, {
-              status: 416,
-              headers: { 'Content-Range': `bytes */${stat.size}` },
-            })
-          }
-
-          const clampedEnd = Math.min(end, stat.size - 1)
-          const length = clampedEnd - start + 1
-          const buffer = Buffer.alloc(length)
-
-          const fh = await fs.promises.open(resolvedPath, 'r')
-          try {
-            await fh.read(buffer, 0, length, start)
-          } finally {
-            await fh.close()
-          }
-
-          return new Response(buffer, {
-            status: 206,
-            headers: {
-              'Content-Type': contentType,
-              'Content-Range': `bytes ${start}-${clampedEnd}/${stat.size}`,
-              'Content-Length': String(length),
-              'Accept-Ranges': 'bytes',
-            },
-          })
+      // Stat
+      let stat: fs.Stats
+      try {
+        stat = await fs.promises.stat(resolvedPath)
+      } catch (err: any) {
+        if (err?.code === 'ENOENT') {
+          return new Response('Not Found', { status: 404 })
         }
+        logger.error('MediaProtocol', 'stat failed', resolvedPath, err)
+        return new Response('Internal Server Error', { status: 500 })
       }
 
-      // 完整文件响应
-      return new Response(new Uint8Array(await fs.promises.readFile(resolvedPath)), {
+      const ext = path.extname(resolvedPath).toLowerCase()
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream'
+
+      // ETag (sha1 of mtimeMs + size)
+      const etag = `"${crypto.createHash('sha1').update(`${stat.mtimeMs}:${stat.size}`).digest('hex')}"`
+
+      // If-None-Match → 304
+      const inm = request.headers.get('if-none-match')
+      if (inm && inm === etag) {
+        return new Response(null, { status: 304, headers: { 'ETag': etag } })
+      }
+
+      // Cache-Control for file responses
+      const cacheHeaders: Record<string, string> = {
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+        'ETag': etag,
+        'Cache-Control': 'public, max-age=86400',
+      }
+
+      // Range 请求处理
+      const rangeHeader = request.headers.get('range')
+      if (rangeHeader) {
+        // 支持 bytes=start-end, bytes=start-, bytes=-suffix
+        let start: number, end: number
+        const matchRange = rangeHeader.match(/bytes=(\d+)-(\d*)/)
+        const matchSuffix = rangeHeader.match(/bytes=(\d*)-(\d+)/)
+
+        if (matchRange) {
+          start = parseInt(matchRange[1])
+          end = matchRange[2] ? parseInt(matchRange[2]) : stat.size - 1
+        } else if (matchSuffix && matchSuffix[1] === '' && matchSuffix[2]) {
+          // bytes=-N → last N bytes
+          const suffixLen = parseInt(matchSuffix[2])
+          start = Math.max(0, stat.size - suffixLen)
+          end = stat.size - 1
+        } else {
+          // 无法解析，回退到完整响应
+          start = 0
+          end = stat.size - 1
+        }
+
+        if (start >= stat.size || end >= stat.size) {
+          return new Response(null, {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${stat.size}` },
+          })
+        }
+
+        const clampedEnd = Math.min(end, stat.size - 1)
+        const length = clampedEnd - start + 1
+
+        const stream = createReadStream(resolvedPath, { start, end: clampedEnd })
+        const webStream = Readable.toWeb(stream) as ReadableStream
+
+        return new Response(webStream, {
+          status: 206,
+          headers: {
+            ...cacheHeaders,
+            'Content-Range': `bytes ${start}-${clampedEnd}/${stat.size}`,
+            'Content-Length': String(length),
+          },
+        })
+      }
+
+      // 200 完整响应（流式 + 手动 Content-Length）
+      const stream = createReadStream(resolvedPath)
+      const webStream = Readable.toWeb(stream) as ReadableStream
+
+      return new Response(webStream, {
         status: 200,
         headers: {
-          'Content-Type': contentType,
+          ...cacheHeaders,
           'Content-Length': String(stat.size),
-          'Accept-Ranges': 'bytes',
         },
       })
-    } catch {
-      return new Response('Bad Request', { status: 400 })
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        return new Response('Not Found', { status: 404 })
+      }
+      logger.error('MediaProtocol', 'unhandled error', resolvedPath, err)
+      return new Response('Internal Server Error', { status: 500 })
     }
   })
 }
@@ -320,6 +388,7 @@ function shutdownApp(): Promise<void> {
         libraryMonitor.stop()
         stopMediaRegistryCleanup()
         killActiveFfmpeg()
+        cleanupThumbnailTempDirs()
 
         // 2) 插件系统关闭（内部 kill worker 进程）；带独立超时，避免 exit 事件不触发时拖住退出
         await shutdownStep('PluginManager', async () => {

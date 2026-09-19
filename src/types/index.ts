@@ -38,6 +38,7 @@ export interface ElectronAPI {
   // 缩略图
   getThumbnail: (libraryId: number, imageId: number, size?: ThumbnailSize) => Promise<string>
   getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) => Promise<Record<number, string>>
+  getPreview: (libraryId: number, imageId: number) => Promise<string>
   // 收藏
   toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) => Promise<boolean>
   getFavorites: () => Promise<Favorite[]>
@@ -114,7 +115,6 @@ export interface ElectronAPI {
   removeFolderCover: (libraryId: number, folderPath: string) => Promise<{ success: boolean; error?: string }>
   getFolderCovers: (libraryId: number) => Promise<Record<string, string>>
   // 媒体相关
-  loadFullImage: (filePath: string) => Promise<string>
   getMediaUrl: (filePath: string) => Promise<string>
   getAudioUrl: (filePath: string) => Promise<string>
   getMediaPath: (libraryId: number, imageId: number) => Promise<string>
@@ -300,7 +300,7 @@ export interface ImageInfo {
 }
 
 // 缩略图尺寸
-export type ThumbnailSize = 'small' | 'medium' | 'large'
+export type ThumbnailSize = 'small' | 'medium' | 'large' | 'preview'
 
 export interface ThumbnailSizeConfig {
   small: number

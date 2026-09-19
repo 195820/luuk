@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { createHash } from 'crypto';
 import { ThumbnailsDB, type Image } from './database';
 import { getImageMetadata, getAudioMetadata, generateThumbnail, generateVideoThumbnail } from './thumbnailer';
@@ -132,7 +133,7 @@ export class LibraryScanner {
 
     if (needGenerate.length === 0) return;
 
-    const BATCH_SIZE = 10;
+    const BATCH_SIZE = Math.max(2, Math.floor(os.availableParallelism() / 4));
     let processed = 0;
 
     for (let i = 0; i < needGenerate.length; i += BATCH_SIZE) {
@@ -160,6 +161,13 @@ export class LibraryScanner {
       const failed = results.filter(r => r.status === 'rejected').length;
       if (failed > 0) {
         logger.warn('Scanner', `批次中有 ${failed} 个缩略图生成失败`);
+      }
+
+      // P1-2: 批间让渡事件循环 + RSS 内存闸门
+      await new Promise<void>(r => setImmediate(r));
+      const rss = process.memoryUsage().rss;
+      if (rss >= 1.2 * 1024 * 1024 * 1024) { // ≥ 1.2GB
+        await new Promise(r => setTimeout(r, 200));
       }
     }
 

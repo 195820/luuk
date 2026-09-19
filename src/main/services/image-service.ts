@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { sendToRenderer } from '../utils/ipc';
 import { getMediaTypeFromPath } from '../utils/media';
 import { logger } from '../../utils/logger';
@@ -11,11 +12,12 @@ import {
   closeThumbnailsDB,
   closeAllDatabases
 } from './database';
-import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
+import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail as genVideoThumbRaw } from './thumbnailer';
 import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
 import { computePhash, hammingDistance } from '../utils/phash';
 import { getSetting, setSetting } from './settings-service';
+import { registerThumbUrl } from './media-registry';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
@@ -583,142 +585,115 @@ export class ImageService {
   }
 
   /**
-   * 获取缩略图 (带缓存)
+   * 获取缩略图原始字节（LRU→DB→实时生成）
+   * 返回 null 表示无缩略图（缺失/音频/不支持的视频格式）
+   */
+  async getThumbnailBytes(
+    libraryId: number,
+    imageId: number,
+    size: ThumbnailSize = 'medium'
+  ): Promise<Uint8Array | null> {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) return null;
+
+    const db = this.connectLibrary(libraryId);
+    const cacheKey = `${libraryId}-${imageId}`;
+
+    // ① 内存缓存
+    const cached = this.cache.get(cacheKey, size);
+    if (cached) {
+      // 缓存内统一存 Uint8Array
+      return cached instanceof Uint8Array ? cached : null;
+    }
+
+    // ② DB 缓存
+    const thumbnailData = db.getThumbnail(imageId, size);
+    if (thumbnailData) {
+      const bytes = new Uint8Array(thumbnailData);
+      this.cache.set(cacheKey, size, bytes);
+      return bytes;
+    }
+
+    // ③ 实时生成
+    const image = db.getImage(imageId);
+    if (!image) {
+      logger.warn('ImageService', '图片元数据不存在', `imageId=${imageId}`);
+      return null;
+    }
+
+    const fullPath = path.join(library.rootPath, image.relative_path);
+    if (!fs.existsSync(fullPath)) {
+      logger.warn('ImageService', '图片文件不存在', fullPath);
+      return null;
+    }
+
+    const mediaType = getMediaTypeFromPath(image.relative_path);
+    if (mediaType === 'audio') return null;
+    const fileExt = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase();
+    if (mediaType === 'video' && (fileExt === '.avi' || fileExt === '.mkv')) return null;
+
+    let thumbnail: Buffer;
+    if (mediaType === 'video') {
+      thumbnail = await genVideoThumbRaw(fullPath);
+      db.saveThumbnail(imageId, 'medium', thumbnail);
+    } else {
+      thumbnail = await generateThumbnail(fullPath, size);
+      const thumbMetadata = await getThumbnailer().getImageMetadata(fullPath);
+      db.saveThumbnail(imageId, size, thumbnail, thumbMetadata.width, thumbMetadata.height);
+    }
+
+    const bytes = new Uint8Array(thumbnail);
+    this.cache.set(cacheKey, size, bytes);
+    return bytes;
+  }
+
+  /**
+   * 计算缩略图内容版本哈希（用于确定性 token 稳定性）
+   */
+  private contentVersion(data: Uint8Array): string {
+    return crypto.createHash('sha1').update(data).digest('hex').slice(0, 8);
+  }
+
+  /**
+   * 获取缩略图 media:// URL（带缓存，稳定 token）
+   * 「无缩略图」分支返回空字符串（falsy 契约）
    */
   async getThumbnail(
     libraryId: number,
     imageId: number,
     size: ThumbnailSize = 'medium'
   ): Promise<string> {
-    const library = this.masterDB.getLibrary(libraryId);
-    if (!library) {
-      throw new Error(`库不存在：${libraryId}`);
-    }
-
-    const db = this.connectLibrary(libraryId);
-
-    // ① 检查内存缓存 - 使用 libraryId-imageId 作为 key
-    const cacheKey = `${libraryId}-${imageId}`;
-    const cached = this.cache.get(cacheKey, size);
-    if (cached) {
-      return cached;
-    }
-
-    // ② 检查数据库缓存
-    const thumbnailData = db.getThumbnail(imageId, size);
-    if (thumbnailData) {
-      const base64 = `data:image/webp;base64,${thumbnailData.toString('base64')}`;
-      this.cache.set(cacheKey, size, base64);
-      return base64;
-    }
-
-    // ③ 实时生成
-    const image = db.getImage(imageId);
-    if (!image) {
-      // 图片元数据不存在，返回空字符串而不是抛出错误
-      logger.warn('ImageService', '图片元数据不存在', `imageId=${imageId}`);
-      return '';
-    }
-
-    const fullPath = path.join(library.rootPath, image.relative_path);
-
-    if (!fs.existsSync(fullPath)) {
-      // 图片文件不存在，返回空字符串而不是抛出错误
-      logger.warn('ImageService', '图片文件不存在', fullPath);
-      return '';
-    }
-
-    // 生成缩略图（根据媒体类型选择不同的生成方式）
-    // 使用文件扩展名判断媒体类型（数据库中的 media_type 可能不准确，尤其是旧数据库迁移后）
-    const mediaType = getMediaTypeFromPath(image.relative_path)
-
-    // 音频文件不生成缩略图
-    if (mediaType === 'audio') {
-      return ''
-    }
-
-    const fileExt = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase()
-    if (mediaType === 'video' && (fileExt === '.avi' || fileExt === '.mkv')) {
-      return ''
-    }
-
-    let thumbnail: Buffer
-    if (mediaType === 'video') {
-      // 视频：使用 ffmpeg 截取第 1 秒帧
-      thumbnail = await generateVideoThumbnail(fullPath)
-      db.saveThumbnail(imageId, 'medium', thumbnail)
-    } else {
-      // 图片：使用 sharp 生成
-      thumbnail = await generateThumbnail(fullPath, size)
-      const thumbMetadata = await getThumbnailer().getImageMetadata(fullPath)
-      db.saveThumbnail(imageId, size, thumbnail, thumbMetadata.width, thumbMetadata.height)
-    }
-
-    // 写入内存缓存
-    const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
-    this.cache.set(cacheKey, size, base64);
-
-    return base64;
+    const bytes = await this.getThumbnailBytes(libraryId, imageId, size);
+    if (!bytes) return '';
+    const version = this.contentVersion(bytes);
+    return registerThumbUrl(libraryId, imageId, size, version);
   }
 
   /**
-   * 批量获取缩略图
+   * 获取预览图 media:// URL（1200px，灯箱渐进加载用）
+   * 懒生成：首次查看时生成并存 DB（size='preview'）
+   */
+  async getPreview(libraryId: number, imageId: number): Promise<string> {
+    return this.getThumbnail(libraryId, imageId, 'preview');
+  }
+
+  /**
+   * 批量获取缩略图 media:// URL（预热用途：让主进程把 DB/生成做完，后续 img 请求全部直接命中）
    */
   async getThumbnails(
     libraryId: number,
     imageIds: number[],
     size: ThumbnailSize = 'medium'
   ): Promise<Map<number, string>> {
-    const library = this.masterDB.getLibrary(libraryId);
-    if (!library) {
-      throw new Error(`库不存在：${libraryId}`);
-    }
-
-    const db = this.connectLibrary(libraryId);
     const result = new Map<number, string>();
 
-    // 检查内存缓存 - 使用 libraryId-imageId 作为 key
-    const needToLoad: number[] = [];
     for (const id of imageIds) {
-      const cacheKey = `${libraryId}-${id}`;
-      const cached = this.cache.get(cacheKey, size);
-      if (cached) {
-        result.set(id, cached);
-      } else {
-        needToLoad.push(id);
+      const bytes = await this.getThumbnailBytes(libraryId, id, size);
+      if (bytes) {
+        const version = this.contentVersion(bytes);
+        result.set(id, registerThumbUrl(libraryId, id, size, version));
       }
-    }
-
-    if (needToLoad.length === 0) {
-      return result;
-    }
-
-    // 检查数据库缓存
-    const dbCache = db.getThumbnails(needToLoad, size);
-    for (const [id, data] of dbCache.entries()) {
-      const cacheKey = `${libraryId}-${id}`;
-      const base64 = `data:image/webp;base64,${data.toString('base64')}`;
-      this.cache.set(cacheKey, size, base64);
-      result.set(id, base64);
-    }
-
-    // 剩余的实时生成
-    const stillNeedToLoad = needToLoad.filter(id => !dbCache.has(id));
-
-    const batchSize = 50;
-
-    for (let i = 0; i < stillNeedToLoad.length; i += batchSize) {
-      const batch = stillNeedToLoad.slice(i, i + batchSize);
-
-      const promises = batch.map(async (id) => {
-        try {
-          const thumbnail = await this.getThumbnail(libraryId, id, size);
-          result.set(id, thumbnail);
-        } catch (error) {
-          logger.error('ImageService', '加载缩略图失败', `id=${id}`, error);
-        }
-      });
-      await Promise.all(promises);
+      // 无缩略图的 id 不加入结果（falsy 契约由调用方处理）
     }
 
     return result;
@@ -773,41 +748,13 @@ export class ImageService {
   }
 
   /**
-   * 生成视频缩略图
+   * 生成视频缩略图（返回 media:// URL，复用 getThumbnailBytes 逻辑）
    */
-  async generateVideoThumbnail(libraryId: number, imageId: number, relativePath: string): Promise<string> {
-    const library = this.masterDB.getLibrary(libraryId);
-    if (!library) {
-      throw new Error(`库不存在：${libraryId}`);
-    }
-
-    const fullPath = path.join(library.rootPath, relativePath);
-    const cacheKey = `${libraryId}-${imageId}`;
-    const fileExt = fullPath.slice(fullPath.lastIndexOf('.')).toLowerCase();
-    if (fileExt === '.avi' || fileExt === '.mkv') {
-      return '';
-    }
-
-    // 检查缓存
-    const cached = this.cache.get(cacheKey, 'medium');
-    if (cached) return cached;
-
-    const db = this.connectLibrary(libraryId);
-    const cachedThumb = db.getThumbnail(imageId, 'medium');
-    if (cachedThumb) {
-      const base64 = `data:image/webp;base64,${cachedThumb.toString('base64')}`;
-      this.cache.set(cacheKey, 'medium', base64);
-      return base64;
-    }
-
-    // 生成视频缩略图
-    const thumbnail = await generateVideoThumbnail(fullPath);
-
-    // 保存
-    db.saveThumbnail(imageId, 'medium', thumbnail);
-    const base64 = `data:image/webp;base64,${thumbnail.toString('base64')}`;
-    this.cache.set(cacheKey, 'medium', base64);
-    return base64;
+  async generateVideoThumbnail(libraryId: number, imageId: number, _relativePath: string): Promise<string> {
+    const bytes = await this.getThumbnailBytes(libraryId, imageId, 'medium');
+    if (!bytes) return '';
+    const version = this.contentVersion(bytes);
+    return registerThumbUrl(libraryId, imageId, 'medium', version);
   }
 
   /**

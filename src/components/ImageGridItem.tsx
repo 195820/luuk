@@ -205,6 +205,7 @@ export function ImageGridItemComponent({
             src={thumbnailSrc}
             alt={image.alt}
             loading="lazy"
+            decoding="async"
             onLoad={() => setIsLoading(false)}
             onError={() => {
               setError(true)

@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('getThumbnail', libraryId, imageId, size),
   getThumbnails: (libraryId: number, imageIds: number[], size?: ThumbnailSize) =>
     ipcRenderer.invoke('getThumbnails', libraryId, imageIds, size),
+  getPreview: (libraryId: number, imageId: number) =>
+    ipcRenderer.invoke('getPreview', libraryId, imageId),
 
   // 收藏
   toggleFavorite: (libraryId: number, imagePath: string, tags?: string[]) =>
@@ -102,7 +104,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('showInExplorer', libraryId, relativePath),
   selectDestinationFolder: (libraryId: number) => ipcRenderer.invoke('selectDestinationFolder', libraryId),
   getDeletedFiles: (libraryId?: number, limit?: number) => ipcRenderer.invoke('getDeletedFiles', libraryId, limit),
-  loadFullImage: (filePath: string) => ipcRenderer.invoke('loadFullImage', filePath),
   getMediaUrl: (filePath: string) => ipcRenderer.invoke('getMediaUrl', filePath),
   getAudioUrl: (filePath: string) => ipcRenderer.invoke('getAudioUrl', filePath),
 

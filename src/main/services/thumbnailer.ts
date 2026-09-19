@@ -41,6 +41,37 @@ export function killActiveFfmpeg(): void {
   activeFfmpeg.clear();
 }
 
+// ─── P1-2: sharp 并发限制 + ffmpeg 信号量 ───
+sharp.concurrency(Math.max(1, os.availableParallelism() - 2));
+
+/** ffmpeg 全局并发信号量（≤ 2） */
+const FFMPEG_MAX_CONCURRENCY = 2;
+let ffmpegActive = 0;
+const ffmpegWaiters: Array<() => void> = [];
+async function acquireFfmpeg(): Promise<void> {
+  if (ffmpegActive < FFMPEG_MAX_CONCURRENCY) { ffmpegActive++; return }
+  await new Promise<void>(resolve => ffmpegWaiters.push(resolve))
+  ffmpegActive++
+}
+function releaseFfmpeg(): void {
+  ffmpegActive--
+  const next = ffmpegWaiters.shift()
+  if (next) next()
+}
+
+/** 应用退出前清理 tmpdir/luuk-thumb-* （由 main.ts before-quit 调用） */
+export function cleanupThumbnailTempDirs(): void {
+  const tmpdir = os.tmpdir()
+  try {
+    const entries = fs.readdirSync(tmpdir)
+    for (const name of entries) {
+      if (name.startsWith('luuk-thumb-')) {
+        try { fs.rmSync(path.join(tmpdir, name), { recursive: true, force: true }) } catch {}
+      }
+    }
+  } catch {}
+}
+
 /**
  * 缩略图配置
  */
@@ -48,6 +79,7 @@ export interface ThumbnailConfig {
   small: number;    // 120px
   medium: number;   // 300px
   large: number;    // 600px
+  preview: number;  // 1200px (灯箱渐进加载)
   quality: number;  // WebP 质量 (默认 85)
 }
 
@@ -58,6 +90,7 @@ const DEFAULT_CONFIG: ThumbnailConfig = {
   small: 120,
   medium: 300,
   large: 600,
+  preview: 1200,
   quality: 85
 };
 
@@ -331,37 +364,44 @@ export function getAudioMetadata(audioPath: string): Promise<{
 }
 
 /**
- * 生成视频缩略图（截取第 1 秒帧）
+ * 生成视频缩略图（截取第 1 秒帧，受 ffmpeg 并发信号量限制）
  */
-export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
+export async function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
+  if (!fs.existsSync(videoPath)) {
+    throw new Error(`视频文件不存在：${videoPath}`);
+  }
+  const fileExt = videoPath.slice(videoPath.lastIndexOf('.')).toLowerCase();
+  if (fileExt === '.avi' || fileExt === '.mkv') {
+    return Buffer.alloc(0);
+  }
+
+  await acquireFfmpeg();
+  try {
+    return await _doFfmpegThumbnail(videoPath);
+  } finally {
+    releaseFfmpeg();
+  }
+}
+
+/** 内部实现：单次 ffmpeg 截取 + sharp 转换 */
+function _doFfmpegThumbnail(videoPath: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(videoPath)) {
-      reject(new Error(`视频文件不存在：${videoPath}`));
-      return;
-    }
-
-    const fileExt = videoPath.slice(videoPath.lastIndexOf('.')).toLowerCase();
-    if (fileExt === '.avi' || fileExt === '.mkv') {
-      resolve(Buffer.alloc(0));
-      return;
-    }
-
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'luuk-thumb-'));
     const tmpPath = path.join(tmpDir, 'frame.png');
 
-    // 优先使用环境变量指定的 ffmpeg，验证路径合法性后回退到 ffmpeg-static
-    const rawFfmpegPath = process.env.FFMPEG_PATH
-    let ffmpegPath: string
+    // ffmpeg 路径解析
+    const rawFfmpegPath = process.env.FFMPEG_PATH;
+    let ffmpegPath: string;
     if (rawFfmpegPath) {
-      const resolved = path.resolve(rawFfmpegPath)
+      const resolved = path.resolve(rawFfmpegPath);
       if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
-        ffmpegPath = resolved
+        ffmpegPath = resolved;
       } else {
-        logger.warn('Thumbnailer', `FFMPEG_PATH 无效（${rawFfmpegPath}），回退到 ffmpeg-static`)
-        ffmpegPath = FFMPEG_STATIC
+        logger.warn('Thumbnailer', `FFMPEG_PATH 无效（${rawFfmpegPath}），回退到 ffmpeg-static`);
+        ffmpegPath = FFMPEG_STATIC;
       }
     } else {
-      ffmpegPath = FFMPEG_STATIC
+      ffmpegPath = FFMPEG_STATIC;
     }
 
     const args = [
@@ -379,13 +419,11 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
-    // 登记存活子进程，供应用退出时统一 terminate
     activeFfmpeg.add(proc);
 
-    // 超时保护：30 秒后强制终止 ffmpeg
     const timeout = setTimeout(() => {
       try { proc.kill('SIGKILL'); } catch {}
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      safeRemoveDir(tmpDir);
       reject(new Error('ffmpeg 生成缩略图超时（30秒）'));
     }, 30_000);
 
@@ -401,11 +439,10 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
         logger.warn('Thumbnailer', `ffmpeg exited with code ${code}`, stderr.slice(0, 500));
       }
 
-      // 等待文件句柄释放
-      await new Promise(r => setTimeout(r, 300));
-
-      if (!fs.existsSync(tmpPath)) {
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      // ── 等待文件句柄释放（轮询替代固定 sleep） ──
+      const fileReady = await pollFileStable(tmpPath, 50, 2000);
+      if (!fileReady) {
+        safeRemoveDir(tmpDir);
         reject(new Error(`ffmpeg 未能生成缩略图 (code=${code})`));
         return;
       }
@@ -416,13 +453,11 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
           .webp({ quality: 85 })
           .toBuffer();
 
-        // 等待 sharp 释放文件句柄
-        await new Promise(r => setTimeout(r, 200));
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        // 成功路径：立即尝试删除，失败则重试
+        safeRemoveDir(tmpDir, 5, 100);
         resolve(webpData);
       } catch (err) {
-        await new Promise(r => setTimeout(r, 200));
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        safeRemoveDir(tmpDir, 5, 100);
         reject(err);
       }
     });
@@ -430,8 +465,42 @@ export function generateVideoThumbnail(videoPath: string): Promise<Buffer> {
     proc.on('error', (err: Error) => {
       clearTimeout(timeout);
       activeFfmpeg.delete(proc);
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      safeRemoveDir(tmpDir);
       reject(err);
     });
   });
+}
+
+/** 轮询文件存在 + size 稳定（两次连续 stat.size 相同则认为稳定） */
+async function pollFileStable(filePath: string, intervalMs: number, maxWaitMs: number): Promise<boolean> {
+  const deadline = Date.now() + maxWaitMs;
+  let lastSize = -1;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const sz = fs.statSync(filePath).size;
+        if (sz > 0 && sz === lastSize) return true; // 连续两次相同且非空
+        lastSize = sz;
+      } catch { /* ignore transient stat errors */ }
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  // 超时回退：检查存在性
+  return fs.existsSync(filePath);
+}
+
+/** rmSync 重试包装（Windows 句柄占用场景） */
+function safeRemoveDir(dir: string, retries = 1, delayMs = 0): void {
+  for (let i = 0; i < retries; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch {
+      if (i < retries - 1 && delayMs > 0) {
+        const waitUntil = Date.now() + delayMs;
+        while (Date.now() < waitUntil) { /* busy wait for sync context */ }
+      }
+    }
+  }
+  logger.warn('Thumbnailer', `无法删除临时目录: ${dir}`);
 }

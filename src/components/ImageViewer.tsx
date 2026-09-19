@@ -58,6 +58,7 @@ interface ImageViewerProps {
   slideshowSettings?: SlideshowSettings
   onSlideshowChange?: (enabled: boolean) => void
   libraryId?: number
+  imageId?: number
   isFavorite?: boolean
   onFavoriteChange?: (isFavorite: boolean) => void
   mediaType?: 'image' | 'video' | 'audio'
@@ -90,6 +91,7 @@ export function ImageViewer({
   imageInfo,
   mediaType = 'image',
   libraryId,
+  imageId,
   imagePath,
   rating = 0,
   onRatingChange,
@@ -699,6 +701,8 @@ export function ImageViewer({
                 }, 100)
               }}
               paused={!isGifPlaying}
+              libraryId={libraryId}
+              imageId={imageId}
             />
           </SlideshowTransitionWrapper>
         )}
