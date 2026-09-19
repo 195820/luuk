@@ -962,6 +962,18 @@ export class MasterDB {
     return rows.map(r => this.mapJob(r))
   }
 
+  /**
+   * 取待启动作业（P1-9 自泵）：仅 state='pending'，按优先级降序、创建时间升序，限量返回。
+   * 避免 getAllJobs() 的全表扫描。
+   */
+  getPendingJobs(limit: number = 50): Job[] {
+    if (!this.db) return []
+    const rows = this.db.prepare(
+      "SELECT * FROM jobs WHERE state = 'pending' ORDER BY priority DESC, created_at ASC LIMIT ?"
+    ).all(limit) as any[]
+    return rows.map(r => this.mapJob(r))
+  }
+
   createJobItems(jobId: string, items: Array<{ libraryId: number; imageId: number | null }>): void {
     if (!this.db) throw new Error('MasterDB 未初始化')
     const now = new Date().toISOString()

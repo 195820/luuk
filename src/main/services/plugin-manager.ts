@@ -109,6 +109,42 @@ export class PluginManager {
       this.loadedInWorker.clear()
       logger.warn('PluginManager', '插件系统已熔断停用')
     }
+
+    // P1-6：Worker 崩溃/退出后，loadedInWorker 中的标记变为陈旧。
+    // 订阅退出事件 → 清空标记，并对仍处于启用集的插件重新 plugin.load 自愈。
+    this.hostProcess.onWorkerExit = () => {
+      this.loadedInWorker.clear()
+      void this.reloadEnabledPlugins()
+    }
+  }
+
+  /**
+   * Worker 崩溃后重载启用中的插件（P1-6 自愈）
+   * ensureStarted 会拉起新的 Worker；逐个重新 plugin.load 并恢复 loadedInWorker 标记。
+   * 熔断态下跳过（此时 onCircuitBreak 已停用全部插件）。
+   */
+  private async reloadEnabledPlugins(): Promise<void> {
+    if (this.hostProcess.isCircuitBroken()) return
+    if (this.enabledPlugins.size === 0) return
+    for (const pluginId of [...this.enabledPlugins]) {
+      const plugin = this.loader.getPlugin(pluginId)
+      if (!plugin) continue
+      try {
+        await this.hostProcess.ensureStarted()
+        const entryPath = path.join(plugin.path, plugin.manifest.entry)
+        await this.hostProcess.rpc('plugin.load', { pluginId, entryPath })
+        this.loadedInWorker.add(pluginId)
+        logger.info('PluginManager', `Worker 重启后已重载插件: ${pluginId}`)
+      } catch (err) {
+        logger.warn('PluginManager', `Worker 重启后重载插件失败: ${pluginId}`, err)
+        this.loadedInWorker.delete(pluginId)
+        try {
+          this.loader.setState(pluginId, 'idle', 'Worker 崩溃，重载失败')
+        } catch {
+          /* 忽略 */
+        }
+      }
+    }
   }
 
   /**
@@ -140,6 +176,17 @@ export class PluginManager {
           url: model.url,
           mirrorUrls: model.mirrorUrls,
         })
+      }
+    }
+
+    // P1-8：启动时对本库已注册模型做一次校验回填，修复"重启后文件在盘却显示未下载"。
+    // verifyModel 成功即 markDownloaded；文件缺失只返回 false（不删文件、不改状态）。
+    for (const model of this.modelManager.listModels()) {
+      if (model.state === 'downloaded') continue
+      try {
+        await this.modelManager.verifyModel(model.id)
+      } catch (err) {
+        logger.warn('PluginManager', `模型启动校验失败: ${model.id}`, err)
       }
     }
 
@@ -178,31 +225,41 @@ export class PluginManager {
     }
 
     if (enabled) {
+      // P1-11/C3：先确保 Worker 启动 + 插件加载成功，再置两个成功标志（enabledPlugins / activated）。
+      // 任一失败 → 不动 enabledPlugins、回滚 state 到 idle、清理可能半加载标记。
+      // 否则未加载进 Worker 的插件会提前通过 handleCall 的权限门（依赖 state==='activated'）。
+      const needLoad = !this.loadedInWorker.has(pluginId)
+      try {
+        await this.hostProcess.ensureStarted()
+        if (needLoad) {
+          const entryPath = path.join(plugin.path, plugin.manifest.entry)
+          await this.hostProcess.rpc('plugin.load', { pluginId, entryPath })
+        }
+      } catch (err) {
+        if (needLoad) this.loadedInWorker.delete(pluginId)
+        this.loader.setState(pluginId, 'idle', `启用失败: ${(err as Error).message}`)
+        throw err
+      }
+      this.loadedInWorker.add(pluginId)
       this.enabledPlugins.add(pluginId)
       this.loader.setState(pluginId, 'activated')
-      // 懒启动 Worker（首次启用时）
-      await this.hostProcess.ensureStarted()
-      // 将插件加载进 Worker（幂等）
-      if (!this.loadedInWorker.has(pluginId)) {
-        const entryPath = path.join(plugin.path, plugin.manifest.entry)
-        await this.hostProcess.rpc('plugin.load', { pluginId, entryPath })
-        this.loadedInWorker.add(pluginId)
-      }
       // 为插件的每个 op 注册 JobRunner handler（批处理链闭合）
       this.registerOpHandlers(pluginId)
       logger.info('PluginManager', `插件已启用: ${pluginId}`)
     } else {
       this.enabledPlugins.delete(pluginId)
       this.loader.setState(pluginId, 'idle')
-      // 从 Worker 卸载
+      // 从 Worker 卸载（仅在 Worker 就绪时尝试 RPC）
       if (this.loadedInWorker.has(pluginId) && this.hostProcess.isReady()) {
         try {
           await this.hostProcess.rpc('plugin.unload', { pluginId })
         } catch (err) {
           logger.warn('PluginManager', `插件卸载失败: ${pluginId}`, err)
         }
-        this.loadedInWorker.delete(pluginId)
       }
+      // P1-6：无条件清除 loadedInWorker 标记（Worker 崩溃后 isReady() 为 false，
+      // 若仅在就绪分支内删除会残留陈旧标记）
+      this.loadedInWorker.delete(pluginId)
       logger.info('PluginManager', `插件已停用: ${pluginId}`)
 
       // 全部停用后关闭 Worker 释放资源

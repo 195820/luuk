@@ -200,6 +200,18 @@ export class PluginLoader {
       }
     }
 
+    // P1-8：校验 requires.models[].sha256 格式（64 位十六进制）。
+    // 缺失/空允许（verifyModel 降级为存在性校验）；非空但格式非法则判为无效，避免脏清单入库。
+    const modelReqs = manifest.requires?.models ?? []
+    for (const m of modelReqs) {
+      if (m.sha256 && String(m.sha256).trim() && !/^[0-9a-fA-F]{64}$/.test(String(m.sha256).trim())) {
+        return {
+          valid: false,
+          error: `模型 ${m.id} 的 sha256 非法（需 64 位十六进制）: ${m.sha256}`
+        }
+      }
+    }
+
     return { valid: true }
   }
 

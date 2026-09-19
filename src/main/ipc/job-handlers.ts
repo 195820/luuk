@@ -7,9 +7,6 @@ import type { JobProgress } from '../../types'
 /** 进度订阅清理函数 */
 let progressUnsubscribe: (() => void) | null = null
 
-/** 最大并发作业数（单模型串行） */
-const MAX_CONCURRENT_JOBS = 1
-
 /** 注册 JobRunner IPC 处理器 */
 export function registerJobHandlers(): void {
   // 创建并入队新作业
@@ -25,8 +22,8 @@ export function registerJobHandlers(): void {
         const runner = getJobRunner()
         const jobId = await runner.enqueue(kind, payload, options)
 
-        // 资源闸门：空闲时自动启动；非空闲时等队列消化
-        if (runner.getRunningCount() < MAX_CONCURRENT_JOBS) {
+        // 资源闸门：空闲时自动启动；非空闲时等队列消化（并发上限由 JobRunner 统一持有，P1-9）
+        if (runner.getRunningCount() < runner.getMaxConcurrent()) {
           await runner.start(jobId)
         }
 

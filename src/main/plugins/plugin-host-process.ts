@@ -62,6 +62,12 @@ export class PluginHostProcess {
   private shutdownRequested = false
   /** 熔断回调（由 PluginManager 注册，用于停用全部插件） */
   onCircuitBreak: (() => void) | null = null
+  /**
+   * Worker 退出回调（崩溃/异常退出时触发，P1-6）：
+   * 由 PluginManager 注册，用于清空 loadedInWorker 陈旧标记并重载启用中的插件。
+   * 仅在 doStart 安装的常驻 exit 监听中触发（优雅 shutdown 不触发）。
+   */
+  onWorkerExit: ((code: number) => void) | null = null
 
   /** 配置内存水位线阈值（须在 ensureStarted 前调用，随 fork 下发） */
   setMemoryThresholds(yellowMB: number, redMB: number): void {
@@ -112,14 +118,22 @@ export class PluginHostProcess {
     // 监听 Worker 就绪消息
     await this.waitForReady()
 
+    // P1-11：捕获本次 Worker 引用，exit/message 回调仅在"仍是当前 Worker"时处理，
+    // 避免旧 Worker 的延迟 exit 事件污染新启动的 Worker 实例（跨实例串扰）。
+    const self = this.worker
+
     // 监听 RPC 响应
-    this.worker.on('message', (msg: unknown) => {
+    self.on('message', (msg: unknown) => {
+      if (this.worker !== self) return
       this.handleWorkerMessage(msg)
     })
 
     // 监听 Worker 崩溃
-    this.worker.on('exit', (code: number) => {
+    self.on('exit', (code: number) => {
+      if (this.worker !== self) return
       this.handleWorkerExit(code)
+      // handleWorkerExit 已将 this.worker 置空；崩溃退出通知上层做自愈（P1-6）
+      this.onWorkerExit?.(code)
     })
   }
 
@@ -316,6 +330,11 @@ export class PluginHostProcess {
   async shutdown(): Promise<void> {
     if (!this.worker) return
 
+    // P1-11：先移除 doStart 安装的常驻 exit/message 监听，避免优雅关闭误触崩溃计数 / onWorkerExit 自愈
+    const self = this.worker
+    self.removeAllListeners('exit')
+    self.removeAllListeners('message')
+
     // 标记为优雅关闭，退出事件不计入崩溃
     this.shutdownRequested = true
 
@@ -326,14 +345,10 @@ export class PluginHostProcess {
     this.pendingRequests.clear()
 
     const exitPromise = new Promise<void>((resolve) => {
-      if (!this.worker) {
-        resolve()
-        return
-      }
-      this.worker.once('exit', () => resolve())
+      self.once('exit', () => resolve())
     })
 
-    this.worker.kill()
+    self.kill()
     this.ready = false
     this.worker = null
     this.startPromise = null

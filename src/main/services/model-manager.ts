@@ -54,8 +54,9 @@ export class ModelManager {
 
   /**
    * SHA256 完整性校验（流式，避免大文件整读 OOM）。
-   * 文件不存在 → 返回 false（不抛错）。
-   * 校验失败 → 删除文件并返回 false，触发调用方重新下载。
+   * 文件不存在 → 返回 false（不抛错、不删文件）。
+   * sha256 缺失/空 → 仅校验存在性 + 告警，不删文件，成功回写 downloaded（P1-8 防误删）。
+   * 校验成功 → markDownloaded；失败 → 删除损坏文件并返回 false。
    */
   async verifyModel(id: string): Promise<boolean> {
     const info = this.models.get(id)
@@ -66,6 +67,16 @@ export class ModelManager {
 
     if (!nodeFs.existsSync(filePath)) return false
 
+    // sha256 缺失/空：无法做完整性比对，降级为"仅确认文件存在"，不删文件
+    if (!info.sha256 || !String(info.sha256).trim()) {
+      logger.warn(
+        'ModelManager',
+        `模型 ${id} 未登记 sha256，跳过完整性校验（仅确认文件存在）: ${filePath}`
+      )
+      this.markDownloaded(id, filePath)
+      return true
+    }
+
     const hash = crypto.createHash('sha256')
     const stream = createReadStream(filePath)
     for await (const chunk of stream) {
@@ -73,7 +84,8 @@ export class ModelManager {
     }
     const actualHash = hash.digest('hex')
 
-    if (actualHash === info.sha256) {
+    if (actualHash === String(info.sha256).toLowerCase()) {
+      this.markDownloaded(id, filePath)
       return true
     }
 

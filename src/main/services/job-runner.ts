@@ -38,9 +38,17 @@ export class JobRunner {
   private progressCallbacks = new Set<ProgressCallback>()
   /** 跟踪所有 executeJob 的 Promise，供 shutdown 等待 */
   private pendingExecutions = new Set<Promise<void>>()
+  /** 最大并发作业数（P1-9：从 IPC 层下沉为单一真值来源，默认 1）*/
+  private maxConcurrent: number
 
-  constructor(db: MasterDB) {
+  constructor(db: MasterDB, maxConcurrent: number = 1) {
     this.db = db
+    this.maxConcurrent = maxConcurrent
+  }
+
+  /** 最大并发数（供 IPC 层读取，避免双源真值）*/
+  getMaxConcurrent(): number {
+    return this.maxConcurrent
   }
 
   /** 注册作业处理器 */
@@ -125,6 +133,8 @@ export class JobRunner {
     this.runningJobs.delete(jobId)
 
     logger.info('JobRunner', `作业暂停: ${jobId}`)
+    // P1-9：释放槽位后拉起 pending 作业，避免暂停队头后后续作业永久 pending
+    this.pump()
   }
 
   /** 继续作业 */
@@ -147,6 +157,8 @@ export class JobRunner {
     this.db.updateJobState(jobId, 'cancelled')
     this.emitProgress(jobId)
     logger.info('JobRunner', `作业取消: ${jobId}`)
+    // P1-9：取消释放槽位后拉起 pending 作业（用户取消队头作业后第二个不应永久 pending）
+    this.pump()
   }
 
   /** 关闭所有运行中的作业，等待后台任务完成 */
@@ -224,14 +236,16 @@ export class JobRunner {
         }
       }
 
-      // 更新 job 计数
+      // 更新 job 计数（若已被 cancel 置为终态则不复活为 running）
       const job = this.db.getJob(jobId)!
-      this.db.updateJobState(
-        jobId,
-        'running' as JobState,
-        job.done + batchDone,
-        job.failed + batchFailed
-      )
+      if (job.state === 'running') {
+        this.db.updateJobState(
+          jobId,
+          'running' as JobState,
+          job.done + batchDone,
+          job.failed + batchFailed
+        )
+      }
 
       this.emitProgress(jobId)
 
@@ -263,6 +277,26 @@ export class JobRunner {
       this.runningJobs.delete(jobId)
     }
     logger.info('JobRunner', `作业完成: ${jobId}`)
+    // P1-9：作业转终态释放槽位后，拉起队列中下一个 pending 作业（自泵）
+    this.pump()
+  }
+
+  /**
+   * 自泵（P1-9）：在槽位未满时，从 DB 拉取 pending 且已注册 handler 的作业依次启动。
+   * 触发点：executeJob 收尾 / cancel / pause 释放槽位后。
+   */
+  private pump(): void {
+    if (this.runningJobs.size >= this.maxConcurrent) return
+    const pending = this.db.getPendingJobs(this.maxConcurrent * 4)
+    for (const job of pending) {
+      if (this.runningJobs.size >= this.maxConcurrent) break
+      // 跳过未注册 handler 的（如对应插件未启用），避免 start() 抛错
+      if (!this.handlers.has(job.kind)) continue
+      if (this.runningJobs.has(job.id)) continue
+      void this.start(job.id).catch((err) => {
+        logger.error('JobRunner', `自泵启动作业失败: ${job.id}`, err)
+      })
+    }
   }
 
   /** 发送进度通知 */
