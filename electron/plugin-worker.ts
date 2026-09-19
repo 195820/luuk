@@ -12,7 +12,7 @@
 import { createRequire } from 'module'
 import { parentPort } from 'worker_threads'
 import { InferencePool } from '../src/main/plugins/inference-pool'
-import { createPluginSdk } from '../src/main/plugins/worker-sdk'
+import { createPluginSdk, resolveSdkTimeoutMs } from '../src/main/plugins/worker-sdk'
 import type {
   MemoryStatus,
   LuukSdk,
@@ -50,8 +50,6 @@ const RED_THRESHOLD_MB = Number(process.env.LUUK_MEM_RED_MB ?? 400)
 
 // ── 反向 RPC（Worker → 主进程）──
 
-/** 单次反向调用超时（毫秒） */
-const SDK_CALL_TIMEOUT_MS = 5000
 /** 最大并发在途反向调用（消息风暴防护） */
 const MAX_INFLIGHT = 20
 
@@ -69,10 +67,12 @@ function callMain(method: string, params: unknown, pluginId: string): Promise<un
       return
     }
     const id = ++sdkCallId
+    // P1-7：按方法分级/按 payload 动态计算超时，避免大图 fs.write/edit.write 误超时
+    const timeoutMs = resolveSdkTimeoutMs(method, params)
     const timer = setTimeout(() => {
       sdkPending.delete(id)
-      reject(new Error(`SDK 调用超时: ${method}`))
-    }, SDK_CALL_TIMEOUT_MS)
+      reject(new Error(`SDK 调用超时（${timeoutMs}ms）: ${method}`))
+    }, timeoutMs)
     sdkPending.set(id, { resolve, reject, timer })
     port?.postMessage({ type: 'sdk-request', channel: 'worker-to-main', id, method, pluginId, params })
   })
@@ -158,6 +158,8 @@ registerHandler('plugin.unload', async (params) => {
   } catch {
     /* 忽略卸载异常 */
   }
+  // P1-10：销毁该插件创建的空闲推理会话，避免会话泄漏跨插件堆积
+  inferencePool.destroyByPlugin(pluginId)
   loadedPlugins.delete(pluginId)
   return { pluginId, unloaded: true }
 })
@@ -206,6 +208,8 @@ async function handleRpcRequest(msg: MainToWorkerRequest): Promise<void> {
 }
 
 function handleSdkResponse(msg: RpcResponse): void {
+  // P1-7/W2：超时后条目已在 timer 回调中删除，此处 `!p` 直接丢弃迟到响应（幂等）。
+  // 当前 callMain 无自动重试，无需 callId 幂等去重；如未来引入重试再补幂等键。
   const p = sdkPending.get(msg.id)
   if (!p) return
   clearTimeout(p.timer)

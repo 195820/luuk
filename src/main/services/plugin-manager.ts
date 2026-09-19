@@ -116,6 +116,16 @@ export class PluginManager {
       this.loadedInWorker.clear()
       void this.reloadEnabledPlugins()
     }
+
+    // P1-10/S5：红色水位→驱逐 Worker 空闲推理会话。
+    // 订阅写在构造函数（而非 initialize），避免 feature flag 关闭时永不订阅、重复初始化时重复订阅。
+    this.memoryMonitor.on('levelChange', (status: MemoryStatus) => {
+      if (status.level === 'red' && this.hostProcess.isReady()) {
+        this.hostProcess.rpc('memory.evict').catch((err) => {
+          logger.warn('PluginManager', '内存压力驱逐失败', err)
+        })
+      }
+    })
   }
 
   /**

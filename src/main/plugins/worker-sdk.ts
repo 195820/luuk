@@ -63,7 +63,7 @@ export function createPluginSdk(
         // P2-12：忽略插件传入的 modelPath（防越权加载任意 .onnx），
         // 仅接受主进程 sdk.inference.resolveModel 返回的权威本地路径（含下载/SHA256 校验与 inference 权限门）。
         const resolved = (await call('sdk.inference.resolveModel', { modelId })) as string
-        const session = await pool.acquire(modelId, resolved, opts as never)
+        const session = await pool.acquire(modelId, resolved, opts as never, pluginId)
         ownedModels.add(modelId)
         // 透传模型真实输入/输出张量名：不同导出（如 u2netp 的 `input.1`）名称各异，
         // 插件须按 inputNames 构造 feeds，避免写死 `input` / `image` 导致推理失败。
@@ -237,4 +237,46 @@ function bytesPerElement(dataType: string): number {
     default:
       return 4
   }
+}
+
+/**
+ * 反向 SDK 调用的分级超时（毫秒）（P1-7）。
+ *
+ * 旧实现对所有方法统一 5s，导致大图 fs.write / edit.write（携带数 MB~数十 MB buffer）
+ * 与 resolveModel（可能对大 .onnx 做流式 SHA256 校验）必然误超时。按方法分级：
+ * - 读文件：60s
+ * - 写文件 / 编辑写入：60s 基线 + 每 10MB 追加 5s（按 payload 字节动态），上限 300s
+ * - 模型解析（可能校验）：30s
+ * - 其余（progress/log/settings 等轻量）：5s
+ *
+ * 纯函数，不依赖 electron / onnxruntime，供 plugin-worker.callMain 使用并单独可测。
+ */
+export function resolveSdkTimeoutMs(method: string, params: unknown): number {
+  const bytes = payloadByteLength(params)
+  switch (method) {
+    case 'sdk.fs.read':
+      return 60_000
+    case 'sdk.fs.write':
+    case 'sdk.edit.write':
+      return Math.min(300_000, 60_000 + Math.ceil(bytes / (10 * 1024 * 1024)) * 5_000)
+    case 'sdk.inference.resolveModel':
+      return 30_000
+    default:
+      return 5_000
+  }
+}
+
+/** 从 SDK 参数中粗略提取携带的字节负载大小（data / outputBuffer），无则 0 */
+function payloadByteLength(params: unknown): number {
+  if (!params || typeof params !== 'object') return 0
+  const p = params as Record<string, unknown>
+  const cand = p.outputBuffer ?? p.data
+  if (!cand) return 0
+  if (typeof (cand as { byteLength?: number }).byteLength === 'number') {
+    return (cand as { byteLength: number }).byteLength
+  }
+  if (typeof (cand as { length?: number }).length === 'number') {
+    return (cand as { length: number }).length
+  }
+  return 0
 }
