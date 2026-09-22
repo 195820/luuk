@@ -18,6 +18,8 @@
  * 运行：node node_modules/@playwright/test/cli.js test --config=tests/playwright.config.ts tests/playwright/m-c-automation.spec.ts
  */
 import { electronTest as test, expect } from './fixtures'
+import { _electron as electron } from '@playwright/test'
+import type { ElectronApplication } from '@playwright/test'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -669,6 +671,159 @@ test.describe('MT-DATA + MT-EDGE v3 回收', () => {
       }
     } finally {
       await safeCleanupLib(page, libB, tmpLib)
+    }
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════
+// MT-DATA-03b + MT-EDGE-01b · v4 回收 E2E（restart-fixture 专项）
+// 回收 v3 登记的两项"需重启 fixture"子项，共用一次真实应用重启：
+//   阶段1（fixture 首实例）：libA 写收藏/标签/历史 + libA/libB autoScan 后均 online
+//   关实例 → 删 libB 目录（进程退出释放 SQLite 文件锁）→ 重启第二实例
+//   阶段2：libA 三路数据读回一致（MT-DATA-03b）+ libB 启动自愈标 offline（MT-EDGE-01b）
+// 原理：--user-data-dir 不影响主进程 app.getPath('userData')，master.db 真实落
+//   %APPDATA%\image-viewer\ → 重启天然共享同一主库；标签走 libA 分库 thumbs.db（目录未删）。
+// ═══════════════════════════════════════════════════════════════
+test.describe('MT-DATA-03b + MT-EDGE-01b v4 重启回收', () => {
+  test.setTimeout(180000)
+
+  const ELECTRON_MAIN = path.join(PROJECT_ROOT, 'dist-electron', 'main.js')
+
+  /** 与 fixture 同款启动参数，供阶段2重启使用 */
+  async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: any }> {
+    const app = await electron.launch({
+      args: [
+        ELECTRON_MAIN,
+        '--no-sandbox',
+        '--disable-gpu-sandbox',
+        '--user-data-dir', userDataDir,
+      ],
+      cwd: PROJECT_ROOT,
+      env: {
+        ...process.env,
+        NO_AUTO_DEVTOOLS: '1',
+      },
+      timeout: 60000,
+    })
+    const page = await app.firstWindow()
+    await page.waitForLoadState('domcontentloaded')
+    await page.waitForSelector('h1:has-text("图片查看器")', { timeout: 30000 })
+    return { app, page }
+  }
+
+  /** 进程退出有延迟，rm 失败时重试等待文件锁释放 */
+  async function rmWithRetry(dir: string, attempts = 10) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        fs.rmSync(dir, { recursive: true, force: true })
+        if (!fs.existsSync(dir)) return
+      } catch { /* 锁未释放，重试 */ }
+      await new Promise(r => setTimeout(r, 1000))
+    }
+    console.log(`  [WARN] rm 重试耗尽仍有残留: ${dir}`)
+  }
+
+  test('MT-DATA-03b 重启后收藏/标签/历史持久化 + MT-EDGE-01b 目录移除重启标离线', async ({ page, electronApp, tmpUserData }: any) => {
+    await page.waitForSelector('h1:has-text("图片查看器")', { timeout: 20000 })
+
+    // ── 阶段1：两个临时库 + 数据写入（首实例）──
+    const libDirA = fs.mkdtempSync(path.join(os.tmpdir(), 'iv-v4-keep-'))
+    const libDirB = fs.mkdtempSync(path.join(os.tmpdir(), 'iv-v4-gone-'))
+    const srcDir = path.join(PROJECT_ROOT, 'test-library', 'set01')
+    for (const [i, name] of [[1, 'a001.jpg'], [2, 'a002.jpg'], [3, 'a003.jpg']] as const) {
+      fs.copyFileSync(path.join(srcDir, `photo00${i}.jpg`), path.join(libDirA, name))
+    }
+    fs.copyFileSync(path.join(srcDir, 'photo004.jpg'), path.join(libDirB, 'b001.jpg'))
+
+    const pathA = libDirA.replace(/\\/g, '/')
+    const pathB = libDirB.replace(/\\/g, '/')
+    const libA = await addLibrary(page, 'V4KeepLib', pathA)
+    const libB = await addLibrary(page, 'V4GoneLib', pathB)
+    await page.waitForTimeout(5000) // 等 autoScan（小库）完成 → online
+
+    // 重启前基线：两库均 online
+    const libs0 = await page.evaluate(() => (window as any).electronAPI.getLibraries())
+    const st = (id: number) => (libs0 || []).find((l: any) => l.id === id)?.status
+    console.log(`  phase1 status: libA=${st(libA)} libB=${st(libB)}`)
+    expect(st(libA)).toBe('online')
+    expect(st(libB)).toBe('online')
+
+    // 收藏（幂等，同 v3 理由：master.db 同机共享）
+    await page.evaluate(async (id: number) => {
+      const api = (window as any).electronAPI
+      const favs = await api.getFavorites()
+      const isFav = (favs || []).some((f: any) =>
+        f.libraryId === id && (f.imagePath || f.image_path) === 'a001.jpg')
+      if (!isFav) await api.toggleFavorite(id, 'a001.jpg')
+    }, libA)
+
+    // 标签（存 libA 分库 thumbs.db，目录保留 → 重启后可读回）
+    const tagId = await page.evaluate(async () => {
+      const api = (window as any).electronAPI
+      const tagsResp = await api.getAllTags(0) // {success, data}
+      const tagList: any[] = Array.isArray(tagsResp?.data) ? tagsResp.data : (Array.isArray(tagsResp) ? tagsResp : [])
+      const existing = tagList.find((t: any) => t.name === 'm-c-persist-v4')
+      if (existing) return existing.id
+      const r = await api.createTag('m-c-persist-v4', '#00ffff')
+      return r?.data?.id ?? r?.id
+    })
+    expect(typeof tagId).toBe('number')
+    await page.evaluate(async ({ id, tid }: { id: number; tid: number }) => {
+      await (window as any).electronAPI.tagImages([tid], id, ['a002.jpg'])
+    }, { id: libA, tid: tagId })
+
+    // 历史
+    await page.evaluate((id: number) =>
+      (window as any).electronAPI.addHistory(id, 'a003.jpg'), libA)
+
+    // ── 阶段2：关首实例 → 删 libB 目录 → 重启验证 ──
+    await electronApp.close() // fixture teardown 幂等，二次 close 不报错
+    await rmWithRetry(libDirB)
+    expect(fs.existsSync(libDirB)).toBe(false) // 前置：目录确已消失
+
+    let app2: ElectronApplication | undefined
+    let page2: any
+    try {
+      const relaunched = await launchApp(tmpUserData)
+      app2 = relaunched.app
+      page2 = relaunched.page
+
+      // MT-EDGE-01b：initialize() 对不存在路径的库自愈标 offline
+      const libs1 = await page2.evaluate(() => (window as any).electronAPI.getLibraries())
+      const libBRow = (libs1 || []).find((l: any) => l.id === libB)
+      console.log(`  phase2 libB status after restart: ${libBRow?.status}`)
+      expect(libBRow?.status).toBe('offline')
+      // libA 目录仍在 → initialize 重连应保持 online
+      expect((libs1 || []).find((l: any) => l.id === libA)?.status).toBe('online')
+
+      // MT-DATA-03b：收藏（master.db）
+      const favs = await page2.evaluate((lid: number) => (window as any).electronAPI.getFavorites(), libA)
+      const favOk = (favs || []).some((f: any) =>
+        f.libraryId === libA && (f.imagePath || f.image_path) === 'a001.jpg')
+      console.log(`  phase2 favorite persisted: ${favOk}`)
+      expect(favOk).toBe(true)
+
+      // MT-DATA-03b：标签（libA 分库 thumbs.db）
+      const tagsResp = await page2.evaluate((id: number) =>
+        (window as any).electronAPI.getImageTags(id, 'a002.jpg'), libA)
+      const tagArr: any[] = Array.isArray(tagsResp?.data) ? tagsResp.data : (Array.isArray(tagsResp) ? tagsResp : [])
+      const tagOk = tagArr.some((t: any) => t.name === 'm-c-persist-v4')
+      console.log(`  phase2 tag persisted: ${tagOk}, raw=${JSON.stringify(tagArr)}`)
+      expect(tagOk).toBe(true)
+
+      // MT-DATA-03b：历史（master.db）
+      const hist = await page2.evaluate(() => (window as any).electronAPI.getHistory(100))
+      const histArr = Array.isArray(hist) ? hist : (hist?.data ?? [])
+      const histOk = histArr.some((h: any) => (h.image_path || h.imagePath) === 'a003.jpg')
+      console.log(`  phase2 history persisted: ${histOk}`)
+      expect(histOk).toBe(true)
+    } finally {
+      if (page2) {
+        try { await page2.evaluate((id: number) => (window as any).electronAPI.removeLibrary(id), libA) } catch { /* ignore */ }
+      }
+      if (app2) { try { await app2.close() } catch { /* ignore */ } }
+      try { fs.rmSync(libDirA, { recursive: true, force: true }) } catch { /* ignore EPERM */ }
+      // master.db 中残留的 libB 注册项离线无害，下轮 run 目录不同不会冲突
     }
   })
 })
