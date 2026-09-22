@@ -4,6 +4,7 @@ import { motionPresets } from '@/lib/motion-presets'
 import { ChevronRight, Folder, Trash2, Heart, Clock, History, Image as CoverIcon, X } from 'lucide-react'
 import { useImageStore, RECENT_ADDED_ID, RECENT_MODIFIED_ID } from '../stores/imageStore'
 import { useViewStore } from '../stores/viewStore'
+import { useFolderCoverStore, applyFolderCoverSet, applyFolderCoverRemove } from '../stores/folderCoverStore'
 
 export interface FolderTreeNode {
   path: string
@@ -41,15 +42,14 @@ export function FolderTree({
   const setCurrentLibrary = useImageStore(state => state.setCurrentLibrary)
   const currentLibraryId = useImageStore(state => state.currentLibraryId)
 
-  // 文件夹封面（按 libraryId 加载）
-  const [folderCovers, setFolderCovers] = useState<Record<string, string>>({})
+  // 文件夹封面（全局 store，任何地方 setFolderCover 都会同步刷新侧边栏）
+  // 修复 DEF-COVER-01：之前用本地 useState + useEffect([libraryId]) 导致从
+  // ImageGrid / MasonryGrid / ImageViewer 写入后侧边栏不刷新。
+  const folderCovers = useFolderCoverStore(state => state.covers)
+  const loadForLibrary = useFolderCoverStore(state => state.loadForLibrary)
   useEffect(() => {
-    if (!libraryId || libraryId < 0) {
-      setFolderCovers({})
-      return
-    }
-    window.electronAPI?.getFolderCovers(libraryId).then(setFolderCovers).catch(() => {})
-  }, [libraryId])
+    void loadForLibrary(libraryId ?? null)
+  }, [libraryId, loadForLibrary])
 
   // 文件夹右键菜单状态
   const [folderMenu, setFolderMenu] = useState<{ x: number; y: number; folderPath: string; hasCover: boolean } | null>(null)
@@ -63,18 +63,21 @@ export function FolderTree({
 
   const handleSetCover = useCallback(async (folderPath: string, coverPath: string) => {
     if (!libraryId) return
-    await window.electronAPI?.setFolderCover(libraryId, folderPath, coverPath)
-    // 刷新封面列表
-    const covers = await window.electronAPI?.getFolderCovers(libraryId)
-    if (covers) setFolderCovers(covers)
+    try {
+      await applyFolderCoverSet(libraryId, folderPath, coverPath)
+    } catch {
+      /* store 已 fallback，忽略 */
+    }
     setFolderMenu(null)
   }, [libraryId])
 
   const handleRemoveCover = useCallback(async (folderPath: string) => {
     if (!libraryId) return
-    await window.electronAPI?.removeFolderCover(libraryId, folderPath)
-    const covers = await window.electronAPI?.getFolderCovers(libraryId)
-    if (covers) setFolderCovers(covers)
+    try {
+      await applyFolderCoverRemove(libraryId, folderPath)
+    } catch {
+      /* ignore */
+    }
     setFolderMenu(null)
   }, [libraryId])
 

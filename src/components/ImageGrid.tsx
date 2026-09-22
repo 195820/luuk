@@ -12,6 +12,7 @@ import { useViewStore } from '@/stores/viewStore'
 import { useSimilarStore } from '@/stores/similarStore'
 import { useTagStore } from '@/stores/tagStore'
 import { usePluginStore } from '@/stores/pluginStore'
+import { applyFolderCoverSet } from '@/stores/folderCoverStore'
 import { groupImages } from '../utils/group'
 
 // 网格布局几何常量 —— 必须与下方行内联样式（flex gap / padding）保持一致，
@@ -330,7 +331,8 @@ export function ImageGrid({
       case 'setFolderCover': {
         // 提取图片所在文件夹路径（正斜杠格式）
         const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
-        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        // 修复 DEF-COVER-01：使用统一封装，写入后端 + 同步 folderCoverStore，侧边栏自动刷新
+        await applyFolderCoverSet(libraryId, folderPath, imagePath)
         break
       }
     }

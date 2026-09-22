@@ -15,7 +15,10 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e-types": "tsc -p tsconfig.e2e.json --noEmit",
+    "e2e": "node node_modules/@playwright/test/cli.js test --config=tests/playwright.config.ts",
+    "test:edge-data": "node scripts/generate-edge-case-data.mjs"
   },
   "keywords": [
     "image",

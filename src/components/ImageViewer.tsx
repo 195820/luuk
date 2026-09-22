@@ -30,6 +30,7 @@ import { FileContextMenu } from './file-ops/FileContextMenu'
 import { BatchRenameDialog } from './file-ops/BatchRenameDialog'
 import { ExportDialog } from './file-ops/ExportDialog'
 import { HistogramChart } from './HistogramChart'
+import { applyFolderCoverSet } from '@/stores/folderCoverStore'
 import { useImageStore } from '@/stores/imageStore'
 import { useSlideshowStore } from '@/stores/slideshowStore'
 import type { ExifInfo } from '@/types'
@@ -212,7 +213,8 @@ export function ImageViewer({
       case 'setFolderCover': {
         // 提取图片所在文件夹路径（正斜杠格式）
         const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
-        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        // 修复 DEF-COVER-01：统一写入 store，侧边栏自动刷新
+        await applyFolderCoverSet(libraryId, folderPath, imagePath)
         break
       }
     }

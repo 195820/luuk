@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "@playwright/test"]
+  },
+  "include": ["tests"],
+  // 历史 E2E spec 存在遗留类型问题（重复 playwright-core 身份 / 未用参数 / box 可空），
+  // 且 §5.5 已计划在 M-B 统一迁移为共享 fixture + smoke。迁移完成前先从类型门禁排除，
+  // 避免新门禁恒红；M-B 交付时移除本 exclude 并把 spec 纳入 tsconfig.e2e.json。
+  "exclude": ["tests/playwright/**/*.spec.ts"],
+  "references": []
+}

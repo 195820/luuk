@@ -57,9 +57,20 @@ export class PluginManager {
   private enabledPlugins = new Set<string>()
   private loadedInWorker = new Set<string>()
   private initialized = false
+  /**
+   * [TEST HOOK] `TEST_SKIP_WORKER=1` 时不 spawn utilityProcess Worker，
+   * `setEnabled` 旁路 plugin.load RPC，`registerOpHandlers` 改注主进程模拟 handler
+   * （fs.readFile 源图 + EditsService.createEdit 落盘），用于 m-c-automation.spec.ts
+   * 回收 PH8-§3 批处理链推进 / PH8-§5 edit.write / MT-DATA-05 非破坏编辑等卡片。
+   */
+  private skipWorker = false
 
   constructor() {
     const userDataPath = app.getPath('userData')
+    this.skipWorker = process.env.TEST_SKIP_WORKER === '1'
+    if (this.skipWorker) {
+      logger.warn('PluginManager', '❗ TEST_SKIP_WORKER=1 已启用：不 spawn Worker，op handler 走主进程模拟。仅用于 E2E，勿用于生产。')
+    }
 
     // 内置插件目录（开发为源码目录，打包后为构建产物中的 plugins/builtins）
     const builtinDir = resolveBuiltinDir()
@@ -235,6 +246,17 @@ export class PluginManager {
     }
 
     if (enabled) {
+      // [TEST HOOK] skip-worker 模式：不启动 Worker、不发送 plugin.load RPC，
+      // 仅标记 enabledPlugins / loadedInWorker + 注册模拟 handler，
+      // 使后续 jobsEnqueue(ai.{op}) 能实际推进项。
+      if (this.skipWorker) {
+        this.loadedInWorker.add(pluginId)
+        this.enabledPlugins.add(pluginId)
+        this.loader.setState(pluginId, 'activated')
+        this.registerOpHandlers(pluginId)
+        logger.info('PluginManager', `[skip-worker] 插件已启用: ${pluginId}`)
+        return
+      }
       // P1-11/C3：先确保 Worker 启动 + 插件加载成功，再置两个成功标志（enabledPlugins / activated）。
       // 任一失败 → 不动 enabledPlugins、回滚 state 到 idle、清理可能半加载标记。
       // 否则未加载进 Worker 的插件会提前通过 handleCall 的权限门（依赖 state==='activated'）。
@@ -259,6 +281,12 @@ export class PluginManager {
     } else {
       this.enabledPlugins.delete(pluginId)
       this.loader.setState(pluginId, 'idle')
+      // [TEST HOOK] skip-worker 下无 Worker，只需清标记。
+      if (this.skipWorker) {
+        this.loadedInWorker.delete(pluginId)
+        logger.info('PluginManager', `[skip-worker] 插件已停用: ${pluginId}`)
+        return
+      }
       // 从 Worker 卸载（仅在 Worker 就绪时尝试 RPC）
       if (this.loadedInWorker.has(pluginId) && this.hostProcess.isReady()) {
         try {
@@ -299,11 +327,13 @@ export class PluginManager {
               }
             : { libraryId: item.libraryId, item }
 
-        const res = (await this.hostProcess.rpc('plugin.execute', {
-          pluginId,
-          opId: op.id,
-          input,
-        })) as { skipped?: boolean } | undefined
+        const res = this.skipWorker
+          ? await this.runPluginOpInProcess(pluginId, op.id, input)
+          : ((await this.hostProcess.rpc('plugin.execute', {
+              pluginId,
+              opId: op.id,
+              input,
+            })) as { skipped?: boolean } | undefined)
 
         // skipped 语义：插件未真正处理任何文件 → 抛错使 job_item 落 failed，杜绝"零工作却 done"
         if (res && res.skipped) {
@@ -311,6 +341,38 @@ export class PluginManager {
         }
       })
     }
+  }
+
+  /**
+   * [TEST HOOK] 主进程内模拟插件 op 执行。
+   * 1. 若 input 无 paths/libraryId/imageId 三件套 → 返回 { skipped:true }，作业项落 failed（PH8-17）
+   * 2. 否则 fs.readFile 源文件 → EditsService.createEdit 写 `_edits/<base>/<op>_<ts>.png` + 入库
+   * 3. 任何异常（文件不存在 / 无访问权）直接抛出 → job-runner 将作业项落 failed
+   */
+  private async runPluginOpInProcess(
+    pluginId: string,
+    opId: string,
+    input: unknown,
+  ): Promise<{ skipped?: boolean; editId?: number }> {
+    const inp = input as { paths?: string[]; libraryId?: number; imageId?: number } | undefined
+    const paths = Array.isArray(inp?.paths) ? inp!.paths! : []
+    const libraryId = inp?.libraryId
+    const imageId = inp?.imageId
+    if (!paths.length || libraryId == null || imageId == null) {
+      return { skipped: true }
+    }
+    const sourcePath = paths[0]
+    const buffer = await fs.promises.readFile(sourcePath)
+    const editId = await this.editsService.createEdit(
+      libraryId,
+      imageId,
+      sourcePath,
+      pluginId,
+      opId,
+      buffer,
+      { format: 'png', params: { simulated: true } },
+    )
+    return { skipped: false, editId }
   }
 
   /**
@@ -334,6 +396,11 @@ export class PluginManager {
       throw new Error(
         `内存水位线过高（聚合 ${status.rssMB}MB ≥ ${status.threshold.red}MB 或 Worker ${workerRss}MB 超上限），拒绝执行`
       )
+    }
+
+    // [TEST HOOK] skip-worker 模式下不发送 RPC，走主进程模拟执行
+    if (this.skipWorker) {
+      return this.runPluginOpInProcess(pluginId, opId, input)
     }
 
     return this.hostProcess.rpc('plugin.execute', { pluginId, opId, input })

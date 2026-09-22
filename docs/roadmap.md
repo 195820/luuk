@@ -304,6 +304,7 @@ CREATE TABLE album_items (
 
 - **媒体加载性能提升**：P0-1/P0-2/P1-1/P1-2/P1-3/P2-1 已全部实施，`scripts/cdp-verify-media.mjs` 真机验证 29/29 通过；代码已提交至 `fix/phase8-defects`（`6df2c18`）。方案与基线详见 [archive/媒体加载性能提升方案-2026-09.md](archive/媒体加载性能提升方案-2026-09.md)。
 - **Phase 8 人工验收**：☐ 项进行中，完成后本项与第八轮状态同步更新。
+- **全面测试方案**：已产出 [plans/全面测试方案-2026-09-19.md](plans/全面测试方案-2026-09-19.md)（自动化七层 + 人工六类 + P0/P1/P2 分层，已合并两轮代码审查结论）；**新发现待办：DEF-7 属未闭环失踪项（需定级/豁免）、IPC 半死通道 `updateScanProgress`/`clearScanProgress` 待决断、N1（JobRunner shutdown 后 pump 复活作业）待单独排期修复**。
 - **AI 修图批处理体验验证**：>20 张多选入队后台批处理（P0-1 交付）的真实场量验证随人工验收清单一并进行。
 
 ---

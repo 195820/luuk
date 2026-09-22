@@ -143,3 +143,50 @@ describe('searchStore.search', () => {
     expect(useSearchStore.getState().searching).toBe(false)
   })
 })
+
+/**
+ * REG-DEF3-b 纵深防御契约（§5.7 回归矩阵）。
+ * 验证：IPC 返回 undefined 时，store 的三层防线确保状态不损坏。
+ * - 第一层：IPC handler 的 Array.isArray 兆底（由 handler-contract.test 静态保证）
+ * - 第二层：loadHistoryAndPresets 的 Array.isArray 守卫 (searchStore L147-148)
+ * - 第三层：组件层 ?? [] (SearchPanel L168/171)
+ * addToHistory/saveAsPreset 无守卫，但 IPC handler 已保证不会返回 undefined。
+ * 本用例确认第二层防御有效（loadHistoryAndPresets），并记录 addToHistory 的已知缺口。
+ */
+describe('REG-DEF3-b 纵深防御契约', () => {
+  let api: ReturnType<typeof installApiMock>
+  beforeEach(() => {
+    api = installApiMock()
+    resetStore()
+  })
+
+  it('loadHistoryAndPresets: IPC 返回 undefined 时仍保持空数组', async () => {
+    api.getSearchHistory.mockResolvedValue(undefined)
+    api.getSearchPresets.mockResolvedValue(undefined)
+    await useSearchStore.getState().loadHistoryAndPresets()
+    expect(useSearchStore.getState().history).toEqual([])
+    expect(useSearchStore.getState().presets).toEqual([])
+  })
+
+  it('addToHistory: IPC 异常时状态不变', async () => {
+    useSearchStore.setState({ history: ['keep'] })
+    api.addSearchHistory.mockRejectedValue(new Error('fail'))
+    await useSearchStore.getState().addToHistory('new')
+    // catch 块阻止了状态更新，history 保持原样
+    expect(useSearchStore.getState().history).toEqual(['keep'])
+  })
+
+  it('saveAsPreset: IPC 异常时预设不变', async () => {
+    useSearchStore.setState({ presets: [{ id: 'x', name: 'A', criteria: {}, createdAt: '' }] })
+    api.saveSearchPreset.mockRejectedValue(new Error('fail'))
+    await useSearchStore.getState().saveAsPreset('B')
+    expect(useSearchStore.getState().presets).toHaveLength(1)
+  })
+
+  it('removePreset: IPC 异常时预设不变', async () => {
+    useSearchStore.setState({ presets: [{ id: 'x', name: 'A', criteria: {}, createdAt: '' }] })
+    api.deleteSearchPreset.mockRejectedValue(new Error('fail'))
+    await useSearchStore.getState().removePreset('x')
+    expect(useSearchStore.getState().presets).toHaveLength(1)
+  })
+})

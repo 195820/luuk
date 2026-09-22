@@ -94,3 +94,41 @@ describe('isBrowserPlayableVideo', () => {
     expect(isBrowserPlayableVideo('a.avi')).toBe(false)
   })
 })
+
+/**
+ * 全扩展名矩阵（§5.1 单元补盲）：确认 getMediaTypeFromPath 与 DB media_type 字段映射一致。
+ */
+describe('getMediaTypeFromPath 全扩展名矩阵', () => {
+  const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tiff', 'tif']
+  const VIDEO_EXTS = ['mp4', 'mkv', 'avi', 'mov', 'webm', 'm4v']
+  const AUDIO_EXTS = ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg']
+
+  it.each(IMAGE_EXTS)('图片 %s → image', (ext) => {
+    expect(getMediaTypeFromPath(`file.${ext}`)).toBe('image')
+  })
+
+  it.each(VIDEO_EXTS)('视频 %s → video', (ext) => {
+    expect(getMediaTypeFromPath(`file.${ext}`)).toBe('video')
+  })
+
+  it.each(AUDIO_EXTS)('音频 %s → audio', (ext) => {
+    expect(getMediaTypeFromPath(`file.${ext}`)).toBe('audio')
+  })
+
+  it('大写扩展名同样识别', () => {
+    expect(getMediaTypeFromPath('PHOTO.JPG')).toBe('image')
+    expect(getMediaTypeFromPath('VIDEO.MP4')).toBe('video')
+    expect(getMediaTypeFromPath('MUSIC.MP3')).toBe('audio')
+  })
+
+  it('无扩展名默认为 image', () => {
+    expect(getMediaTypeFromPath('noext')).toBe('image')
+    expect(getMediaTypeFromPath('path/to/file')).toBe('image')
+  })
+
+  it('未知扩展名默认为 image', () => {
+    expect(getMediaTypeFromPath('file.xyz')).toBe('image')
+    expect(getMediaTypeFromPath('file.txt')).toBe('image')
+    expect(getMediaTypeFromPath('file.pdf')).toBe('image')
+  })
+})

@@ -337,20 +337,24 @@ export class MasterDB {
 
   addFavorite(libraryId: number, imagePath: string, tags?: string[], rating?: number): void {
     if (!this.db) return;
+    // 修复 DEF-CASCADE-01：统一 normalize 为 forward-slash，与 updateImagePath/updateFolderPath 查询格式一致
+    const normalized = imagePath.replace(/\\/g, '/');
     const stmt = this.db.prepare('INSERT OR REPLACE INTO favorites (library_id, image_path, tags, rating) VALUES (?, ?, ?, ?)');
-    stmt.run(libraryId, imagePath, JSON.stringify(tags || []), rating || 0);
+    stmt.run(libraryId, normalized, JSON.stringify(tags || []), rating || 0);
   }
 
   removeFavorite(libraryId: number, imagePath: string): void {
     if (!this.db) return;
+    const normalized = imagePath.replace(/\\/g, '/');
     const stmt = this.db.prepare('DELETE FROM favorites WHERE library_id = ? AND image_path = ?');
-    stmt.run(libraryId, imagePath);
+    stmt.run(libraryId, normalized);
   }
 
   removeHistoryByPath(libraryId: number, imagePath: string): void {
     if (!this.db) return;
+    const normalized = imagePath.replace(/\\/g, '/');
     this.db.prepare('DELETE FROM history WHERE library_id = ? AND image_path = ?')
-      .run(libraryId, imagePath);
+      .run(libraryId, normalized);
   }
 
   /**
@@ -359,13 +363,15 @@ export class MasterDB {
    */
   setFavoriteRating(libraryId: number, imagePath: string, rating: number): void {
     if (!this.db) return;
+    // 修复 DEF-CASCADE-01：统一 normalize 后查询，否则新写入时旧记录反斜杠格式会造成 UPDATE 未命中
+    const normalized = imagePath.replace(/\\/g, '/');
     const existing = this.db.prepare('SELECT tags FROM favorites WHERE library_id = ? AND image_path = ?')
-      .get(libraryId, imagePath) as { tags: string } | undefined;
+      .get(libraryId, normalized) as { tags: string } | undefined;
     if (existing) {
       this.db.prepare('UPDATE favorites SET rating = ? WHERE library_id = ? AND image_path = ?')
-        .run(rating, libraryId, imagePath);
+        .run(rating, libraryId, normalized);
     } else {
-      this.addFavorite(libraryId, imagePath, [], rating);
+      this.addFavorite(libraryId, normalized, [], rating);
     }
   }
 
@@ -477,20 +483,24 @@ export class MasterDB {
 
   /**
    * 添加收藏文件夹
+   * 修复 DEF-DIR-PATH：与 setFolderCover / updateFolderPath 保持一致，统一 normalize 为 forward-slash，
+   * 避免 Windows 端调用方传入反斜杠后 updateFolderPath 的 LIKE 匹配未命中。
    */
   addFavoriteFolder(libraryId: number, folderPath: string): void {
     if (!this.db) return;
+    const normalized = folderPath.replace(/\\/g, '/');
     const stmt = this.db.prepare('INSERT OR REPLACE INTO favorite_folders (library_id, folder_path) VALUES (?, ?)');
-    stmt.run(libraryId, folderPath);
+    stmt.run(libraryId, normalized);
   }
 
   /**
-   * 移除收藏文件夹
+   * 移除收藏文件夹（同步 normalize，防止删不掉）
    */
   removeFavoriteFolder(libraryId: number, folderPath: string): void {
     if (!this.db) return;
+    const normalized = folderPath.replace(/\\/g, '/');
     const stmt = this.db.prepare('DELETE FROM favorite_folders WHERE library_id = ? AND folder_path = ?');
-    stmt.run(libraryId, folderPath);
+    stmt.run(libraryId, normalized);
   }
 
   /**
@@ -634,8 +644,10 @@ export class MasterDB {
 
   addHistory(libraryId: number, imagePath: string): void {
     if (!this.db) return;
+    // 修复 DEF-CASCADE-01：统一 normalize 为 forward-slash，与 updateImagePath 一致
+    const normalized = imagePath.replace(/\\/g, '/');
     const stmt = this.db.prepare('INSERT INTO history (library_id, image_path) VALUES (?, ?)');
-    stmt.run(libraryId, imagePath);
+    stmt.run(libraryId, normalized);
     // 只保留最近 HISTORY_LIMIT 条，防止无限增长
     this.db.prepare(
       'DELETE FROM history WHERE id NOT IN (SELECT id FROM history ORDER BY viewed_at DESC LIMIT ?)'

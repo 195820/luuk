@@ -126,7 +126,7 @@ D:\luuk\
 - Feature flag `plugins.enabled` 默认 false，设置面板开启
 
 ### 数据与文件操作
-- **双库**：`master.db`（`%APPDATA%\luuk\`）存库注册/收藏/标签/历史/folder_covers/jobs/edits/deleted_files；每库 `.ivlib/thumbs.db` 存图片元数据 + WebP 缩略图 + pHash。`removeLibrary` 先清依赖行再删（FK）
+- **双库**：`master.db`（`<userData>/data/`——dev 为 `%APPDATA%\image-viewer\`、安装包为 `%APPDATA%\Image Viewer\`，经 `app.getPath('userData')` 解析）存库注册/收藏/标签/历史/folder_covers/jobs/edits/deleted_files；每库 `.ivlib/thumbs.db` 存图片元数据 + WebP 缩略图 + pHash。`removeLibrary` 先清依赖行再删（FK）
 - **文件操作**：复制/移动/重命名/删除走系统回收站（trash），操作后路径级联同步 master.db + thumbs.db，每步失败有逆向补偿；所有路径必须校验在已注册库根内
 - **非破坏性编辑**：AI 编辑输出到库内 `_edits/` 版本链（edits 表），不改原图
 - **扫描**：增量（大小+mtime 双条件跳过）、批量预载记录、后台非阻塞（`library-scan-finished` 广播）；pHash 回填驱动相似图查找

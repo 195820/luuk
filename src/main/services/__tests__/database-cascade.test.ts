@@ -112,4 +112,49 @@ describe('路径级联更新', () => {
   it('路径不存在时幂等（不抛错）', () => {
     expect(() => masterDB.updateImagePath(1, 'nonexistent.jpg', 'new.jpg')).not.toThrow();
   });
+
+  // ==================== §5.4 补盲：tags + folder_covers ====================
+
+  it('updateImagePath 级联更新 image_tags', () => {
+    const tag = masterDB.createTag('风景', '#ff0000');
+    masterDB.tagImages([tag.id], 1, ['photos/IMG_001.jpg']);
+
+    masterDB.updateImagePath(1, 'photos/IMG_001.jpg', 'photos/new_name.jpg');
+
+    const tags = masterDB.getImageTags(1, 'photos/new_name.jpg');
+    expect(tags).toHaveLength(1);
+    expect(tags[0].name).toBe('风景');
+    // 旧路径不再关联标签
+    expect(masterDB.getImageTags(1, 'photos/IMG_001.jpg')).toHaveLength(0);
+  });
+
+  it('updateImagePath 级联更新 folder_covers.cover_path', () => {
+    masterDB.setFolderCover(1, 'albums', 'photos/cover.jpg');
+
+    masterDB.updateImagePath(1, 'photos/cover.jpg', 'photos/cover_new.jpg');
+
+    const covers = masterDB.getFolderCovers(1);
+    expect(covers['albums']).toBe('photos/cover_new.jpg');
+  });
+
+  it('updateFolderPath 级联更新 image_tags 前缀', () => {
+    const tag = masterDB.createTag('家人', '#00ff00');
+    masterDB.tagImages([tag.id], 1, ['2024/day1/photo.jpg']);
+
+    masterDB.updateFolderPath(1, '2024/day1', '2024/family');
+
+    const tags = masterDB.getImageTags(1, '2024/family/photo.jpg');
+    expect(tags).toHaveLength(1);
+    expect(tags[0].name).toBe('家人');
+  });
+
+  it('updateFolderPath 级联更新 folder_covers.folder_path', () => {
+    masterDB.setFolderCover(1, '2024/vacation', 'photos/px.jpg');
+
+    masterDB.updateFolderPath(1, '2024', '2025');
+
+    const covers = masterDB.getFolderCovers(1);
+    expect(covers['2025/vacation']).toBe('photos/px.jpg');
+    expect(covers['2024/vacation']).toBeUndefined();
+  });
 });

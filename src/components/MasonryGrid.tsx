@@ -11,6 +11,7 @@ import { useSelectionStore } from '@/stores/selectionStore'
 import { useViewStore } from '@/stores/viewStore'
 import { useSimilarStore } from '@/stores/similarStore'
 import { useTagStore } from '@/stores/tagStore'
+import { applyFolderCoverSet } from '@/stores/folderCoverStore'
 import { groupImages } from '../utils/group'
 
 export interface MasonryGridItem extends ImageGridItem {
@@ -304,7 +305,8 @@ export function MasonryGrid({
       case 'setFolderCover': {
         // 提取图片所在文件夹路径（正斜杠格式）
         const folderPath = imagePath.replace(/\\/g, '/').replace(/\/[^/]+$/, '') || '.'
-        await window.electronAPI.setFolderCover(libraryId, folderPath, imagePath)
+        // 修复 DEF-COVER-01：统一写入 store，侧边栏自动刷新
+        await applyFolderCoverSet(libraryId, folderPath, imagePath)
         break
       }
       // move/copy 待后续实现

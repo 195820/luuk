@@ -64,6 +64,13 @@ data/*
 
 # Test data
 test-data/
+test-library-edge/
+test-library/*/_edits/
+
+# Playwright 产物
+tests/playwright-report/
+playwright-report/
+test-results/
 
 # 测试用 Node-ABI 原生二进制（vitest globalSetup 自动生成，勿入库）
 .test-native/

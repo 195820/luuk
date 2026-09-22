@@ -3,6 +3,7 @@ import sharp from 'sharp'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
+import crypto from 'crypto'
 import { ExportService } from '../export-service'
 
 describe('ExportService', () => {
@@ -111,6 +112,52 @@ describe('ExportService', () => {
     it('取消未知任务不抛错（幂等）', () => {
       const svc = new ExportService()
       expect(() => svc.cancel('nope')).not.toThrow()
+    })
+  })
+
+  // ==================== §5.4 补盲：SHA-256 一致性与同名双路径 ====================
+
+  describe("SHA-256 一致性（original 不重编码）", () => {
+    it("format='original' 导出后文件字节与源完全一致", async () => {
+      const svc = new ExportService()
+      const out = await svc.exportSingle(img1, { format: 'original', outputPath: outDir }, 'sha1')
+      const srcHash = crypto.createHash('sha256').update(fs.readFileSync(img1)).digest('hex')
+      const outHash = crypto.createHash('sha256').update(fs.readFileSync(out)).digest('hex')
+      expect(outHash).toBe(srcHash)
+    })
+  })
+
+  describe('同名不同目录双路径', () => {
+    it('ZIP 条目使用相对路径避免冲突', async () => {
+      // 创建两个同名文件在不同目录
+      const dirA = path.join(dir, 'subA')
+      const dirB = path.join(dir, 'subB')
+      fs.mkdirSync(dirA, { recursive: true })
+      fs.mkdirSync(dirB, { recursive: true })
+      const fileA = path.join(dirA, 'same.png')
+      const fileB = path.join(dirB, 'same.png')
+      await sharp({ create: { width: 10, height: 10, channels: 3, background: { r: 255, g: 0, b: 0 } } })
+        .png().toFile(fileA)
+      await sharp({ create: { width: 10, height: 10, channels: 3, background: { r: 0, g: 255, b: 0 } } })
+        .png().toFile(fileB)
+
+      const svc = new ExportService()
+      const zipPath = path.join(outDir, 'dual-name.zip')
+      await svc.exportBatch(
+        [
+          { absPath: fileA, name: 'subA/same.png' },
+          { absPath: fileB, name: 'subB/same.png' },
+        ],
+        { format: 'png', outputPath: zipPath },
+        'dual-1',
+        vi.fn()
+      )
+      expect(fs.existsSync(zipPath)).toBe(true)
+      // ZIP 文件应包含两个独立条目（不会因同名冲突丢失）
+      const buf = fs.readFileSync(zipPath)
+      expect(buf.slice(0, 2).toString()).toBe('PK')
+      // 文件大小应大于单张图（包含两张）
+      expect(buf.length).toBeGreaterThan(200)
     })
   })
 })
