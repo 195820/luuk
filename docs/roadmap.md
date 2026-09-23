@@ -141,6 +141,8 @@ updated: 2026-09-19
 
 > **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: current`）。**Phase 8 已于 2026-09-18/19 交付**（实施计划归档于 [archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md](archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md)，缺陷修复 M1-M5 见 CHANGELOG「修复」节，人工验收进行中：[plans/Phase8人工验收清单](plans/Phase8人工验收清单-2026-09-19.md)）。下表工时为旧估算，Phase 9-11 仍以该设计文档的分期路线为准，工时留待 `implementation-plan-2027-q1.md`。
 
+> **衍生新方向**（如智能体化）先落 `plans/` 草案再回填本文排期，不占本轮工时：当前草案 [Agent 架构派生规划](plans/Agent架构派生规划-2026-09-22.md)（`status: draft`，未开工，仅定切入点与形态）。
+
 | # | 功能 | 预计工时 |
 |---|------|----------|
 | 32 | AI 标签自动生成（CLIP 模型） | 3-5 天 |
