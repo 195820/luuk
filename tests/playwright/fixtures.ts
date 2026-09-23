@@ -41,6 +41,18 @@ export const electronTest = base.extend<ElectronFixture>({
         `E2E 需要构建产物: ${ELECTRON_MAIN}\n请先运行 npm run build:dir`
       )
     }
+    const childEnv: any = {
+      ...process.env,
+      // 生产模式下不注入 dev URL → main.ts 走 loadFile(dist/index.html)
+      ...(DEV_MODE ? { VITE_DEV_SERVER_URL: APP_URL } : {}),
+      NO_AUTO_DEVTOOLS: '1',
+      // 强制 production：main.ts 仅在 NODE_ENV!=='production' 时 appendSwitch('remote-debugging-port','9222')，
+      // 那会与 Playwright 自身的 CDP 连接争抢固定端口，导致串行快速启停时 windows() 始终拿不到主窗口。
+      // loadFile 路径由 DEV_MODE(E2E_DEV) 决定，与 NODE_ENV 无关，设此只跳过调试端口/devtools，安全。
+      NODE_ENV: 'production',
+    }
+    // 剔除 Node-ABI 的 better_sqlite3 绑定：那是给测试进程（Node）用的，泄漏进 Electron 主进程会加载错 ABI 崩溃。
+    delete childEnv.BETTER_SQLITE3_NATIVE_BINDING
     const app = await electron.launch({
       args: [
         ELECTRON_MAIN,
@@ -49,12 +61,7 @@ export const electronTest = base.extend<ElectronFixture>({
         '--user-data-dir', tmpUserData,
       ],
       cwd: PROJECT_ROOT,
-      env: {
-        ...process.env,
-        // 生产模式下不注入 dev URL → main.ts 走 loadFile(dist/index.html)
-        ...(DEV_MODE ? { VITE_DEV_SERVER_URL: APP_URL } : {}),
-        NO_AUTO_DEVTOOLS: '1',
-      },
+      env: childEnv,
       timeout: 60000,
     })
     await use(app)

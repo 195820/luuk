@@ -28,6 +28,9 @@ const DEFAULT_WORKER_RED_MB = 500
 /** 内存监控刷新间隔（毫秒） */
 const MEMORY_MONITOR_INTERVAL_MS = 5000
 
+/** plugin.load RPC 超时（毫秒）：加载为秒级操作，超时按启用失败处理，避免 Worker 通信异常时永久挂起 */
+const PLUGIN_LOAD_RPC_TIMEOUT_MS = 15_000
+
 // 工程为 ESM（package.json type: module），主进程 bundle 里没有全局 __dirname
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -153,7 +156,7 @@ export class PluginManager {
       try {
         await this.hostProcess.ensureStarted()
         const entryPath = path.join(plugin.path, plugin.manifest.entry)
-        await this.hostProcess.rpc('plugin.load', { pluginId, entryPath })
+        await this.hostProcess.rpc('plugin.load', { pluginId, entryPath }, PLUGIN_LOAD_RPC_TIMEOUT_MS)
         this.loadedInWorker.add(pluginId)
         logger.info('PluginManager', `Worker 重启后已重载插件: ${pluginId}`)
       } catch (err) {
@@ -265,7 +268,7 @@ export class PluginManager {
         await this.hostProcess.ensureStarted()
         if (needLoad) {
           const entryPath = path.join(plugin.path, plugin.manifest.entry)
-          await this.hostProcess.rpc('plugin.load', { pluginId, entryPath })
+          await this.hostProcess.rpc('plugin.load', { pluginId, entryPath }, PLUGIN_LOAD_RPC_TIMEOUT_MS)
         }
       } catch (err) {
         if (needLoad) this.loadedInWorker.delete(pluginId)

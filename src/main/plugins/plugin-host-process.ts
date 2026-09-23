@@ -289,9 +289,11 @@ export class PluginHostProcess {
    * 发起 RPC 调用
    * @param method 方法名
    * @param params 参数
+   * @param timeoutMs 可选超时（默认无限等待；plugin.execute 等长耗时推理不设默认超时）。
+   *   用于 plugin.load 等秒级操作，避免 Worker 通信异常时调用方永久挂起。
    * @returns Worker 处理结果
    */
-  async rpc<T>(method: string, params?: unknown): Promise<T> {
+  async rpc<T>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
     await this.ensureStarted()
 
     if (!this.worker || !this.ready) {
@@ -301,9 +303,24 @@ export class PluginHostProcess {
     const id = ++this.requestId
 
     return new Promise<T>((resolve, reject) => {
+      let timer: NodeJS.Timeout | null = null
+      if (timeoutMs && timeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (this.pendingRequests.delete(id)) {
+            reject(new Error(`Worker RPC 超时（${timeoutMs}ms）: ${method}`))
+          }
+        }, timeoutMs)
+        timer.unref?.()
+      }
       this.pendingRequests.set(id, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
+        resolve: (value: unknown) => {
+          if (timer) clearTimeout(timer)
+          resolve(value as T)
+        },
+        reject: (reason: Error) => {
+          if (timer) clearTimeout(timer)
+          reject(reason)
+        },
       })
 
       this.worker!.postMessage({

@@ -41,6 +41,19 @@ function getPort(): ParentPortLike | null {
   return null
 }
 
+// [DEF-WORKER-ENVELOPE] utilityProcess 的 process.parentPort 消息回调收到的是事件对象 { data }，
+// 而 worker_threads 的 parentPort 直接给数据。兼容层必须按端口来源解包，
+// 否则主进程发来的 rpc-request 会被 handleMessage 静默丢弃（m.type=undefined），
+// 导致 plugin.load/execute 等 RPC 永久挂起。
+const isUtilityPort = !!(process as NodeJS.Process & { parentPort?: ParentPortLike }).parentPort
+
+function unwrapPortMessage(raw: unknown): unknown {
+  if (isUtilityPort && raw && typeof raw === 'object' && 'data' in (raw as Record<string, unknown>)) {
+    return (raw as { data: unknown }).data
+  }
+  return raw
+}
+
 const port = getPort()
 
 // ── 内存水位线阈值（由主进程经 fork env 下发，保持与主进程一致） ──
@@ -245,9 +258,9 @@ function handleMessage(msg: unknown): void {
 // ── 启动 ──
 
 if (port) {
-  port.on('message', (msg: unknown) => {
+  port.on('message', (raw: unknown) => {
     try {
-      handleMessage(msg)
+      handleMessage(unwrapPortMessage(raw))
     } catch (err) {
       console.error('[plugin-worker] 消息处理异常:', err)
     }

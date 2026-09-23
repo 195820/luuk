@@ -3,7 +3,7 @@ import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './playwright',
   // M-B 门禁仅跑 smoke；UI交互测试按需运行（手动指定文件时自动匹配）
-  testMatch: ['smoke.spec.ts', 'ui-interaction.spec.ts', 'coverage.spec.ts', 'm-c-automation.spec.ts'],
+  testMatch: ['smoke.spec.ts', 'ui-interaction.spec.ts', 'coverage.spec.ts', 'm-c-automation.spec.ts', 'm-c-v5-worker.spec.ts', 'm-c-v6-ui.spec.ts', 'm-c-b-collector.spec.ts'],
   // ℹ️ 门禁 npm run e2e 只跑 smoke（通过文件过滤器）；UI测试手动触发：node node_modules/@playwright/test/cli.js test "ui-interaction" --config=tests/playwright.config.ts
   fullyParallel: false,
   forbidOnly: false,
