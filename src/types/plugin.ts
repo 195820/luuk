@@ -5,6 +5,7 @@ export type PluginKind =
   | 'diffusion-provider' // 扩散生成后端
   | 'crawler-adapter'    // 站点解析适配
   | 'ui-panel'           // 声明式 UI 贡献
+  | 'decision-provider'  // 决策提供者（D6，如 Jev 云端判断）
 
 /** 插件权限 */
 export type PluginPermission =

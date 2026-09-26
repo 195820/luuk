@@ -500,3 +500,10 @@ export type {
   ModelInfo, ModelDownloadState, InferenceSessionInfo,
   WorkerRpcRequest, WorkerRpcResponse,
 } from './plugin'
+
+// Phase 9 — Agent 体系类型（T2）
+export type {
+  WeightedKeyword, PreferenceProfile, AgentKind, ProposalState, DecisionSource,
+  Proposal, FeedbackAction, DecisionQuestion, DecisionAnswer, DecisionContext,
+  DecisionProvider, CandidateItem, CrawlProvenance,
+} from './agent'

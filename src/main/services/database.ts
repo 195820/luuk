@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions, Tag, Job, JobItem, JobState, JobItemState, Edit } from '../../types';
+import type { PreferenceProfile } from '../../types/agent';
 import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
@@ -36,13 +37,31 @@ export interface Image {
   phash?: string | null;
 }
 
+/** SQLite CURRENT_TIMESTAMP 默认值（'YYYY-MM-DD HH:MM:SS' UTC）归一化为 ISO8601，保证与 JS toISOString 可比 */
+function normalizeSqlTs(ts: string): string {
+  // 带时区偏移的串（如 '2026-01-01T08:00:00+08:00'）统一经 Date 转 UTC，避免盲拼 Z 产生非法串
+  if (/[+-]\d{2}:?\d{2}$/.test(ts)) {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? ts : d.toISOString();
+  }
+  const iso = ts.replace(' ', 'T');
+  return iso.endsWith('Z') ? iso : iso + '.000Z';
+}
+
+/** 画像构建的原始数据源（T3）：MasterDB 只做取数，加权逻辑在 PreferenceProfiler */
+export interface ProfilerSourceData {
+  favorites: Array<{ imagePath: string; tags: string[]; rating: number }>;
+  tagEntries: Array<{ tag: string; imagePath: string; rating: number }>;
+  historyPaths: Array<{ imagePath: string }>;
+}
+
 /**
  * 数据库迁移定义
  * - 每个迁移包含版本号、描述、SQL 语句
  * - SQL 必须幂等（使用 IF NOT EXISTS 等）
  * - 按顺序执行，事务包裹
  */
-const MIGRATIONS: Array<{ version: number; description: string; sql: string }> = [
+const MIGRATIONS: Array<{ version: number; description: string; sql: string; tolerant?: string[] }> = [
   {
     version: 1,
     description: '添加文件夹封面支持',
@@ -105,6 +124,84 @@ const MIGRATIONS: Array<{ version: number; description: string; sql: string }> =
       CREATE INDEX IF NOT EXISTS idx_edits_image ON edits(library_id, image_id);
     `,
   },
+  {
+    version: 3,
+    description: 'Phase 9 — Agent 体系与智能采集（画像/提案/反馈/信息源/采集溯源）',
+    sql: `
+      -- 用户偏好画像（library_id 为 NULL 表示全局画像）
+      CREATE TABLE IF NOT EXISTS preference_profile (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id    INTEGER,
+        keywords      TEXT NOT NULL,           -- JSON: WeightedKeyword[]
+        learned_deltas TEXT,                   -- JSON: 反馈学习量净累计（重建时叠加不覆盖）
+        visual_traits TEXT,                    -- JSON: 视觉特征（M5 后由 embedding 填充）
+        source_affinity TEXT,                  -- JSON: { sourceId: trustScore }
+        exclusions    TEXT,                    -- JSON: 排除词/排除来源
+        updated_at    TEXT NOT NULL,
+        source_watermark TEXT                   -- 已消费的行为数据水位线（脏检查用，S14）
+      );
+
+      -- Agent 提案（人在回路的核心表，D8）
+      CREATE TABLE IF NOT EXISTS proposals (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_kind    TEXT NOT NULL,           -- 'crawler' | 'organize' | ...（D7 占位）
+        library_id    INTEGER,
+        payload       TEXT NOT NULL,           -- JSON: 提案内容（候选项元数据）
+        score         REAL,                    -- 匹配度评分
+        decision_src  TEXT,                    -- 'local' | 'jev' | 'human'
+        confidence    REAL,                    -- 决策置信度
+        state         TEXT NOT NULL DEFAULT 'pending',  -- pending|accepted|skipped|rejected
+        created_at    TEXT NOT NULL,
+        resolved_at   TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_proposals_state ON proposals(state);
+      CREATE INDEX IF NOT EXISTS idx_proposals_agent ON proposals(agent_kind);
+
+      -- 反馈日志（强化学习数据源）
+      CREATE TABLE IF NOT EXISTS feedback_log (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        proposal_id   INTEGER NOT NULL,
+        action        TEXT NOT NULL,           -- 'accept' | 'skip' | 'reject'
+        delta         REAL,                    -- 本次反馈对画像权重的调整量
+        created_at    TEXT NOT NULL
+      );
+
+      -- 信息源（= crawler-adapter 插件实例配置）
+      CREATE TABLE IF NOT EXISTS crawl_sources (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id     TEXT NOT NULL,           -- 对应的 crawler-adapter 插件
+        name          TEXT NOT NULL,
+        config        TEXT,                    -- JSON: 站点参数/规则包引用
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        health        TEXT DEFAULT 'ok',       -- ok|degraded（§12.10 健康度）
+        success_rate  REAL,
+        last_crawl_at TEXT,
+        created_at    TEXT NOT NULL
+      );
+
+      -- 采集条目溯源留档（§12.8；sidecar JSON 溯源写入在 M3 下载落地时预留接入）
+      CREATE TABLE IF NOT EXISTS crawl_items (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id     INTEGER NOT NULL,
+        source_url    TEXT NOT NULL,
+        page_title    TEXT,
+        author        TEXT,
+        url_hash      TEXT NOT NULL,           -- URL 去重（三级去重第一级）
+        file_hash     TEXT,                    -- SHA256（第二级），下载后填
+        phash         TEXT,                    -- 感知哈希（第三级），入库后填
+        image_path    TEXT,                    -- 落地路径，入库后填
+        error         TEXT,                    -- 反爬退让记录（§12.10）
+        crawled_at    TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_crawl_items_url_hash ON crawl_items(url_hash);
+    `,
+    // 已应用过旧版 v3 的开发库补列：duplicate column 错误容忍（重跑安全）
+    tolerant: [
+      'ALTER TABLE preference_profile ADD COLUMN learned_deltas TEXT',
+      'ALTER TABLE preference_profile ADD COLUMN source_watermark TEXT',
+      'ALTER TABLE favorites ADD COLUMN updated_at TEXT',
+    ],
+  },
 ]
 
 /**
@@ -131,6 +228,11 @@ export class MasterDB {
     this.db.pragma('foreign_keys = ON');
     this.createTables();
     this.ensureSchemaVersion();
+  }
+
+  /** 暴露底层连接供 Phase 9 Agent 子系统（ProposalStore 等）自管 SQL */
+  getRawDb(): DatabaseType | null {
+    return this.db;
   }
 
   /**
@@ -165,6 +267,13 @@ export class MasterDB {
         // 事务包裹
         const transaction = this.db.transaction(() => {
           this.db!.exec(migration.sql);
+          // 容忍语句（如补列 ALTER）：duplicate column 可忽略，其余错误仍触发事务回滚
+          for (const stmt of migration.tolerant ?? []) {
+            try { this.db!.prepare(stmt).run(); }
+            catch (err) {
+              if (!String((err as Error).message).includes('duplicate column name')) throw err;
+            }
+          }
           this.db!.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version);
         });
         transaction();
@@ -343,14 +452,14 @@ export class MasterDB {
 
   /**
    * 设置图片评分（评分隐含收藏：不存在收藏记录时自动创建）
-   * 已存在的收藏保留 tags，仅更新 rating
+   * 已存在的收藏保留 tags，仅更新 rating；同时刷 updated_at 以标脏画像（评分是画像信号源）
    */
   setFavoriteRating(libraryId: number, imagePath: string, rating: number): void {
     if (!this.db) return;
     const existing = this.db.prepare('SELECT tags FROM favorites WHERE library_id = ? AND image_path = ?')
       .get(libraryId, imagePath) as { tags: string } | undefined;
     if (existing) {
-      this.db.prepare('UPDATE favorites SET rating = ? WHERE library_id = ? AND image_path = ?')
+      this.db.prepare('UPDATE favorites SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE library_id = ? AND image_path = ?')
         .run(rating, libraryId, imagePath);
     } else {
       this.addFavorite(libraryId, imagePath, [], rating);
@@ -708,6 +817,103 @@ export class MasterDB {
       ).run(...tagIds, libraryId, ...normalizedPaths);
     });
     tx();
+  }
+
+  // ─── Phase 9 — Agent 偏好画像读写与数据源（T3） ───────────────────
+
+  /** 读取画像缓存；libraryId 为 null 读全局画像 */
+  getPreferenceProfile(libraryId: number | null): PreferenceProfile | null {
+    if (!this.db) return null;
+    const row = this.db.prepare(
+      'SELECT * FROM preference_profile WHERE library_id IS ? ORDER BY id DESC LIMIT 1'
+    ).get(libraryId) as any;
+    if (!row) return null;
+    const parseJson = (text: string | null, fallback: any) => {
+      if (text == null) return fallback;
+      try { return JSON.parse(text); } catch { return fallback; }
+    };
+    return {
+      libraryId: row.library_id ?? null,
+      keywords: parseJson(row.keywords, []),
+      learnedDeltas: parseJson(row.learned_deltas ?? null, {}),
+      visualTraits: row.visual_traits ? parseJson(row.visual_traits, undefined) : undefined,
+      sourceAffinity: parseJson(row.source_affinity, {}),
+      exclusions: parseJson(row.exclusions, { terms: [], sourceIds: [] }),
+      updatedAt: row.updated_at,
+      sourceWatermark: row.source_watermark ?? null,
+    };
+  }
+
+  /** 保存画像：同一 library_id 只保留最新一行（UPDATE 命中则覆盖，否则插入） */
+  savePreferenceProfile(profile: PreferenceProfile): void {
+    if (!this.db) return;
+    const fields = {
+      keywords: JSON.stringify(profile.keywords),
+      learned_deltas: JSON.stringify(profile.learnedDeltas ?? {}),
+      visual_traits: profile.visualTraits ? JSON.stringify(profile.visualTraits) : null,
+      source_affinity: JSON.stringify(profile.sourceAffinity),
+      exclusions: JSON.stringify(profile.exclusions),
+      updated_at: profile.updatedAt,
+      source_watermark: profile.sourceWatermark ?? null,
+    };
+    const updated = this.db.prepare(`
+      UPDATE preference_profile
+      SET keywords = @keywords, learned_deltas = @learned_deltas, visual_traits = @visual_traits,
+          source_affinity = @source_affinity, exclusions = @exclusions, updated_at = @updated_at,
+          source_watermark = @source_watermark
+      WHERE library_id IS @library_id
+    `).run({ library_id: profile.libraryId, ...fields });
+    if (updated.changes === 0) {
+      this.db.prepare(`
+        INSERT INTO preference_profile (library_id, keywords, learned_deltas, visual_traits, source_affinity, exclusions, updated_at, source_watermark)
+        VALUES (@library_id, @keywords, @learned_deltas, @visual_traits, @source_affinity, @exclusions, @updated_at, @source_watermark)
+      `).run({ library_id: profile.libraryId, ...fields });
+    }
+  }
+
+  /** 行为数据最后活动时间（收藏/打标/浏览），用于画像脏标记判断；无数据返回 null */
+  getPreferenceLastActivityAt(libraryId: number | null): string | null {
+    if (!this.db) return null;
+    const filter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const params = libraryId === null ? [] : [libraryId];
+    const row = this.db.prepare(`
+      SELECT MAX(ts) AS last FROM (
+        SELECT MAX(COALESCE(updated_at, created_at)) AS ts FROM favorites ${filter}
+        UNION ALL SELECT MAX(created_at) FROM image_tags ${filter}
+        UNION ALL SELECT MAX(viewed_at) FROM history ${filter}
+      )
+    `).get(...params, ...params, ...params) as { last: string | null };
+    return row?.last ? normalizeSqlTs(row.last) : null;
+  }
+
+  /** 画像构建的原始数据源：favorites / image_tags / history 三表拼接 */
+  getProfilerSourceData(libraryId: number | null): ProfilerSourceData {
+    if (!this.db) return { favorites: [], tagEntries: [], historyPaths: [] };
+    const favFilter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const favorites = (this.db.prepare(
+      `SELECT image_path, tags, rating, created_at FROM favorites ${favFilter}`
+    ).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => {
+      let tags: string[] = [];
+      try { tags = JSON.parse(row.tags || '[]'); } catch { /* 脏数据忽略 */ }
+      return { imagePath: row.image_path as string, tags: Array.isArray(tags) ? tags as string[] : [], rating: row.rating ?? 0 };
+    });
+    const tagJoin = libraryId === null ? '' : 'WHERE it.library_id = ?';
+    const tagEntries = (this.db.prepare(`
+      SELECT t.name AS tag, it.image_path, COALESCE(f.rating, 0) AS rating
+      FROM image_tags it
+      JOIN tags t ON t.id = it.tag_id
+      LEFT JOIN favorites f ON f.library_id = it.library_id AND f.image_path = it.image_path
+      ${tagJoin}
+    `).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => ({
+      tag: row.tag as string,
+      imagePath: row.image_path as string,
+      rating: row.rating as number,
+    }));
+    const hisFilter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const historyPaths = (this.db.prepare(
+      `SELECT DISTINCT image_path FROM history ${hisFilter}`
+    ).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => ({ imagePath: row.image_path as string }));
+    return { favorites, tagEntries, historyPaths };
   }
 
   getImageTags(libraryId: number, imagePath: string): Tag[] {

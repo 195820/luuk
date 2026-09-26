@@ -23,6 +23,9 @@ interface SettingsSchema {
   'ai.enabled': boolean;
   'crawler.enabled': boolean;
   'models.directory': string;
+  // Phase 9 — Agent 体系
+  'agent.enabled': boolean;
+  'agent.intervalMs': number;
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -40,6 +43,9 @@ const DEFAULTS: SettingsSchema = {
   'ai.enabled': false,
   'crawler.enabled': false,
   'models.directory': '',
+  // Phase 9 — Agent 体系（默认关闭；定时间隔 6 小时）
+  'agent.enabled': false,
+  'agent.intervalMs': 6 * 60 * 60 * 1000,
 };
 
 let instance: Store<SettingsSchema> | null = null;

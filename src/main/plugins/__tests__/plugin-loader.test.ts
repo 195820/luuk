@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import { PluginLoader } from '../plugin-loader'
+import { PluginLoader, VALID_PLUGIN_KINDS } from '../plugin-loader'
 
 /** 临时目录计数器（避免同一毫秒内冲突） */
 let tempDirCounter = 0
@@ -182,13 +182,8 @@ describe('PluginLoader', () => {
 
     it('所有 PluginKind 枚举值均合法', async () => {
       const loader = new PluginLoader(builtinDir)
-      const kinds = [
-        'ai-index',
-        'ai-transform',
-        'diffusion-provider',
-        'crawler-adapter',
-        'ui-panel'
-      ]
+      // 枚举直接取自 loader 的 VALID_PLUGIN_KINDS（S12：新增 kind 无需手动同步用例）
+      const kinds = [...VALID_PLUGIN_KINDS]
 
       for (const kind of kinds) {
         await createValidPlugin(path.join(builtinDir, `plugin-${kind}`), {
@@ -205,7 +200,7 @@ describe('PluginLoader', () => {
       await loader.discover()
       const plugins = loader.getPlugins()
 
-      expect(plugins).toHaveLength(5)
+      expect(plugins).toHaveLength(kinds.length)
       expect(plugins.every(p => p.state === 'valid')).toBe(true)
     })
   })

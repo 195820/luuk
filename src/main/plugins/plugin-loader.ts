@@ -2,13 +2,14 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import type { PluginManifest, PluginInfo, PluginState, PluginKind } from '../../types/plugin'
 
-/** 合法的插件种类枚举 */
-const VALID_PLUGIN_KINDS: PluginKind[] = [
+/** 合法的插件种类枚举；导出供单测作为单一事实源（S12：新增 kind 时测试自动跟进） */
+export const VALID_PLUGIN_KINDS: PluginKind[] = [
   'ai-index',
   'ai-transform',
   'diffusion-provider',
   'crawler-adapter',
-  'ui-panel'
+  'ui-panel',
+  'decision-provider'
 ]
 
 /** 清单必需的字段 */
