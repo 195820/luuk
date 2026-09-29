@@ -745,6 +745,68 @@ Task 5.0 验收第 3 项"若选择纯 fs.access 方案（推荐），本任务�
 
 ---
 
-**报告状态**：final
+**报告状态**：final（正文保持不重写，复查结论见附录A）
 **生成时间**：2026-09-12
 **下一步**：按 P0-P4 优先级修复，修复完成后重跑三视角复审验证。
+
+---
+
+## 附录A：2026-09-29 合规复查（T-4）
+
+> 复查方式：逐项对当前 HEAD 代码做静态核实（grep/读源），不依赖历史提交自述。涉及提交簇：`07c1c3d` / `c6fd729` / `0db1c02` / `5284aa6` 及 Phase 8-9 各修复提交。
+> 结论速览：**30 / 32 已清偿关闭，2 项部分清偿（W24、S30），0 项完全未处理**。
+
+### 🔴 Critical（10/10 关闭）
+
+| # | 项 | 状态 | 代码证据 |
+|---|---|------|---------|
+| 1 | SlideshowAudio 契约误用 + 构建失败 | ✅ 关闭 | `SlideshowAudio.tsx` L34 改调 `getAudioUrl`（envelope 语义与专用通道匹配）；tsc 0 错、build 通过（近期门禁持续验证） |
+| 2 | Ctrl+R 双副作用叠加 | ✅ 关闭 | `ImageViewer.tsx` L407-409 `stopImmediatePropagation`；`App.tsx` L903 `!e.ctrlKey && !e.metaKey && !e.altKey` 守卫 |
+| 3 | selectAudioFile 与 getMediaUrl 契约漂移 | ✅ 关闭 | 采用 Fix(b)：`library-handlers.ts` L441 新增 `getAudioUrl` 专用通道，不走 `validateLibraryAccess` |
+| 4 | Task E.1 单元测试缺失 | ✅ 关闭 | 7 模块测试全部就位：`themeStore.test.ts` / `histogram.test.ts` / `slideshowStore.test.ts` / `export-service.test.ts` / `database-migration.test.ts`；`library-monitor.test.ts`、`highlight.test.tsx` 于本次复查（2026-09-29）补齐 |
+| 5 | DB 迁移框架缺失 | ✅ 关闭 | `database.ts`：`MIGRATIONS` 数组 L64、`ensureSchemaVersion()` L244、`schema_version` 表 L249，`initialize()` 内调用 L230 |
+| 6 | feature flag `theme.enabled` | ✅ 关闭 | `themeStore.ts` L9 `enabled` + `applyTheme` L78 回退守卫；`settings-service.ts` L14/L37 声明；SettingsPanel 开关；index.html 防闪烁脚本同步尊重 flag（R-2） |
+| 7 | highlightMatch 死代码 | ✅ 关闭 | `ImageGridItem.tsx` L5 import、L249 调用 |
+| 8 | SearchPanel 历史/预设 UI 缺失 | ✅ 关闭 | `SearchPanel.tsx` L77 `loadHistoryAndPresets()`、L91 `addToHistory()`，历史下拉与预设列表已挂载 |
+| 9 | histogram 三项硬性要求 | ✅ 关闭 | `histogram.ts`：`MAX_PIXELS=2_000_000` + `resize`、Rec.601 `0.299/0.587/0.114`、`Uint32Array(256)`×4、返回 `downsampled`；HistogramChart L119 显示降采样提示 |
+| 10 | HistogramChart 悬停数值 | ✅ 关闭 | `hoveredBin` state + hover tooltip（L16/157-165） |
+
+### 🟡 Warning（17/18 关闭）
+
+| # | 项 | 状态 | 代码证据 |
+|---|---|------|---------|
+| 11 | 过渡动画不触发/不响应 | ✅ 关闭 | `ImageViewer.tsx` L123 订阅式 `useSlideshowStore(s => s.transition)`；L678 `<SlideshowTransitionWrapper key={src}>` |
+| 12 | 跨库播放列表竞态 | ✅ 关闭 | `App.tsx` L543 `pendingJumpRef` + 独立 effect 等 images 就绪后跳转（L599-） |
+| 13 | stop() 强清 audioTrack | ✅ 关闭 | `slideshowStore.ts` L242 `pause()` 保留 audioTrack，L248 `stop()` 才清理 |
+| 14 | SlideshowBar Fragment 致 exit 失效 | ✅ 关闭 | 根节点改单一 `motion.div`（SlideshowBar.tsx L69，含 exit 动画） |
+| 15 | dialog 父窗口取 getAllWindows[0] | ✅ 关闭 | `BrowserWindow.fromWebContents(event.sender)` 优先（library-handlers.ts L686） |
+| 16 | slideshow.* 三键双源真相 | ✅ 关闭 | 采用 Fix(a)：`settings-service.ts` schema/DEFAULTS 已无 `slideshow.mode/transition/intervalSec`；单源=渲染端 `slideshow-storage` localStorage（partialize 仅存偏好） |
+| 17 | setInterval 命名遮蔽 | ✅ 关闭 | store 与 SlideshowBar 均改 `setIntervalSec` |
+| 18 | 未复用 wavesurfer.js | ✅ 关闭（决策留痕路径） | 采纳 Fix 第二路径：计划文档 L500-513 已记录「背景音乐用原生 `<audio>`，wavesurfer 保留给 AudioViewer 波形」变更决策与理由 |
+| 19 | index.html 冷启动防闪烁 | ✅ 关闭 | index.html L11-31 内联脚本预置 `data-theme`（并尊重 theme.enabled flag） |
+| 20 | `[data-accent]`/`[data-density]` 选择器 | ✅ 关闭 | `index.css` L201-213 六 accent + 三 density + `--density-scale`；themeStore 写 `root.dataset.accent`，自定义 HEX 内联兜底 |
+| 21 | export-progress 无节流 | ✅ 关闭 | `file-handlers.ts` L154-161 `now - lastEmit >= 100 || done === total` 节流 |
+| 22 | 取消后临时 ZIP 未清理 + original 扩展名丢失 | ✅ 关闭 | `export-service.ts` L141-151：abort → 等 close 释放句柄 → await pipelinePromise → unlink；L241/L255 original 分支 `basename(imagePath)` 保留原扩展名；archiveError 分支 L176 同样清理 |
+| 23 | libraryStatus 未落 store | ✅ 关闭 | `imageStore.ts` L35 `libraryStatus: Record<number,'online'|'offline'>` + `setLibraryStatus`/`syncLibraryStatus` |
+| 24 | settings 命名空间不完整 | ⚠️ 部分清偿 | 已按 Fix 第二路径改 zustand persist 单源（`theme-storage`/`slideshow-storage`，无 electron-store 分裂）；遗留：SettingsSchema 仍保留 `theme.mode`/`theme.accentColor` 键名与 store 字段并存但不读写，建议后续清理或改名对齐 |
+| 25 | FileContextMenu 无封面入口 | ✅ 关闭 | `FileContextMenu.tsx` L40 `{ id: 'setFolderCover', label: '设为文件夹封面' }` |
+| 26 | image-service 缺薄封装 | ✅ 关闭 | `image-service.ts` L1088 `setFolderCover` / L1110 `getFolderCovers`，handler 经 service 调用 |
+| 27 | 附录 A 基线未填 | ➜ 移交 T-5 | 本次梯队二 T-5 用 `bench-scan.mjs` 实测回填（见 implementation-plan-2026-q3-q4.md 附录 A） |
+| 28 | export handlers 位置错位 | ✅ 关闭 | `exportSingleImage`/`exportBatchImages`/`cancelExport` 已迁至 `file-handlers.ts`（L107/133/171），library-handlers 中无残留 |
+
+### 🟢 Suggestion（1/4 关闭）
+
+| # | 项 | 状态 | 代码证据 |
+|---|---|------|---------|
+| 29 | 幻灯片定时器依赖过多 | ✅ 关闭 | `App.tsx` L597 依赖已收敛为稳定项（`slideshowIsPlaying/intervalSec/viewMode/handleNext/currentLibraryId/isVideoPlaying/slideshowNavTick/favoriteImageIndex`），`currentIndex/images/currentImage` 已移出，内部走 `getState()` |
+| 30 | accentPreset/accentCustom 双字段 | ⚠️ 未采纳 | themeStore 仍单字段 `accentColor`；SettingsPanel L106/L114 `accentColor === preset.color` 精确匹配未做大小写归一（用户手输小写 HEX 时高亮错位的主症状仍在，但 density 已独立字段） |
+| 31 | stop() 未显式释放资源 | ✅ 关闭 | 音频资源释放器注册表 + `disposeAudioResources()`（slideshowStore.ts L97-101/L250），不依赖 React effect 卸载时序 |
+| 32 | chokidar 跳过决策未标注 | ✅ 关闭 | 计划文档 L62「✅ 已跳过（采用方案 A：fs.access）」、L83 Task 5.2 顶部决策标注 |
+
+### 复查总评
+
+- Phase 5-7 的 10 个 Critical 全部清偿（含构建、契约、测试、迁移框架、flag、UI 接入、直方图硬要求）。
+- Warning 18 项中 17 项关闭；#24 部分清偿（单源已达成，遗留 schema 死键名），#27 移交 T-5 本轮回填。
+- Suggestion 剩 #30 开放：影响面低（仅自定义 HEX 大小写场景的高亮态显示），建议并入 Phase 1.5 式技术债清单，不单独立项。
+- **本报告 32 项至此无「完全未处理」遗留。**
+
