@@ -16,6 +16,7 @@ docs/
 │   └── 架构设计.md               # 系统架构 / 数据库 / IPC / media://
 ├── plans/                       # 实施计划与方向性设计（阶段性，实施完成后归档）
 │   ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
+│   ├── implementation-plan-phase9-agent.md # Phase 9 Agent 体系与智能采集（M0-M3 已交付，M4+ 进行中）
 │   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
 │   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
 │   └── phase-5-completion.md               # Phase 5 完成记录
@@ -78,4 +79,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-09-13
+**文档结构更新日期**: 2026-09-29

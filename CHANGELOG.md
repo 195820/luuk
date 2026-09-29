@@ -7,6 +7,15 @@
 ## [未发布]
 
 ### 新增
+- **Agent 体系与智能采集**（Phase 9 M0-M3，2026-09-26）：
+  - Agent 统一基座：数据库迁移 v3（preference_profile/proposals/feedback_log/crawl_sources/crawl_items）、偏好画像（冷启动加权 + 水位线增量重算 + learnedDeltas 学习叠加）、决策层（DecisionProvider + 置信度门控升级链 + 本地规则 LocalRulesProvider）、提案状态机与反馈强化（+0.1/-0.02/-0.2，累计拒绝晋级排除项）、调度循环 AgentScheduler（复用 JobRunner，定时/手动/新来源三触发）
+  - Jev 决策插件（M2）：`decision-provider` 插件形态 + 隐私护栏（出站文本元数据白名单过滤，API Key 明文不下渲染进程），默认关闭可回落本地规则
+  - 采集 Agent 三端接入（M3）：CrawlerService 宿主编排 + per-host 闸门频控退让 + 隐藏窗口浏览器层 + 流式下载（.part 原子落盘/Range 续传）+ url_hash→file_hash→pHash 三级去重入库 + sidecar 溯源；内置适配器 bili-web / xhs-web / tg-mtproto / tg-export-import；RecommendScorer 打分→提案闭环（人在回路，UI 属 M4）
+  - 新增 IPC：`triggerCrawlDiscovery` / `getSourceLoginStatus` / `startSourceLogin` 等（preload 已暴露）；Feature Flags `agent.enabled` / `jev.enabled` 默认关闭
+- **插件系统**（Phase 8）：插件宿主（utilityProcess + MessagePort RPC，崩溃隔离）、PluginLoader 生命周期与 kind 白名单、内置插件静态登记双路径契约、JobRunner 后台作业调度（持久化/断点续跑/优先级）、三级内存水位线监控、模型管理器（SHA256 完整性校验）、编辑版本链（非破坏性编辑输出）、内置插件 autotone、Feature Flags（`plugins.enabled`/`ai.enabled`/`crawler.enabled`）
+- **搜索增强与离线库检测**（Phase 5）：离线库自动探测置灰、搜索历史与预设、高亮匹配
+- **主题皮肤与直方图**（Phase 6）：themeStore + SettingsPanel 主题/强调色/密度、图片 RGB/亮度直方图、文件夹封面设置
+- **导出与幻灯片增强**（Phase 7）：archiver 流式 ZIP 导出 + 进度反馈 + ExportDialog；幻灯片过渡动画/随机播放/自定义播放列表/背景音乐
 - **图片对比模式**（Phase 4 Task 1-2）：网格多选 2 张图片后右键「对比」，打开并排/滑块双模式对比视图，共享变换同步缩放平移，自研 `compare-transform.ts` 纯函数变换计算
 - **全屏沉浸式模式**（Phase 4 Task 3）：F11 切换系统全屏，全屏时隐藏头部/底部/文件夹侧边栏，主进程转发原生全屏事件保持渲染端同步
 - **相邻图预加载**（Phase 4 Task 4）：`useAdjacentPreload` hook，150ms 防抖 + ±1/±2 优先级，快速翻页自动跳过中间图，令牌缓存避免重复注册
