@@ -110,10 +110,35 @@ export class PluginManager {
     return this.loader.getPlugin(pluginId)
   }
 
+  /** 插件是否处于启用状态 */
+  isPluginEnabled(pluginId: string): boolean {
+    return this.enabledPlugins.has(pluginId)
+  }
+
+  /**
+   * 把插件清单 entry 解析为 Worker 可加载的绝对路径
+   * 内置插件随宿主打包，Worker 侧按静态注册表命中，此路径仅作为装载幂等键
+   */
+  private resolveEntryPath(pluginId: string): string {
+    const info = this.loader.getPlugin(pluginId)
+    if (!info) {
+      throw new Error(`插件不存在: ${pluginId}`)
+    }
+    return path.join(info.path, info.manifest.entry)
+  }
+
+  /** 向 Worker 装载插件（幂等；入口未导出 activate() 时在此抛错） */
+  async loadPlugin(pluginId: string): Promise<void> {
+    await this.hostProcess.rpc('plugin.load', {
+      pluginId,
+      entryPath: this.resolveEntryPath(pluginId),
+    })
+  }
+
   /**
    * 启用 / 停用插件
-   * - 启用时懒启动 Worker 进程
-   * - 停用时从启用集合中移除（Worker 不立即关闭，等待全部停用）
+   * - 启用时懒启动 Worker 进程并向其装载插件 op 注册表（失败即抛错，不置为 activated）
+   * - 停用时从启用集合中移除并卸载 Worker 侧注册表（Worker 不立即关闭，等待全部停用）
    */
   async setEnabled(pluginId: string, enabled: boolean): Promise<void> {
     const plugin = this.loader.getPlugin(pluginId)
@@ -125,10 +150,16 @@ export class PluginManager {
     }
 
     if (enabled) {
+      // T12：pc-app 自跑协议栈（如 Telegram MTProto）需 UI 二次确认（M4 落地）；
+      // M3 先在启用路径留痕，便于审计高风险权限的开启
+      if (plugin.manifest.permissions?.includes('crawler.protocol')) {
+        logger.warn('PluginManager', `⚠ 启用带 crawler.protocol 的插件（插件内自跑网络协议栈，绕过宿主退让闸门）: ${pluginId}`)
+      }
+      // 先启动 Worker 并装载，成功后才改状态：装载失败不留下"已启用但不可调用"的中间态
+      await this.hostProcess.ensureStarted()
+      await this.loadPlugin(pluginId)
       this.enabledPlugins.add(pluginId)
       this.loader.setState(pluginId, 'activated')
-      // 懒启动 Worker（首次启用时）
-      await this.hostProcess.ensureStarted()
       logger.info('PluginManager', `插件已启用: ${pluginId}`)
     } else {
       this.enabledPlugins.delete(pluginId)
@@ -138,6 +169,8 @@ export class PluginManager {
       // 全部停用后关闭 Worker 释放资源
       if (this.enabledPlugins.size === 0) {
         await this.hostProcess.shutdown()
+      } else {
+        await this.hostProcess.rpc('plugin.unload', { pluginId }).catch(() => {})
       }
     }
   }
@@ -145,6 +178,7 @@ export class PluginManager {
   /**
    * 执行插件 op
    * - 前置校验：插件已启用 + 内存非红色水位
+   * - 调用前重复 loadPlugin（Worker 侧幂等）：Worker 崩溃重启后注册表丢失，可自愈
    * - 通过 Worker RPC 调用
    */
   async executeOp(
@@ -164,6 +198,7 @@ export class PluginManager {
       )
     }
 
+    await this.loadPlugin(pluginId)
     return this.hostProcess.rpc('plugin.execute', { pluginId, opId, input })
   }
 

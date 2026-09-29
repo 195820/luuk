@@ -1,6 +1,10 @@
 import sharp from 'sharp'
 import { calculateHistogram, getHistogramStats } from '../../../utils/histogram'
 
+/** 插件与 op 标识（manifest、Worker 注册表与宿主入口共用同一事实源，沿 M2 契约） */
+export const AUTOTONE_PLUGIN_ID = 'builtin.autotone'
+export const AUTOTONE_OP_AUTO = 'autotone.auto'
+
 /** 自动调色参数 */
 export interface AutotoneParams {
   /** 是否启用曝光修正（默认 true） */
@@ -106,4 +110,22 @@ export async function applyAutotone(
   await sharp(data, {
     raw: { width: info.width, height: info.height, channels }
   }).toFile(outputPath)
+}
+
+/** executeOp 入参（宿主批量作业编排层传入，输出副本目录由 EditsService 解析） */
+export interface AutotoneOpInput {
+  inputPath: string
+  outputPath: string
+  params?: AutotoneParams
+}
+
+/** 内置插件约定入口：导出 activate(): Record<opId, handler>（M2 装载契约） */
+export function activate(): Record<string, (input: unknown) => Promise<{ output: string }>> {
+  return {
+    [AUTOTONE_OP_AUTO]: async (raw) => {
+      const { inputPath, outputPath, params } = raw as AutotoneOpInput
+      await applyAutotone(inputPath, outputPath, params)
+      return { output: outputPath }
+    },
+  }
 }

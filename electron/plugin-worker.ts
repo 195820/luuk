@@ -7,6 +7,19 @@ import { parentPort } from 'worker_threads'
 import type {
   MemoryStatus,
 } from '../src/types/plugin'
+import {
+  executePluginOp,
+  loadPluginEntry,
+  registerBuiltinPlugin,
+  unloadPluginEntry,
+} from '../src/main/plugins/plugin-registry'
+import { activate as activateJevDecision } from '../src/main/plugins/builtins/jev-decision'
+import { activate as activateAutotone } from '../src/main/plugins/builtins/autotone'
+import { activate as activateRuleEngineAdapter } from '../src/main/plugins/builtins/rule-engine-adapter'
+import { activate as activateBiliWeb } from '../src/main/plugins/builtins/bili-web'
+import { activate as activateXhsWeb } from '../src/main/plugins/builtins/xhs-web'
+import { activate as activateTgExportImport } from '../src/main/plugins/builtins/tg-export-import'
+import { activate as activateTgMtproto } from '../src/main/plugins/builtins/tg-mtproto'
 
 // ── 通信端口 ──
 // 本 Worker 由 plugin-host-process 以 utilityProcess 方式启动，通信走
@@ -99,27 +112,35 @@ function getMemoryStats() {
 registerHandler('memory.getStatus', async () => getMemoryStatus())
 registerHandler('memory.getStats', async () => getMemoryStats())
 
-// 插件生命周期（占位实现）
+// 插件生命周期（T8：decision-provider 形态实执行最小集）
+// 内置插件随宿主一起打包，无独立可 import 的产物，故预先登记 activator；
+// 第三方插件按清单 entry 动态 import（约定导出 activate()）
+registerBuiltinPlugin('builtin.autotone', activateAutotone)
+registerBuiltinPlugin('builtin.jev-decision', activateJevDecision)
+registerBuiltinPlugin('builtin.rule-engine-adapter', activateRuleEngineAdapter)
+registerBuiltinPlugin('builtin.bili-web', activateBiliWeb)
+registerBuiltinPlugin('builtin.xhs-web', activateXhsWeb)
+registerBuiltinPlugin('builtin.tg-export-import', activateTgExportImport)
+registerBuiltinPlugin('builtin.tg-mtproto', activateTgMtproto)
+
 registerHandler('plugin.load', async (params) => {
   const { pluginId, entryPath } = params as { pluginId: string; entryPath: string }
-  // TODO: 实际加载插件 JS 沙箱
-  return { pluginId, entryPath, loaded: true }
+  const ops = await loadPluginEntry(pluginId, entryPath)
+  return { pluginId, entryPath, loaded: true, opIds: Object.keys(ops) }
 })
 
 registerHandler('plugin.unload', async (params) => {
   const { pluginId } = params as { pluginId: string }
-  // TODO: 实际卸载插件
-  return { pluginId, unloaded: true }
+  return { pluginId, unloaded: unloadPluginEntry(pluginId) }
 })
 
 registerHandler('plugin.execute', async (params) => {
-  const { pluginId, opId } = params as {
+  const { pluginId, opId, input } = params as {
     pluginId: string
     opId: string
     input: unknown
   }
-  // TODO: 实际执行插件 Op
-  return { pluginId, opId, output: null }
+  return executePluginOp(pluginId, opId, input)
 })
 
 // 推理相关（占位实现）

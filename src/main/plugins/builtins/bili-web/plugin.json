@@ -1,0 +1,29 @@
+{
+  "id": "builtin.bili-web",
+  "name": "bilibili 网站采集适配器",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "crawler-adapter",
+  "entry": "index.ts",
+  "capabilities": ["crawler.bili"],
+  "requires": {
+    "runtime": "none",
+    "gpu": false,
+    "models": []
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "bili.buildRequests",
+        "capability": "crawler.bili",
+        "label": "生成 B 站动态/相册分页请求（可选 wbi 签名）"
+      },
+      {
+        "id": "bili.parseResponse",
+        "capability": "crawler.bili",
+        "label": "解析 B 站 web 接口 JSON 为候选"
+      }
+    ]
+  },
+  "permissions": ["crawler.fetch"]
+}

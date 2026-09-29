@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises'
 import * as path from 'path'
-import type { PluginManifest, PluginInfo, PluginState, PluginKind } from '../../types/plugin'
+import type { PluginManifest, PluginInfo, PluginState, PluginKind, PluginPermission } from '../../types/plugin'
 
 /** 合法的插件种类枚举；导出供单测作为单一事实源（S12：新增 kind 时测试自动跟进） */
 export const VALID_PLUGIN_KINDS: PluginKind[] = [
@@ -10,6 +10,24 @@ export const VALID_PLUGIN_KINDS: PluginKind[] = [
   'crawler-adapter',
   'ui-panel',
   'decision-provider'
+]
+
+/** 权限白名单（T12 与 PluginPermission 枚举同步）：清单声明未知权限直接判 invalid */
+export const VALID_PERMISSIONS: PluginPermission[] = [
+  'library.read',
+  'library.write',
+  'fs.read.library',
+  'fs.write.output',
+  'inference',
+  'image',
+  'jobs',
+  'edit.write',
+  'browser',
+  'fetch',
+  'mask',
+  'crawler.fetch',
+  'crawler.protocol',
+  'crawler.write.media',
 ]
 
 /** 清单必需的字段 */
@@ -187,6 +205,16 @@ export class PluginLoader {
       return {
         valid: false,
         error: `无效的插件种类: ${manifest.kind}，期望值: ${VALID_PLUGIN_KINDS.join(', ')}`
+      }
+    }
+
+    // T12：权限白名单校验（crawler-adapter 新权限组合在此把关，未知权限即拒）
+    for (const perm of manifest.permissions ?? []) {
+      if (!VALID_PERMISSIONS.includes(perm)) {
+        return {
+          valid: false,
+          error: `无效的插件权限: ${perm}，期望值: ${VALID_PERMISSIONS.join(', ')}`
+        }
       }
     }
 

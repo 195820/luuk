@@ -2,6 +2,11 @@
 import type {
   PluginInfo, Job, JobItem, JobProgress,
 } from './plugin'
+import type {
+  JevStatus, JevToggleResult,
+  Proposal, ProposalQuery, ProposalPage, ProposalState, AgentKind, FeedbackAction,
+  AgentStatus, CrawlSourceRecord, CreateCrawlSourceInput,
+} from './agent'
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
@@ -92,6 +97,32 @@ export interface ElectronAPI {
   pluginsSetEnabled: (pluginId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
   pluginsExecute: (pluginId: string, opId: string, input: unknown) => Promise<{ success: boolean; data?: unknown; error?: string }>
   pluginsGetMenuItems: (context?: string) => Promise<{ success: boolean; data?: Array<{ pluginId: string; op: string; label: string; context: string[] }>; error?: string }>
+  // Agent / Jev 决策（T10：Key 只写不读，响应内绝无明文）
+  getJevStatus: () => Promise<{ success: boolean; data?: JevStatus; error?: string }>
+  setJevEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: JevToggleResult; error?: string }>
+  setJevApiKey: (apiKey: string) => Promise<{ success: boolean; data?: JevToggleResult; error?: string }>
+  // 采集 Agent（T16：爬虫开关 + 手动发现 + 来源登录态）
+  setCrawlerEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: { enabled: boolean }; error?: string }>
+  triggerCrawlDiscovery: (sourceIds?: number[]) => Promise<{ success: boolean; data?: { jobIds: string[] }; error?: string }>
+  getSourceLoginStatus: (sourceId: number) => Promise<{
+    success: boolean
+    data?: { needsLogin: boolean; loggedIn: boolean; probeUrl?: string }
+    error?: string
+  }>
+  startSourceLogin: (sourceId: number) => Promise<{ success: boolean; data?: { loggedIn: boolean }; error?: string }>
+  // 采集 Agent M4 — 提案查询/反馈（T17/T18）
+  listProposals: (query?: ProposalQuery) => Promise<{ success: boolean; data?: ProposalPage; error?: string }>
+  countProposalsByState: (agentKind?: AgentKind) => Promise<{ success: boolean; data?: Record<ProposalState, number>; error?: string }>
+  resolveProposal: (id: number, action: FeedbackAction) => Promise<{ success: boolean; data?: Proposal; error?: string }>
+  // 采集 Agent M4 — 设置与状态（T20）
+  getAgentStatus: () => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  setAgentEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  setAgentIntervalMs: (intervalMs: number) => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  // 采集 Agent M4 — 信息源 CRUD（T19）
+  listCrawlSources: () => Promise<{ success: boolean; data?: CrawlSourceRecord[]; error?: string }>
+  createCrawlSource: (input: CreateCrawlSourceInput) => Promise<{ success: boolean; data?: CrawlSourceRecord; error?: string }>
+  deleteCrawlSource: (id: number) => Promise<{ success: boolean; data?: boolean; error?: string }>
+  setCrawlSourceEnabled: (id: number, enabled: boolean) => Promise<{ success: boolean; data?: CrawlSourceRecord | null; error?: string }>
   // JobRunner 作业管理
   jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
   jobsGet: (jobId: string) => Promise<{ success: boolean; data?: Job & { items: JobItem[] }; error?: string }>
@@ -502,6 +533,14 @@ export type {
 } from './plugin'
 
 // Phase 9 — Agent 体系类型（T2）
+export type {
+  JevStatsSnapshot, JevStatus, JevToggleResult,
+  AgentStatus, CreateCrawlSourceInput, ProposalQuery, ProposalPage,
+} from './agent'
+export type {
+  ConnectorType, RequestPlan, FetchedResponse, CandidateDraft, BuildRequestsResult,
+  BuildRequestsInput, ParseResponseInput, CrawlSourceConfig, CrawlSourceRecord,
+} from './agent'
 export type {
   WeightedKeyword, PreferenceProfile, AgentKind, ProposalState, DecisionSource,
   Proposal, FeedbackAction, DecisionQuestion, DecisionAnswer, DecisionContext,

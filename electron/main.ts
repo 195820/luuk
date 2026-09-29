@@ -7,6 +7,12 @@ import { registerFileHandlers, unregisterFileHandlers } from '../src/main/ipc/fi
 import { registerSearchHandlers, unregisterSearchHandlers } from '../src/main/ipc/search-handlers'
 import { registerTagHandlers, unregisterTagHandlers } from '../src/main/ipc/tag-handlers'
 import { registerPluginHandlers, unregisterPluginHandlers } from '../src/main/ipc/plugin-handlers'
+import {
+  registerAgentHandlers,
+  unregisterAgentHandlers,
+  ensureAgentDecisionLayer,
+  ensureCrawlerLayerOnBoot,
+} from '../src/main/ipc/agent-handlers'
 import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
 import { initJobRunner, getJobRunner } from '../src/main/services/job-runner'
 import { getPluginManager } from '../src/main/services/plugin-manager'
@@ -257,6 +263,13 @@ app.whenReady().then(async () => {
 
   registerPluginHandlers()
   registerJobHandlers()
+  registerAgentHandlers()
+
+  // 决策层升级链装配（jev.enabled 默认关闭 → 不触网，仅留本地规则）
+  await ensureAgentDecisionLayer()
+
+  // 爬虫层装配（T11，crawler.enabled 默认关闭 → 零窗口零网络）
+  ensureCrawlerLayerOnBoot()
 
   createWindow()
 
@@ -313,6 +326,7 @@ function shutdownApp(): Promise<void> {
         unregisterTagHandlers()
         unregisterPluginHandlers()
         unregisterJobHandlers()
+        unregisterAgentHandlers()
 
         libraryMonitor.stop()
         stopMediaRegistryCleanup()

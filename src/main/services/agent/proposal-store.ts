@@ -141,6 +141,17 @@ export class ProposalStore {
     return proposal
   }
 
+  /** T16 防重提案：同 sourceUrl 是否已有 pending 采集提案（payload 为 CandidateItem JSON） */
+  hasPendingForSourceUrl(sourceUrl: string): boolean {
+    const row = this.db.prepare(`
+      SELECT 1 FROM proposals
+      WHERE agent_kind = 'crawler' AND state = 'pending'
+        AND json_valid(payload) AND json_extract(payload, '$.sourceUrl') = ?
+      LIMIT 1
+    `).get(sourceUrl)
+    return row !== undefined
+  }
+
   /** 按 agent_kind / state 过滤，score 降序分页（DiscoverPanel 消费） */
   list(query: ProposalQuery = {}): ProposalPage {
     const page = Math.max(1, query.page ?? 1)

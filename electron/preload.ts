@@ -197,6 +197,29 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pluginsGetMenuItems: (context?: string) =>
     ipcRenderer.invoke('plugins:getMenuItems', context),
 
+  // Agent / Jev 决策（T10：Key 只写不读）
+  getJevStatus: () => ipcRenderer.invoke('getJevStatus'),
+  setJevEnabled: (enabled: boolean) => ipcRenderer.invoke('setJevEnabled', enabled),
+  setJevApiKey: (apiKey: string) => ipcRenderer.invoke('setJevApiKey', apiKey),
+
+  // 采集 Agent（T16：爬虫开关 + 手动发现 + 来源登录态）
+  setCrawlerEnabled: (enabled: boolean) => ipcRenderer.invoke('setCrawlerEnabled', enabled),
+  triggerCrawlDiscovery: (sourceIds?: number[]) => ipcRenderer.invoke('triggerCrawlDiscovery', sourceIds),
+  getSourceLoginStatus: (sourceId: number) => ipcRenderer.invoke('getSourceLoginStatus', sourceId),
+  startSourceLogin: (sourceId: number) => ipcRenderer.invoke('startSourceLogin', sourceId),
+
+  // 采集 Agent M4 — 提案（T17/T18）/ Agent 设置（T20）/ 信息源 CRUD（T19）
+  listProposals: (query?: any) => ipcRenderer.invoke('listProposals', query),
+  countProposalsByState: (agentKind?: string) => ipcRenderer.invoke('countProposalsByState', agentKind),
+  resolveProposal: (id: number, action: string) => ipcRenderer.invoke('resolveProposal', id, action),
+  getAgentStatus: () => ipcRenderer.invoke('getAgentStatus'),
+  setAgentEnabled: (enabled: boolean) => ipcRenderer.invoke('setAgentEnabled', enabled),
+  setAgentIntervalMs: (intervalMs: number) => ipcRenderer.invoke('setAgentIntervalMs', intervalMs),
+  listCrawlSources: () => ipcRenderer.invoke('listCrawlSources'),
+  createCrawlSource: (input: any) => ipcRenderer.invoke('createCrawlSource', input),
+  deleteCrawlSource: (id: number) => ipcRenderer.invoke('deleteCrawlSource', id),
+  setCrawlSourceEnabled: (id: number, enabled: boolean) => ipcRenderer.invoke('setCrawlSourceEnabled', id, enabled),
+
   // JobRunner 作业管理
   jobsList: () => ipcRenderer.invoke('jobs:list'),
   jobsGet: (jobId: string) => ipcRenderer.invoke('jobs:get', jobId),

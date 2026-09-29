@@ -1,0 +1,24 @@
+{
+  "id": "builtin.tg-mtproto",
+  "name": "Telegram MTProto 账号连接器",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "crawler-adapter",
+  "entry": "index.ts",
+  "capabilities": ["crawler.telegram"],
+  "requires": {
+    "runtime": "none",
+    "gpu": false,
+    "models": []
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "tg.discover",
+        "capability": "crawler.telegram",
+        "label": "MTProto 增量枚举会话消息并下载图片为本地候选（pc-app 自跑协议栈）"
+      }
+    ]
+  },
+  "permissions": ["crawler.protocol", "crawler.write.media"]
+}

@@ -1,0 +1,29 @@
+{
+  "id": "builtin.xhs-web",
+  "name": "小红书网页版采集适配器",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "crawler-adapter",
+  "entry": "index.ts",
+  "capabilities": ["crawler.xhs"],
+  "requires": {
+    "runtime": "none",
+    "gpu": false,
+    "models": []
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "xhs.buildRequests",
+        "capability": "crawler.xhs",
+        "label": "生成小红书页面导航计划（读 SSR 首屏态）"
+      },
+      {
+        "id": "xhs.parseResponse",
+        "capability": "crawler.xhs",
+        "label": "解析 __INITIAL_STATE__ 笔记为候选"
+      }
+    ]
+  },
+  "permissions": ["crawler.fetch"]
+}

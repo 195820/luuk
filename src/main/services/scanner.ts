@@ -387,8 +387,9 @@ export class LibraryScanner {
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
 
-        // 跳过隐藏目录和特殊目录
-        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+        // 跳过隐藏目录、依赖目录，以及爬虫下载/编辑的下划线产物目录（§8.3：落地目录不自我递归入库）
+        if (entry.name.startsWith('.') || entry.name === 'node_modules'
+          || entry.name === '_downloads' || entry.name === '_edits') {
           continue;
         }
 
