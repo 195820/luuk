@@ -7,6 +7,9 @@
  *
  * skip/reject 不迁移（留 `_downloads` 由后续清理策略处理，人在回路绝不自动删用户内容）。
  *
+ * 人在回路护栏：仅 `_downloads` 暂存区内的文件才搬移；pc-app 本地形态（如 tg-export-import）
+ * 的 `image_path` 指向用户目录原件，accept 时只复制到 Imported/，原件原地保留，绝不搬走用户内容。
+ *
  * 可测性：文件迁移与库扫描全部经依赖注入，单测用临时目录 + 假 scan，零 sharp/零真实网络。
  */
 import fs from 'fs'
@@ -44,11 +47,20 @@ export interface ImportResult {
   errors: string[]
 }
 
-/** 页面/来源名 → 安全目录名（去非法字符、限长、空回退） */
+/** Windows 保留设备名（大小写不敏感，含带后缀形态如 CON.txt） */
+const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
+
+/** 页面/来源名 → 安全目录名（去非法字符、去尾点/空格、保留名回退、限长、空回退） */
 export function sanitizeDirName(raw: string | undefined | null, fallback: string): string {
-  const cleaned = (raw ?? '').trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/\s+/g, ' ')
+  const cleaned = (raw ?? '')
+    .trim()
+    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/[. ]+$/, '') // Win32 会剥离尾点/空格，主动去掉避免目录折叠/EINVAL
+    .slice(0, 80)
   if (!cleaned || cleaned === '.' || cleaned === '..') return fallback
-  return cleaned.slice(0, 80)
+  if (RESERVED_NAME.test(cleaned.split('.')[0])) return fallback // 保留名（含 CON.xxx）
+  return cleaned
 }
 
 /** 从 sourceUrl 取主机名做站点目录（非法/无主机回退 'source'） */
@@ -60,18 +72,48 @@ function siteFromUrl(sourceUrl: string): string {
   }
 }
 
+/** 只复制不删源（用于库外原件:人在回路护栏，绝不搬走用户目录里的原始文件） */
+async function copyInto(from: string, to: string): Promise<void> {
+  await fs.promises.copyFile(from, to)
+}
+
+/**
+ * 同卷 rename → 跨卷/锁定回退为「复制 .tmp → 原子落位 → 尽力删源」。
+ * 回退放宽至 EXDEV/EPERM/EBUSY/EACCES/ENOTEMPTY（Windows 跨卷或被占用常见）；
+ * 删源失败不判失败（源滞留 _downloads 由后续清理策略处理，不阻断登记）。
+ */
 async function defaultRelocate(from: string, to: string): Promise<void> {
   try {
     await fs.promises.rename(from, to)
   } catch (err) {
-    // EXDEV：跨分区/跨盘 → 复制再删除
-    if ((err as NodeJS.ErrnoException).code === 'EXDEV') {
-      await fs.promises.copyFile(from, to)
-      await fs.promises.unlink(from)
+    const code = (err as NodeJS.ErrnoException).code
+    if (code === 'EXDEV' || code === 'EPERM' || code === 'EBUSY' || code === 'EACCES' || code === 'ENOTEMPTY') {
+      const tmp = `${to}.tmp-${process.pid}-${Date.now()}`
+      try {
+        await fs.promises.copyFile(from, tmp)
+        await fs.promises.rename(tmp, to) // 同目录 rename → 原子，避免半截文件被扫描登记
+      } catch (inner) {
+        await fs.promises.rm(tmp, { force: true }).catch(() => {})
+        throw inner
+      }
+      await fs.promises.unlink(from).catch(() => {}) // 删源尽力而为
     } else {
       throw err
     }
   }
+}
+
+/** 目标同名则追加 _1/_2… 唯一后缀，避免 POSIX rename 静默覆盖丢数据 */
+function uniqueTargetPath(dir: string, basename: string): string {
+  const first = path.join(dir, basename)
+  if (!fs.existsSync(first)) return first
+  const ext = path.extname(basename)
+  const stem = basename.slice(0, basename.length - ext.length)
+  for (let i = 1; i < 1000; i++) {
+    const candidate = path.join(dir, `${stem}_${i}${ext}`)
+    if (!fs.existsSync(candidate)) return candidate
+  }
+  return path.join(dir, `${stem}_${Date.now()}${ext}`)
 }
 
 /**
@@ -97,26 +139,49 @@ export async function importAcceptedCrawlerProposal(
     return { moved: 0, targetRelDir: '', scanned: false, errors: ['未找到该提案的已采媒体留档'] }
   }
 
-  const site = siteFromUrl(payload.sourceUrl)
-  const page = sanitizeDirName(payload.pageTitle, `p_${payload.sourceId}`)
-  const relDir = path.join(IMPORT_DIR, `${site}`, page)
-  const absDir = path.join(root, relDir)
-  await fs.promises.mkdir(absDir, { recursive: true })
+  // 落点目录准备纳入 try（H1）：库根不可写/路径过长等异常统一回 errors，不再冒泡致 accept 静默崩溃
+  let absDir: string
+  let relDir: string
+  try {
+    const site = siteFromUrl(payload.sourceUrl)
+    const page = sanitizeDirName(payload.pageTitle, `p_${payload.sourceId}`)
+    relDir = path.join(IMPORT_DIR, site, page)
+    absDir = path.join(root, relDir)
+    await fs.promises.mkdir(absDir, { recursive: true })
+  } catch (err) {
+    return { moved: 0, targetRelDir: '', scanned: false, errors: [`落点目录创建失败: ${err instanceof Error ? err.message : String(err)}`] }
+  }
 
+  // C1 人在回路护栏：仅 _downloads 暂存区内的文件才允许搬移；库外原件一律只复制不删源
+  const dlPrefix = path.resolve(root, '_downloads') + path.sep
   const relocate = deps.relocate ?? defaultRelocate
   let moved = 0
   for (const item of media) {
     const from = item.imagePath as string
     try {
+      if (typeof from !== 'string' || !path.isAbsolute(from)) {
+        errors.push(`非法媒体路径: ${from}`)
+        continue
+      }
       if (!fs.existsSync(from)) {
         errors.push(`媒体文件缺失: ${from}`)
         continue
       }
-      const to = path.join(absDir, path.basename(from))
-      await relocate(from, to)
-      // sidecar 随文件迁移（DB 损坏时的溯源副本），存在才搬
+      const to = uniqueTargetPath(absDir, path.basename(from))
+      const insideStaging = path.resolve(from).startsWith(dlPrefix)
+      if (insideStaging) await relocate(from, to)
+      else await copyInto(from, to) // 库外原件:复制到 Imported,原件原地保留
+      // sidecar 独立 try（M3）：随迁失败不连累主文件的 updateImagePath
       const scFrom = sidecarPath(from)
-      if (fs.existsSync(scFrom)) await relocate(scFrom, sidecarPath(to))
+      if (fs.existsSync(scFrom)) {
+        try {
+          const scTo = sidecarPath(to)
+          if (insideStaging) await relocate(scFrom, scTo)
+          else await copyInto(scFrom, scTo)
+        } catch (e) {
+          errors.push(`sidecar 迁移失败: ${scFrom}: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      }
       deps.updateImagePath(item.id, to)
       moved++
     } catch (err) {

@@ -44,6 +44,15 @@ describe('sanitizeDirName', () => {
     expect(sanitizeDirName('.', 'fb')).toBe('fb')
     expect(sanitizeDirName('正常 名称', 'fb')).toBe('正常 名称')
   })
+
+  it('M1：去尾点/空格 + Windows 保留名回退', () => {
+    expect(sanitizeDirName('照片..', 'fb')).toBe('照片')
+    expect(sanitizeDirName('name  ', 'fb')).toBe('name')
+    expect(sanitizeDirName('CON', 'fb')).toBe('fb')
+    expect(sanitizeDirName('con.txt', 'fb')).toBe('fb')
+    expect(sanitizeDirName('LPT9', 'fb')).toBe('fb')
+    expect(sanitizeDirName('contract', 'fb')).toBe('contract') // 非保留名不误伤
+  })
 })
 
 describe('importAcceptedCrawlerProposal', () => {
@@ -135,5 +144,68 @@ describe('importAcceptedCrawlerProposal', () => {
     const res = await importAcceptedCrawlerProposal(makeCandidate(), 7, deps)
     expect(res.moved).toBe(1)
     expect(fs.existsSync(f)).toBe(false)
+  })
+
+  it('C1：库外原件（非 _downloads）只复制不删源，sidecar 随附', async () => {
+    const exportDir = path.join(root, 'user_exports')
+    fs.mkdirSync(exportDir, { recursive: true })
+    const orig = path.join(exportDir, 'o.jpg')
+    fs.writeFileSync(orig, 'OUT')
+    fs.writeFileSync(orig + '.luuk-provenance.json', '{}')
+    const res = await importAcceptedCrawlerProposal(makeCandidate(), 7, baseDeps([mediaRow(1, orig)]))
+
+    const target = path.join(root, IMPORT_DIR, 'www.bilibili.com', '落日 图集', 'o.jpg')
+    expect(res.moved).toBe(1)
+    expect(fs.existsSync(target)).toBe(true)
+    expect(fs.existsSync(orig)).toBe(true) // 原件原地保留（人在回路护栏）
+    expect(fs.existsSync(target + '.luuk-provenance.json')).toBe(true)
+    expect(updates).toEqual([{ id: 1, p: target }])
+  })
+
+  it('M2：同名目标不覆盖，第二个追加 _1 后缀', async () => {
+    const a = path.join(dlDir, 'subA', 'dup.jpg')
+    const b = path.join(dlDir, 'subB', 'dup.jpg')
+    fs.mkdirSync(path.dirname(a), { recursive: true })
+    fs.mkdirSync(path.dirname(b), { recursive: true })
+    fs.writeFileSync(a, 'A')
+    fs.writeFileSync(b, 'B')
+    const res = await importAcceptedCrawlerProposal(
+      makeCandidate(), 7, baseDeps([mediaRow(1, a), mediaRow(2, b)]),
+    )
+    expect(res.moved).toBe(2)
+    const dir = path.join(root, IMPORT_DIR, 'www.bilibili.com', '落日 图集')
+    expect(fs.existsSync(path.join(dir, 'dup.jpg'))).toBe(true)
+    expect(fs.existsSync(path.join(dir, 'dup_1.jpg'))).toBe(true)
+    expect(updates.map(u => u.p)).toEqual([
+      path.join(dir, 'dup.jpg'), path.join(dir, 'dup_1.jpg'),
+    ])
+  })
+
+  it('M3：sidecar 迁移失败不阻断主文件登记', async () => {
+    const f = path.join(dlDir, 'm.jpg')
+    fs.writeFileSync(f, 'M')
+    fs.writeFileSync(f + '.luuk-provenance.json', '{}')
+    const deps = baseDeps([mediaRow(1, f)])
+    deps.relocate = async (from, to) => {
+      if (from.endsWith('.luuk-provenance.json')) throw new Error('EACCES sidecar')
+      fs.copyFileSync(from, to); fs.unlinkSync(from)
+    }
+    const res = await importAcceptedCrawlerProposal(makeCandidate(), 7, deps)
+    expect(res.moved).toBe(1)
+    expect(updates).toHaveLength(1) // 主文件成功→回写不受 sidecar 失败影响
+    expect(res.errors.some(e => e.includes('sidecar 迁移失败'))).toBe(true)
+    expect(res.scanned).toBe(true)
+  })
+
+  it('H1：落点目录创建失败回 errors，不冒泡崩溃且零扫描', async () => {
+    const fileAsRoot = path.join(root, 'afile')
+    fs.writeFileSync(fileAsRoot, 'x') // 用文件当库根 → mkdir 必失败
+    const deps = baseDeps([mediaRow(1, path.join(dlDir, 'x.jpg'))])
+    deps.getLibraryRootPath = () => fileAsRoot
+    const res = await importAcceptedCrawlerProposal(makeCandidate(), 7, deps)
+    expect(res.moved).toBe(0)
+    expect(res.scanned).toBe(false)
+    expect(res.errors[0]).toContain('落点目录创建失败')
+    expect(scanCalls).toHaveLength(0)
   })
 })

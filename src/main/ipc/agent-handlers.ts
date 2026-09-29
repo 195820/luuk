@@ -45,6 +45,9 @@ import type {
 /** 画像重建节流（W8 生产接线口径：5 分钟） */
 const PROFILE_REBUILD_THROTTLE_MS = 5 * 60 * 1000
 
+/** 采集间隔上界（30 天）：与 MIN_INTERVAL_MS 配对钳制，防超大值触发 Node 定时器溢出（M5） */
+const MAX_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000
+
 let profiler: PreferenceProfiler | null = null
 
 /** profiler 单例（T16 打分与全局画像共用同一节流/脏检查） */
@@ -421,10 +424,14 @@ export function registerAgentHandlers(): void {
     }
   })
 
-  // 定时间隔变更：钳制下限后必须 reschedule()（M1 修正口径，否则新间隔到下个周期才生效）
+  // 定时间隔变更：钳制上下限后必须 reschedule()（M1 修正口径，否则新间隔到下个周期才生效）
+  // M5：仅钳下限会放过 Infinity/超 2^31-1（Node 会钳成 1ms 调度风暴），故补上界与 isFinite 守卫
   ipcMain.handle('setAgentIntervalMs', async (_e, intervalMs: number) => {
     try {
-      const clamped = Math.max(MIN_INTERVAL_MS, Number(intervalMs) || MIN_INTERVAL_MS)
+      const n = Number(intervalMs)
+      const clamped = Number.isFinite(n)
+        ? Math.min(MAX_INTERVAL_MS, Math.max(MIN_INTERVAL_MS, n))
+        : MIN_INTERVAL_MS
       setSetting('agent.intervalMs', clamped)
       getAgentScheduler().reschedule()
       return { success: true, data: agentStatus() }

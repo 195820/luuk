@@ -204,6 +204,16 @@ describe('setAgentIntervalMs（T20 钳制 + reschedule）', () => {
     await invoke('setAgentIntervalMs', 30 * 60 * 1000)
     expect(state.settings['agent.intervalMs']).toBe(30 * 60 * 1000)
   })
+
+  it('M5：超大间隔钳制为上限 30 天', async () => {
+    await invoke('setAgentIntervalMs', Number.MAX_SAFE_INTEGER)
+    expect(state.settings['agent.intervalMs']).toBe(30 * 24 * 60 * 60 * 1000)
+  })
+
+  it('M5：Infinity/非有限值回退为下限', async () => {
+    await invoke('setAgentIntervalMs', Infinity)
+    expect(state.settings['agent.intervalMs']).toBe(60_000)
+  })
 })
 
 describe('信息源 CRUD（T19）', () => {
