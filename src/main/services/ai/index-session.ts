@@ -7,6 +7,7 @@
 import type { VectorsDB } from '../database'
 import type { VectorIndexService } from '../vectors/vector-index-service'
 import type { EmbeddingEngine } from './embedding-engine'
+import { logger } from '../../../utils/logger'
 
 /** 作业 kind（与 types/plugin.ts 中 'ai.clip-index' 示例一致） */
 export const AI_INDEX_JOB_KIND = 'ai.clip-index'
@@ -42,7 +43,9 @@ export async function embedAndPersistOne(deps: IndexDeps, imageId: number): Prom
     })
     deps.ann.upsert(imageId, vec)
     return 'done'
-  } catch {
+  } catch (err) {
+    // 保留 dirty 供下次重试；记录根因（模型缺失/sharp 解码失败/维度不符均归为 failed，需日志区分）
+    logger.warn('AiIndex', `embed 失败 image=${imageId} path=${p}`, err)
     return 'failed'
   }
 }

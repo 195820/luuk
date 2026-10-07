@@ -48,11 +48,13 @@ export function registerClipModel(manager: ModelManager, modelFile: string): voi
   manager.registerModel(info)
 }
 
-/** 校验通过才建引擎；缺失/损坏 → null（上层拒绝启用真推理，退回零引擎） */
+/** 校验通过才建引擎；缺失/损坏 → null（上层拒绝启用真推理，退回零引擎）。
+ * 开发期直连 cache 原件：verifyModel 用只读模式（deleteOnMismatch=false），
+ * 避免常量与本地文件漂移时误删唯一不可再生的本地副本。*/
 export async function createClipEngine(manager: ModelManager): Promise<EmbeddingEngine | null> {
   const p = manager.getModelPath(CLIP_MODEL_ID)
   if (!p) return null
-  const ok = await manager.verifyModel(CLIP_MODEL_ID)
+  const ok = await manager.verifyModel(CLIP_MODEL_ID, { deleteOnMismatch: false })
   if (!ok) {
     logger.warn(LOG_KEY, 'CLIP 模型 SHA256 校验未通过（缺失或损坏），AI 引擎不启用')
     return null
@@ -65,7 +67,7 @@ function buildAiLayerDeps(engine: EmbeddingEngine | null): AiLayerDeps {
     isEnabled: () => getSetting('ai.enabled'),
     engineFactory: engine ? () => engine : undefined,
     getVectorsDB: (libraryPath) => getVectorsDB(libraryPath),
-    getAnn: (libraryPath, dim) => getVectorIndexService(libraryPath, dim),
+    getAnn: (libraryPath, dim) => getVectorIndexService(libraryPath, dim, CLIP_MODEL_ID),
     resolvePath: (libraryPath, imageId) => {
       const rel = getThumbnailsDB(libraryPath).getImageRelativePath(imageId)
       return rel ? toAbsolutePath(libraryPath, rel) : null
@@ -75,31 +77,46 @@ function buildAiLayerDeps(engine: EmbeddingEngine | null): AiLayerDeps {
   }
 }
 
-/** 引擎会话引用计数（多库并发共享单引擎，归零才 unload） */
-let activeIndexSessions = 0
+/** 引擎会话全局引用计数（多库并发共享单引擎，归零才 unload） */
+let engineSessions = 0
+/** 每库活跃索引作业守卫（libraryId → jobId）：同库串行，避免共享 ANN 单例被先结束会话 unload 挤出写入 */
+const librarySessions = new Map<number, string>()
+/** 活跃会话收尾闭包：pause 弃用/退出等不会自然 done 的路径靠 dispose 强制释放 */
+const activeFinishes = new Set<() => void>()
 
-/** 库感知处理器：单条 item 按 libraryId 解析该库会话依赖后 embed+persist（幂等覆盖注册） */
+type AnnService = ReturnType<typeof getVectorIndexService>
+
+function acquireEngine(): void { engineSessions++ }
+function releaseEngine(engine: EmbeddingEngine): void {
+  engineSessions = Math.max(0, engineSessions - 1)
+  if (engineSessions === 0) void engine.unload().catch(() => { /* 释放失败不致命 */ })
+}
+
+/** 库感知处理器（幂等覆盖注册）：单条按 libraryId 解析会话依赖后 embed+persist。
+ * 无法处理（层/引擎缺失、库离线、依赖不全）→ 抛错记 failed（不假成功，可 resume 重跑）。 */
 function registerLibraryAwareIndexHandler(runner: JobRunner): void {
   runner.registerHandler(AI_INDEX_JOB_KIND, async (item) => {
     if (item.imageId == null) return
     const layer = getAiLayer()
-    if (!layer?.engine) return
+    if (!layer?.engine) throw new Error('ai-index: AI 层/引擎不可用')
     const lib = getMasterDB().getLibrary(item.libraryId)
-    if (!lib) return
+    if (!lib) throw new Error(`ai-index: 库不存在 ${item.libraryId}`)
     const deps = layer.buildSessionDeps(lib.rootPath)
-    if (!deps) return
+    if (!deps) throw new Error(`ai-index: 会话依赖未就绪 库=${item.libraryId}`)
     const status = await embedAndPersistOne(deps, item.imageId)
     if (status === 'failed') throw new Error(`ai-index 失败 image=${item.imageId}`)
   })
 }
 
 /**
- * 扫描完成后为本库入队一次增量索引；无待嵌图片或未启用 → 返回 null（零推理会话）。
+ * 扫描完成后为本库入队一次增量索引；无待嵌图片/未启用 → 返回 null（零推理会话）。
+ * R2 会话分时 + 引擎引用计数；load→enqueue→start 全程 try，任一步异常统一 finish 释放（不外泄会话/计数/订阅）。
  */
 export async function enqueueIndexForLibrary(libraryId: number, runner: JobRunner): Promise<string | null> {
   const layer = getAiLayer()
   const engine = layer?.engine
   if (!engine) return null
+  if (librarySessions.has(libraryId)) return null // 同库已有活跃索引作业：跳过，避免共享单例交错
   const lib = getMasterDB().getLibrary(libraryId)
   if (!lib) return null
 
@@ -109,37 +126,57 @@ export async function enqueueIndexForLibrary(libraryId: number, runner: JobRunne
   const pending = planPendingImages(images, indexed)
   if (pending.length === 0) return null
 
+  // 占位脏行（dirty=1）：被 W6 的 listAllEmbeddings/countIndexed dirty=0 过滤排除，仅作“待索引”展示与失败重试位
   for (const id of pending) vectorsDB.markPending(id, layer.modelId, layer.dim)
 
   registerLibraryAwareIndexHandler(runner)
+  librarySessions.set(libraryId, '')
 
   // R2：会话开始加载引擎 + 本库内存 ANN
   await engine.load()
-  activeIndexSessions++
-  const ann = getVectorIndexService(lib.rootPath, layer.dim)
-  ann.load(vectorsDB)
+  acquireEngine()
 
+  let ann: AnnService
+  try {
+    ann = getVectorIndexService(lib.rootPath, layer.dim, layer.modelId)
+    ann.load(vectorsDB)
+  } catch (err) {
+    releaseEngine(engine)
+    librarySessions.delete(libraryId)
+    logger.error(LOG_KEY, `本库 ANN 载入失败，放弃索引 库=${libraryId}`, err)
+    return null
+  }
+
+  let jobId = ''
+  let unsub: (() => void) | null = null
   let settled = false
   const finish = (): void => {
     if (settled) return
     settled = true
-    try { ann.unload() } catch (err) { logger.warn(LOG_KEY, 'ANN 卸载异常', err) }
-    activeIndexSessions = Math.max(0, activeIndexSessions - 1)
-    if (activeIndexSessions === 0) void engine.unload()
+    activeFinishes.delete(finish)
+    if (unsub) { try { unsub() } catch { /* ignore */ } }
+    try { ann.unload() } catch (err) { logger.warn(LOG_KEY, 'ANN 卸载异常', err) } // 落盘 sidecar
+    if (librarySessions.get(libraryId) === jobId) librarySessions.delete(libraryId)
+    releaseEngine(engine)
   }
+  activeFinishes.add(finish)
 
-  const jobId = await runner.enqueue(
-    AI_INDEX_JOB_KIND,
-    { libraryId },
-    { items: pending.map((id) => ({ libraryId, imageId: id })) },
-  )
-  const unsub = runner.subscribeProgress((p) => {
-    if (p.jobId === jobId && (p.state === 'done' || p.state === 'cancelled')) {
-      finish()
-      unsub()
-    }
-  })
-  await runner.start(jobId)
+  try {
+    jobId = await runner.enqueue(
+      AI_INDEX_JOB_KIND,
+      { libraryId },
+      { items: pending.map((id) => ({ libraryId, imageId: id })) },
+    )
+    librarySessions.set(libraryId, jobId)
+    unsub = runner.subscribeProgress((p) => {
+      if (p.jobId === jobId && (p.state === 'done' || p.state === 'cancelled')) finish()
+    })
+    await runner.start(jobId)
+  } catch (err) {
+    finish() // 入队/启动异常：统一释放（引擎引用计数/ANN/订阅）
+    logger.error(LOG_KEY, `索引入队/启动失败 库=${libraryId}`, err)
+    return null
+  }
   logger.info(LOG_KEY, `扫描后增量索引入队：库 ${libraryId}，${pending.length} 项（job ${jobId}）`)
   return jobId
 }
@@ -172,13 +209,22 @@ export async function ensureAiLayerOnBoot(opts: {
   logger.info(LOG_KEY, engine ? 'AI 层已启用（真 CLIP 引擎）' : 'AI 层已启用但无可用引擎（模型缺失/校验失败）')
 }
 
-/** 退出清理：尽力卸载引擎会话并复位监听（不抛） */
+/**
+ * 退出清理：强制收尾存活会话（pause 弃用/退出等不会自然 done 的路径靠此补 finish：
+ * 落盘 ANN sidecar + 释放引擎引用计数），再复位监听、拆层、归零计数（不抛）。
+ */
 export function disposeAiLayer(imageService?: ScanNotifiable): void {
   imageService?.setScanCompleteListener(null)
+  // W5：存活会话统一补 finish（finish 内部已幂等，settled 后重复调用无害）
+  for (const finish of [...activeFinishes]) {
+    try { finish() } catch (err) { logger.warn(LOG_KEY, '会话收尾异常（忽略）', err) }
+  }
+  activeFinishes.clear()
+  librarySessions.clear()
+  engineSessions = 0
   try {
     getAiLayer()?.disable()
   } catch (err) {
     logger.warn(LOG_KEY, 'AI 层卸载异常（忽略）', err)
   }
-  activeIndexSessions = 0
 }

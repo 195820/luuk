@@ -9,6 +9,7 @@ import {
   getMasterDB,
   getThumbnailsDB,
   closeThumbnailsDB,
+  closeVectorsDB,
   closeAllDatabases
 } from './database';
 import { getThumbnailer, generateThumbnail, getVideoMetadata, generateVideoThumbnail } from './thumbnailer';
@@ -199,6 +200,14 @@ export class ImageService {
     closeThumbnailsDB(library.rootPath);
     this.thumbnailsDBs.delete(library.rootPath);
     this.scanners.delete(library.rootPath);
+    // W11：一并释放向量分库与内存 ANN 索引，避免删库后句柄/单例泄漏
+    closeVectorsDB(library.rootPath);
+    // 动态引入：vector-index-service 顶层链入 usearch 原生插件，本模块被主进程启动即加载，
+    // 静态引入会在 AI 关闭态也拉起 usearch（违反 C1 零原生加载约束）
+    try {
+      const { closeVectorIndexService } = await import('./vectors/vector-index-service');
+      closeVectorIndexService(library.rootPath);
+    } catch { /* ANN 从未装配（AI 关闭态）则无实例，忽略 */ }
 
     // 从主数据库删除
     this.masterDB.removeLibrary(libraryId);

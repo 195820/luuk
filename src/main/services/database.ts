@@ -2127,12 +2127,31 @@ export class VectorsDB {
     return { model_id: r.model_id, dim: r.dim, quant: r.quant, vector: new Uint8Array(r.vector) };
   }
 
-  /** 全量列出向量（供 HNSW sidecar 索引全量重建；int8 BLOB→Uint8Array） */
-  listAllEmbeddings(): Array<{ imageId: number; vector: Uint8Array }> {
+  /**
+   * 全量列出已干净嵌入的向量（供 HNSW sidecar 全量重建）。
+   * 只取 dirty=0（排除 markPending 零向量占位行，避免未索引图被当合法命中召回）；
+   * 传 modelId 则按模型过滤（§9.7 换 model_id 不互比，部分重嵌期不混入旧模型向量）。
+   */
+  listAllEmbeddings(modelId?: string): Array<{ imageId: number; vector: Uint8Array }> {
     if (!this.db) return [];
-    const rows = this.db.prepare('SELECT image_id, vector FROM image_embeddings').all() as
-      Array<{ image_id: number; vector: Buffer }>;
+    const rows = (modelId
+      ? this.db.prepare('SELECT image_id, vector FROM image_embeddings WHERE dirty = 0 AND model_id = ?').all(modelId)
+      : this.db.prepare('SELECT image_id, vector FROM image_embeddings WHERE dirty = 0').all()
+    ) as Array<{ image_id: number; vector: Buffer }>;
     return rows.map(r => ({ imageId: r.image_id, vector: new Uint8Array(r.vector) }));
+  }
+
+  /** 已干净嵌入（dirty=0）总行数 —— 供 sidecar 陈旧判定（ann.size() 与此不符则全量重建） */
+  countIndexed(modelId?: string): number {
+    if (!this.db) return 0;
+    const sql = modelId
+      ? 'SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 0 AND model_id = ?'
+      : 'SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 0';
+    const row = (modelId
+      ? this.db.prepare(sql).get(modelId)
+      : this.db.prepare(sql).get()
+    ) as { c: number };
+    return row.c;
   }
 
   /**

@@ -21,7 +21,11 @@ const SIDECAR_FILE = 'vectors.usearch'
 export class VectorIndexService {
   private ann: AnnIndex | null = null
 
-  constructor(private readonly libraryPath: string, private readonly dim: number) {}
+  constructor(
+    private readonly libraryPath: string,
+    private readonly dim: number,
+    private readonly modelId?: string,
+  ) {}
 
   private sidecarPath(): string {
     return path.join(this.libraryPath, '.ivlib', SIDECAR_FILE)
@@ -31,16 +35,28 @@ export class VectorIndexService {
     return this.ann !== null
   }
 
+  /** 暴露当前 dim 供工厂做换模型/换维度判定 */
+  getDim(): number {
+    return this.dim
+  }
+
   size(): number {
     return this.ann?.size() ?? 0
   }
 
-  /** 会话开始（R2 load）：优先从 sidecar 载入，否则从 vectors.db 全量重建 */
+  /** 会话开始（R2 load）：优先从 sidecar 载入，但校验其与 vectors.db 干净行数一致，否则全量重建 */
   load(db: VectorsDB): void {
     if (this.ann) return
     const p = this.sidecarPath()
     if (fs.existsSync(p)) {
-      this.ann = AnnIndex.load(p, this.dim)
+      const ann = AnnIndex.load(p, this.dim)
+      // 陈旧校验：sidecar 只信 vectors.db（源真相）。size 与干净行数不符（退出未落盘/崩溃/脏写）→ 丢弃重建
+      if (ann.size() === db.countIndexed(this.modelId)) {
+        this.ann = ann
+      } else {
+        // sidecar 陈旧：丢弃它，从 vectors.db 全量重建
+        this.rebuild(db)
+      }
     } else {
       this.rebuild(db)
     }
@@ -53,10 +69,10 @@ export class VectorIndexService {
     this.ann = null
   }
 
-  /** 从 vectors.db 全量重建内存索引（sidecar 缺失 / 换模型全量重建时用）；返回索引规模 */
+  /** 从 vectors.db 全量重建内存索引（sidecar 缺失/陈旧 / 换模型时用）；返回索引规模 */
   rebuild(db: VectorsDB): number {
     const ann = new AnnIndex(this.dim)
-    for (const e of db.listAllEmbeddings()) {
+    for (const e of db.listAllEmbeddings(this.modelId)) {
       ann.add(e.imageId, e.vector)
     }
     this.ann = ann
@@ -93,14 +109,22 @@ export class VectorIndexService {
 
 const instances = new Map<string, VectorIndexService>()
 
-/** 按库路径取（并惰性构造）VectorIndexService；dim 由调用方按模型给定（ViT-B/32 → 512） */
-export function getVectorIndexService(libraryPath: string, dim: number): VectorIndexService {
-  let s = instances.get(libraryPath)
-  if (!s) {
-    s = new VectorIndexService(libraryPath, dim)
-    instances.set(libraryPath, s)
+/** 按库路径取（并惰性构造）VectorIndexService；dim/modelId 由调用方按模型给定（ViT-B/32 → 512） */
+export function getVectorIndexService(libraryPath: string, dim: number, modelId?: string): VectorIndexService {
+  const s = instances.get(libraryPath)
+  if (s) {
+    // dim 不一致（换模型/换维度）→ sidecar 与 dim 不匹配不可复用：丢弃重建
+    if (s.getDim() !== dim) {
+      s.close()
+      const next = new VectorIndexService(libraryPath, dim, modelId)
+      instances.set(libraryPath, next)
+      return next
+    }
+    return s
   }
-  return s
+  const created = new VectorIndexService(libraryPath, dim, modelId)
+  instances.set(libraryPath, created)
+  return created
 }
 
 export function closeVectorIndexService(libraryPath: string): void {
@@ -112,6 +136,12 @@ export function closeVectorIndexService(libraryPath: string): void {
 }
 
 export function closeAllVectorIndexServices(): void {
-  for (const s of instances.values()) s.close()
+  // 退出清理：仍开着的内存索引先落盘（unload 写 sidecar）再丢弃，尽量保留加速层免下次全量重建
+  for (const s of instances.values()) {
+    try {
+      if (s.isOpen()) s.unload()
+      else s.close()
+    } catch { /* 落盘失败不致命：源真相仍在 vectors.db，下次 load 会校验重建 */ }
+  }
   instances.clear()
 }

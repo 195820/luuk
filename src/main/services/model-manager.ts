@@ -51,9 +51,11 @@ export class ModelManager {
   /**
    * SHA256 完整性校验。
    * 文件不存在 → 返回 false（不抛错）。
-   * 校验失败 → 删除文件并返回 false，触发调用方重新下载。
+   * 校验失败 → 默认删除文件并返回 false（触发调用方重新下载）；
+   * 传 deleteOnMismatch=false 时仅只读校验、不删除（用于直连 cache 原件等不可再生副本，
+   * 避免因常量漂移误删唯一本地副本）。
    */
-  async verifyModel(id: string): Promise<boolean> {
+  async verifyModel(id: string, options?: { deleteOnMismatch?: boolean }): Promise<boolean> {
     const info = this.models.get(id)
     if (!info) return false
 
@@ -73,11 +75,15 @@ export class ModelManager {
       return true
     }
 
-    // 校验失败：删除损坏文件
-    try {
-      await fs.unlink(filePath)
-    } catch (err) {
-      logger.warn('ModelManager', `删除损坏模型文件失败: ${filePath}`, err)
+    // 校验失败：仅在允许时删除损坏文件
+    if (options?.deleteOnMismatch !== false) {
+      try {
+        await fs.unlink(filePath)
+      } catch (err) {
+        logger.warn('ModelManager', `删除损坏模型文件失败: ${filePath}`, err)
+      }
+    } else {
+      logger.warn('ModelManager', `模型 SHA256 校验失败（只读模式，不删除）: ${filePath}`)
     }
     return false
   }

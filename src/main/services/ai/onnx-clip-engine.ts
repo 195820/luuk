@@ -66,6 +66,8 @@ export class OnnxClipEngine implements EmbeddingEngine {
   private readonly inputName: string
   private readonly outputName: string
   private session: OrtSession | null = null
+  /** 串行化 in-flight load：多库并发 load() 复用同一 Promise，避免创建多个 88MB 会话致先建者泄漏 */
+  private loading: Promise<void> | null = null
 
   constructor(private readonly opts: OnnxClipEngineOptions) {
     this.modelId = opts.modelId ?? 'clip-vit-b32-int8'
@@ -78,11 +80,17 @@ export class OnnxClipEngine implements EmbeddingEngine {
     return this.session !== null
   }
 
-  /** R2：会话开始建 ort 会话（幂等） */
+  /** R2：会话开始建 ort 会话（幂等且并发安全：并发调用共享同一 loading） */
   async load(): Promise<void> {
     if (this.session) return
-    const ort = await import('onnxruntime-node')
-    this.session = await ort.InferenceSession.create(this.opts.modelPath)
+    if (!this.loading) {
+      this.loading = (async () => {
+        const ort = await import('onnxruntime-node')
+        const s = await ort.InferenceSession.create(this.opts.modelPath)
+        this.session = s
+      })().finally(() => { this.loading = null })
+    }
+    await this.loading
   }
 
   /** R2：会话结束释放 ort 会话内存 */

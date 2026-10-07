@@ -73,20 +73,37 @@ describe('VectorIndexService（Phase 9 M5 · 每库 HNSW sidecar，R2 会话分�
     expect(svc.search(v([100, 0, 0, 0]), 3).every(h => h.id !== 1)).toBe(true)
   })
 
-  it('unload 落盘 sidecar；新会话 load 从 sidecar 恢复（非重建）', () => {
+  it('sidecar 与 vectors.db 一致（生产 upsert 成对写库）→ load 从 sidecar 恢复（非重建）', () => {
     svc.load(db)
-    svc.upsert(4, v([0, 0, 100, 0])) // 仅进内存索引，未写 vectors.db
+    // 生产语义：upsertEmbedding 写 vectors.db 与 ann.upsert 写内存索引成对发生
+    db.upsertEmbedding({ imageId: 4, modelId: MODEL, dim: DIM, quant: 'int8', vector: v([0, 0, 100, 0]) })
+    svc.upsert(4, v([0, 0, 100, 0]))
     svc.unload()
     const sidecar = path.join(tmpDir, '.ivlib', 'vectors.usearch')
     expect(fs.existsSync(sidecar)).toBe(true)
     expect(svc.isOpen()).toBe(false)
 
-    // 新 service 复用同一 sidecar：应含 id=4（内存增量已落盘），而非从 vectors.db（无 id=4）重建
     closeVectorIndexService(tmpDir)
     const svc2 = getVectorIndexService(tmpDir, DIM)
+    const spy = vi.spyOn(svc2, 'rebuild')
     svc2.load(db)
+    expect(spy).not.toHaveBeenCalled() // size 与 countIndexed 一致 → 直接恢复
     expect(svc2.size()).toBe(4)
     expect(svc2.search(v([0, 0, 100, 0]), 1)[0].id).toBe(4)
+  })
+
+  it('sidecar 陈旧（与 vectors.db 干净行数不符）→ load 全量重建，丢弃幽灵条目', () => {
+    svc.load(db)
+    svc.upsert(4, v([0, 0, 100, 0])) // 仅进内存索引/sidecar，未写 vectors.db → 制造不一致
+    svc.unload()
+    expect(fs.existsSync(path.join(tmpDir, '.ivlib', 'vectors.usearch'))).toBe(true)
+
+    closeVectorIndexService(tmpDir)
+    const svc2 = getVectorIndexService(tmpDir, DIM)
+    const spy = vi.spyOn(svc2, 'rebuild')
+    svc2.load(db)
+    expect(spy).toHaveBeenCalledTimes(1) // 检测到陈旧 → 从源真相重建
+    expect(svc2.size()).toBe(3) // 丢弃 vectors.db 中不存在的幽灵 id=4
   })
 })
 

@@ -52,6 +52,7 @@ export function AgentSettings({ onClose }: Props) {
 
   const [ai, setAi] = useState<AiStatus | null>(null)
   const [aiSaving, setAiSaving] = useState(false)
+  const [aiError, setAiError] = useState<string | null>(null)
 
   useEffect(() => {
     void window.electronAPI.getJevStatus().then(r => { if (r.success && r.data) setJev(r.data) })
@@ -64,10 +65,13 @@ export function AgentSettings({ onClose }: Props) {
   const toggleAi = async (v: boolean) => {
     if (aiSaving) return
     setAiSaving(true)
+    setAiError(null)
     const r = await window.electronAPI.setAiEnabled(v)
     if (r.success) {
       const s = await window.electronAPI.getAiStatus()
       if (s.success && s.data) setAi(s.data)
+    } else {
+      setAiError(r.error ?? '切换 AI 向量索引失败')
     }
     setAiSaving(false)
   }
@@ -195,6 +199,9 @@ export function AgentSettings({ onClose }: Props) {
                 <span>已索引：<span className="text-text-secondary">{ai.indexed}</span> 张</span>
                 <span>待索引：<span className="text-text-secondary">{ai.pending}</span> 张</span>
               </div>
+            )}
+            {aiError && (
+              <div className="text-xs text-red-400">{aiError}</div>
             )}
           </div>
         </div>

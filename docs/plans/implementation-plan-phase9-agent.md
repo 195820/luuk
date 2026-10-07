@@ -823,9 +823,11 @@ T11 2d + T12 1.5d + T13 4.5d + T14 1.5d + T15 1d + T16 1.5d + 登录辅助/杂�
 > ③ R7 → 大图 **128px 分块 + 逐带流式合成 + 单次分辨率 ≤4K**（T21/T23 预处理与 Phase 10 共用同一约束）。
 
 ### Task T21：CLIP 索引流水线 + 向量存储基座（≈4 天，原口径 +3 天）
+- **状态**：✅ 已完成（2026-10-07，含 Ultra Review 修复，见下方 M5 代码审查与修复记录）
 - **交付**：`vectors.db` 独立分库（迁移建 `image_embeddings`，quant 固定 int8）+ HNSW 图索引；`ai-index` 内置插件走 `model-manager` 会话，作业级 **load→批量推理→unload**（R2 会话分时）；预处理按 R7 分块/分辨率上限，lanczos3 降采样到模型输入尺寸。
 - **验收**：1M 库冷索引 ETA ≤ R2 实测口径（≈20.5h）；单库体积对齐 §9.3/R5（≈578MB）；**零 fp32 常驻**；作业可断点续跑（复用 JobRunner，4.6 批处理通道）。
 - **门禁**：`ai.enabled` + `plugins.enabled` 双闸，默认关。
+- **交付边界**：本任务交付「嵌入生成 + 向量持久化 + HNSW 索引 + 扫描后增量索引 + UI 开关」；`VectorIndexService.search()` 已实现并有端到端自检索冒烟覆盖，但**尚无生产调用方**（搜索 UI/查询向量化未接入），该消费侧由 T22 语义搜索承接。
 
 ### Task T22：语义搜索（≈2 天）
 - **交付**：查询文本→embedding（同 model_id）→ **HNSW ANN** 召回；结果并入 searchStore 高级搜索维度。
@@ -840,5 +842,30 @@ T11 2d + T12 1.5d + T13 4.5d + T14 1.5d + T15 1d + T16 1.5d + 登录辅助/杂�
 - **约束**：仅在 `ai.enabled` 开启时挂载，关闭时 T16 原关键词版零依赖、不受影响。
 
 ### M5 工时小计：≈10 天（原 7 天 + R5 改道引入 HNSW/vectors.db +3 天）
+
+---
+
+## 📌 M5·T21 代码审查与修复记录（2026-10-07）
+
+T21 交付后经 Code Review 发现 **4 Critical / 9 Warning / 3 Suggestion**，已全部修复（tsc 零错误、门控 e2e + 新增 ai-wiring 生命周期单测、全量 vitest 绿）。核心修正语义如下，后续里程碑须遵从：
+
+| 级别 | 问题 | 修复 | 落点 |
+|---|---|---|---|
+| Critical | 关闭态主进程每次启动仍静态加载 usearch 原生链（违反「零原生加载」） | `ai-handlers` 不再静态 import ai-wiring/vector-index-service；仅在 `ai.enabled` 为真或用户显式开关时动态 import，模块句柄缓存供退出同步清理 | `ipc/ai-handlers.ts` |
+| Critical | 多库并发 `engine.load()` 竞态创建多个 88MB 会话致先建者泄漏 | `load()` 复用 in-flight Promise（`loading` 字段），会话幂等 | `ai/onnx-clip-engine.ts` |
+| Critical | `enqueueIndexForLibrary` load→enqueue→start 任一步抛错会外泄引擎会话/引用计数/订阅 | 全程分段 try + 统一 `finish()`（幂等）释放：ANN 落盘、引用计数归零卸载引擎、解订阅 | `ai/ai-wiring.ts` |
+| Critical | 共享 ANN 单例被先结束会话 unload 挤出写入 | 引擎全局引用计数 + 每库活跃作业守卫（同库串行，重复触发直接返回 null） | `ai/ai-wiring.ts` |
+| Warning | pause 弃用/退出等不会自然 done 的路径不释放会话 | `finish` 纳入活跃闭包集，`disposeAiLayer` 对存活会话统一补 finish | `ai/ai-wiring.ts` |
+| Warning | `listAllEmbeddings` 未过滤 dirty=0/模型，占位零向量与旧模型向量被误召回 | 只取 `dirty=0` 且按 `model_id` 过滤；新增 `countIndexed` 供陈旧判定 | `database.ts` |
+| Warning | sidecar 与 vectors.db 干净行数不一致（崩溃/未落盘）时误用陈旧索引 | `load()` 校验 `ann.size()` 与 `countIndexed` 不符即全量重建；退出 `closeAll` 先落盘 | `vectors/vector-index-service.ts` |
+| Warning | 换维度/换模型 sidecar 不可复用 | dim 不一致 → 丢弃重建（工厂层 `getDim` 判定） | `vectors/vector-index-service.ts` |
+| Warning | 库感知 handler 依赖缺失时假成功 | 引擎/层/库/会话依赖任一缺失显式抛错记 failed（可续跑） | `ai/ai-wiring.ts` |
+| Warning | 生产 `verifyModel` 校验失败会 unlink 删除唯一 cache 原件 | 新增 `deleteOnMismatch?:boolean`，开发期直连 cache 走只读校验 | `model-manager.ts`、`ai/ai-wiring.ts` |
+| Warning | `getAiStatus` 关闭态仍 getVectorsDB 触发建库文件 | 关闭态短路返回 `{enabled:false,indexed:0,pending:0}` | `ipc/ai-handlers.ts` |
+| Warning | `removeLibrary` 泄漏 VectorsDB 与 ANN 单例 | 补 `closeVectorsDB`；动态 import `closeVectorIndexService`（不破坏关闭态零加载） | `image-service.ts` |
+| Suggestion | embed 单条失败被吞、无根因 | `embedAndPersistOne` catch 内 `logger.warn` 记 image/path/err | `ai/index-session.ts` |
+| Suggestion | UI 开关失败静默回滚 | 失败展示 `aiError` 文案 | `AgentSettings.tsx` |
+
+**交付边界（技术债登记）**：`VectorIndexService.search()` 及 HNSW 检索尚无生产调用方，随 T22 语义搜索接入。
 
 
