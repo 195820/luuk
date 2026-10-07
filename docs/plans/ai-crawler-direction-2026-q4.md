@@ -684,16 +684,21 @@ Phase 10 先做蒙版 + LaMa 去水印（D1，CPU 可行），Phase 11 才接 D2
 
 ## 9. 向量与元数据存储设计
 
-### 9.1 存储位置：每库 `.ivlib/thumbs.db`，而非 master.db
+### 9.1 存储位置：每库 `.ivlib/vectors.db` 独立分库（PoC R5 改道，2026-09-29）
+
+> **改道记录**：原方案把向量内联进每库 `thumbs.db`。R5 实测 1M×512 int8 在单表内暴力扫描 P50 4.5s / P95 4.6s，超 §9.4 的 1-3s 目标，且 EXPLAIN QUERY PLAN 显示向量检索必 `SCAN` 全表、无法借 thumbs.db 既有索引加速 → 向量存储独立成 `.ivlib/vectors.db` 并**一期即引入 HNSW**（原 §9.4「二期视实测再上」的触发条件已满足）。
 
 | 理由 | 说明 |
 |---|---|
-| 随库可插拔 | 向量与图片同生共死，拔走硬盘带走索引 |
-| 复用 Phase 1 路径级联 | 库移动 / 重命名时的级联更新逻辑已存在 |
+| 随库可插拔 | vectors.db 仍在 `.ivlib/` 下，与图片同生共死，拔盘带走索引 |
+| 隔离缩略图链路 | 向量全表扫描不抢 thumbs.db 的页缓存，缩略图/pHash 查询不受拖累 |
+| 复用 Phase 1 路径级联 | 库移动/重命名时随 `.ivlib` 整体迁移，级联逻辑已存在 |
 | 离线库不污染全局 | 未挂载的库不会拖慢全局查询 |
-| 避免 master.db 膨胀 | 200 万条 embedding 会让 master.db 涨到 GB 级，拖慢所有全局操作 |
+| 避免任意单库失控 | R5 实测 1M 向量库体积 578MB；独立文件便于分库/清理/重建 |
 
-### 9.2 schema 草案（thumbs.db 侧迁移）
+### 9.2 schema 草案（向量表迁 vectors.db，其余元数据表留 thumbs.db）
+
+> **随 §9.1 改道**：`image_embeddings` 与 `faces.embedding`（向量列）落 `.ivlib/vectors.db` 并建 HNSW 图索引；`quality_scores` 等非向量元数据仍留 thumbs.db。下方建表语句仅示意字段，不再区分物理库。
 
 ```sql
 CREATE TABLE image_embeddings (
@@ -755,16 +760,17 @@ ALTER TABLE image_tags ADD COLUMN confidence REAL;
 
 **int8 是必选项**，不是优化项——float32 在 200 万张时达 4GB，单库 thumbs.db 会失控。
 
-### 9.4 检索策略
+> **R5 实测印证（2026-09-29）**：1M×512 int8 写入 13.8s（≈72,595 rows/s，Int8Array 零拷贝优化后），库体积 578MB（含一个额外演示索引，与 §9.3 原生预估 512MB 同量级）。**注意**：CPU 无 VNNI 时 int8 只省内存不提速——int8 是**内存达标手段**，非加速手段。
+
+### 9.4 检索策略（PoC R5 后修订）
 
 | 期 | 方案 |
 |---|---|
-| **一期** | **分块流式暴力扫描 + int8 点积**。NVMe 顺序读，1M 级目标 1-3s/查询 |
-| **二期** | 视一期实测再上 HNSW 或 `sqlite-vec` |
+| **一期（改道后）** | **vectors.db + HNSW ANN**（或 `sqlite-vec`）。R5 证明 JS 侧暴力扫描 P95 4.6s 无法达到 1-3s 目标，原「一期暴力扫描」方案作废 |
+| ~~二期~~ | ~~视一期实测再上 HNSW~~ —— **已由 R5 提前到一期**，不再单列二期 |
 
-**明确否决「全量向量常驻内存」**——512MB-1GB 直接违反 C3 的 500MB 红线。
-
-一期方案的关键在于：int8 点积是纯整数运算，可批量加载向量块到内存做扫描后释放，**内存占用由块大小决定而非库规模决定**。
+**HNSW 落地约束（R5）**：向量以 int8 BLOB 存 vectors.db，图索引另建；`quant` 固定 `int8`。
+**明确否决「全量向量常驻内存」**——R2 实测 fp32 全量 RSS 478MB 入 §7.4 红线，int8 235MB（黄区），仍违反 C3。
 
 ### 9.5 增量失效
 
@@ -1054,15 +1060,17 @@ provider isAvailable() 探测结果
 
 评审通过后优先执行。脚本约定放 `scripts/`（沿用 `bench-scan.mjs` / `bench-hash-window.mjs` 命名风格），实测数据回填附录 A，**禁止填估算值**（沿用 [implementation-plan](./implementation-plan-2026-q3-q4.md) 附录 A 的纪律）。
 
+> **状态（2026-09-29）**：R1/R2/R3/R5/R7/R10 已实测，数据见附录 A；R4/R6/R8/R9 未完。其中 **R2/R5/R7 触发 M5 方案改道**（详见下表「已实测触发」列与 §9.1/§9.4）。
+
 | # | 风险 | 测量协议 | 失败时的改道方案 |
 |---|---|---|---|
 | **R1** | `onnxruntime-node` 在 Electron 40 + Node 24 的 rebuild 与 `build:dir` / nsis 双通道打包（注意 `npmRebuild: false`） | 最小 demo 打包后在干净 Windows 环境运行一次推理 | 降为纯传统算法（`autotone` 仍可交付）或 Python sidecar |
-| **R2** | 4650U 上 CLIP/SigLIP CPU 推理实测吞吐 | 固定 1000 张样本集，测张/秒 → 换算 1M 张 ETA | 缩小模型（MobileCLIP）、只索引收藏与近期、或改为按需单图推理 |
+| **R2** | 4650U 上 CLIP/SigLIP CPU 推理实测吞吐 | 固定 1000 张样本集，测张/秒 → 换算 1M 张 ETA | **已实测 2026-09-29：13.56 张/秒、1M ETA 20.5h → 索引方向成立。改道生效：索引作业只用 int8（fp32 478MB 入 §7.4 红线，int8 235MB 黄区）+ 会话分时 load/unload** |
 | **R3** | HuggingFace / 国内镜像在目标网络的可达性与下载速率 | 多镜像各下载同一模型，测成功率与速率 | 内置多镜像 + 手动放置模型 |
 | **R4** | Python 3.14 的 onnxruntime / torch wheel 是否存在（`environment.yml` 指定 `python>=3.14`） | 查 PyPI 可用 wheel | **仅影响 ComfyUI provider 路线**；降 Python 版本或彻底放弃 sidecar |
-| **R5** | 1M 条 int8 embedding 写入 thumbs.db 后的库体积、语义查询延迟、`EXPLAIN QUERY PLAN` 表现 | 生成 1M 条随机向量写入，测查询 P50/P95 | 向量独立成 `vectors.db` 或提前引入 HNSW |
+| **R5** | 1M 条 int8 embedding 写入 thumbs.db 后的库体积、语义查询延迟、`EXPLAIN QUERY PLAN` 表现 | 生成 1M 条随机向量写入，测查询 P50/P95 | **已实测 2026-09-29：暴力扫描 P50 4.5s/P95 4.6s > §9.4 目标 → 改道生效：vectors.db 独立 + HNSW 从 Phase 10 提前到 M5（一期）** |
 | **R6** | **运行时兼容性矩阵**：Win10 / Win11 <24H2 / Win11 24H2+ × 核显 / 独显 / NPU | 逐格确定走 CPU EP / DirectML / WinML；含 `onnxruntime-node` 与 Windows App SDK 2.x 的 ABI 版本对齐验证（官方要求 `1.24.x`） | 全线只用 `onnxruntime-node` CPU EP，放弃 GPU 加速，**D2 仅留 comfyui + cloud 两个 provider** |
-| **R7** | **大图内存峰值**：4K 抠图与超分分块推理的峰值内存与耗时 | 逐级分辨率测 RSS 峰值，对照 7.4 水位线（外部参考值 510MB 已超红线） | 强制分块 + 限制单次处理分辨率上限 + 模型用完立即 unload |
+| **R7** | **大图内存峰值**：4K 抠图与超分分块推理的峰值内存与耗时 | 逐级分辨率测 RSS 峰值，对照 7.4 水位线（外部参考值 510MB 已超红线） | **已实测 2026-09-29：naive 4K+ OOM → 改道生效：强制 128px 分块 + 逐带流式合成 + 单次分辨率上限 ≤4K + 用完 unload（详见 §7.4/§7.5，Phase 10 大图与 M5 T21 预处理均须遵循）** |
 | **R8** | **目标用户独显占比**（产品调研，**非技术验证**） | 用户问卷 / 社区投票 | 无数据则 D2 只能先做 comfyui + cloud，**Phase 11 不得开工** |
 | **R9** | **插件 API 冻结风险**：API 过早发布导致长期兼容负担 | Phase 8 结束时列出「必须已验证的 API 面清单」，逐项核对是否被 3 个内置插件真实使用 | 由 3 个内置插件驱动、Phase 8 内允许破坏性变更、Phase 9 起才进入兼容承诺 |
 
@@ -1114,19 +1122,22 @@ provider isAvailable() 探测结果
 
 ### 附录 A：PoC 实测数据
 
-**待回填**（R1-R9）。纪律：只填实测值，**禁止估算值**。
+纪律：只填实测值，**禁止估算值**。
+
+**实测环境**（2026-09-29，本机即 C2 参考机）：Ryzen 5 PRO 4650U（6C/12T）/ 16GB / Win10 22H2 / Node 24.14.0 / Electron 40.6.1 / onnxruntime-node 1.30.0 CPU EP。脚本见 `scripts/bench-poc-r1/r2/r5/r7/r10.mjs`。
 
 | # | 项目 | 实测结果 | 日期 | 结论 |
 |---|---|---|---|---|
-| R1 | onnxruntime-node 打包 | 待回填 | — | — |
-| R2 | 4650U CLIP 吞吐 | 待回填 | — | — |
-| R3 | 镜像可达性 | 待回填 | — | — |
-| R4 | Python 3.14 wheel | 待回填 | — | — |
-| R5 | 1M embedding 查询延迟 | 待回填 | — | — |
-| R6 | 运行时兼容性矩阵 | 待回填 | — | — |
-| R7 | 大图内存峰值 | 待回填 | — | — |
-| R8 | 用户独显占比 | 待回填 | — | — |
-| R9 | API 面验证清单 | 待回填 | — | — |
+| R1 | onnxruntime-node 打包 | 三通道全过推理（Node 24 / utilityProcess / build:dir 产物）；预编译 **N-API v6** 全平台二进制，**无需 electron-rebuild**；win32-x64 含 onnxruntime.dll 27.4MB + DirectML.dll 17.7MB | 2026-09-29 | **通过（限 build:dir 通道）**：nsis 安装产物与「干净 Windows 环境」未测，Phase 10 前补。前提：electron-builder 必须 `asarUnpack` 覆盖 onnxruntime-node **+ onnxruntime-common** 整条依赖链（否则打包后 `Cannot find module`，已实测复现并修复，配置在 `electron-builder.json > asarUnpack`，**未来 ort 入链时禁删**；入链时还需排除非 win32-x64 二进制，现解包含约多带 95MB 冗余） |
+| R2 | 4650U CLIP 吞吐 | ViT-B/32 fp32（1000 张全成功，逐张校验 512 维输出）：**13.56 张/秒**，run P50 59ms / P95 65ms，预处理 P50 14ms，1M 张 ETA **20.5h**，RSS 峰值 478MB；int8 量化：12.68 张/秒（**更慢**）但 RSS 235MB（-51%） | 2026-09-29 | **索引方向成立**（数十小时量级，符合 C1/D1 失效条件判据）。**但 fp32 478MB 已入 §7.4 红区（单进程隔离数，叠加宿主/渲染必破 C3 500MB）→ 索引作业必须优先 int8（235MB，黄区）并配合会话分时 load/unload，列为 Phase 10 前置条件**。另注：预处理用 lanczos3 非官方 bicubic，吞吐结论不受影响，召回一致性待 Phase 9 验证。数据点：CPU 无 VNNI 时 int8 不提速、只省内存 |
+| R3 | 镜像可达性 | HF 主站：API 可达（200/865ms）但 **cdn-lfs 二进制下载超时**；hf-mirror：**全链路可用**，4 文件合计 429MB/23.2s ≈ **18.5MB/s**（单文件峰值 21MB/s：fp32 335MB/15.9s、int8 84.5MB/4.0s、u2netp 4.4MB/1.8s、realesr 4.6MB/1.0s） | 2026-09-29 | 本机网络下 HF 直连不可行、镜像可行 → 改道方案「内置多镜像」升级为**必要项**，且需镜像顺序探测。**口径注明：仅手工验证单一镜像（下载逻辑在 `scripts/poc-r2/download-*.mjs`），未做同模型多镜像对照（§15 协议项），Phase 10 前补 bench-poc-r3** |
+| R4 | Python 3.14 wheel | 顺带数据点：本机 Python 3.14.0 + `pip install onnx`（1.23.0）成功；onnxruntime/torch wheel **未测** | 2026-09-29 | 部分完成，仅影响 ComfyUI provider 路线，留待 Phase 11 前补测 |
+| R5 | 1M embedding 入 thumbs.db | 1M×512 dim int8（§9.2 schema）：写入 **13.8s（72,595 rows/s）**（Int8Array 优化后同次复跑；原查表版 14.6s/68,311）；库体积 **578MB**（606B/行，含一份实测额外建的 `idx_emb_model` 索引，非 §9.2 原生字段；§9.3 预估 512MB 同量级）；暴力扫描查询（Int8Array 零拷贝优化后复跑）**P50 4.5s / P95 4.6s**（15 样本，P95 实为最大值；原查表版 6.6/7.2s，优化 -32%）；RSS 峰值 73MB；EQP：向量检索必 `SCAN` 全表，`idx_emb_model` 仅对 model_id 过滤生效（SEARCH COVERING INDEX） | 2026-09-29 | 体积/写入/内存达标；**P95 4.6s > §9.4 目标 1-3s，且已排除内循环未优化因素 → 触发改道：vectors.db/HNSW 提前引入（坐实）**（如实标注：JS 暴力扫描 + 暖页缓存，独立空库非真实 thumbs.db 共存） |
+| R6 | 运行时兼容性矩阵 | 顺带数据点：Win10 22H2 + 4650U 核显机上 ort 1.30 自带 DirectML.dll，CPU EP 三通道全过 | 2026-09-29 | 未完整，需多机矩阵（Win11 24H2/NPU/独显）待 Phase 10 |
+| R7 | 大图内存峰值 | **naive 整图**：抠图 720p 即 **1558MB**、1080p 3206MB、**4K+ OOM 崩溃**（单张分配 4.2GB/6.5GB 失败）；超分（整图 resize 同口径，全尺寸合成缓冲一次驻留）720p 1033MB/1080p 2236MB。**抠图分块**：固定小输入 320（降采样方案，非分块）281-342MB；**真分块（T=512 逐块流式写盘）** 720p **285MB（绿）**/1080p **310MB（黄）**/4K **408MB（红临界）**，不再 OOM。**超分分块（逐行带流式合成：每带 x4 缓冲→编码条带 JPEG 落盘→释放）**：T=512 为 720p 481/1080p 703/4K 971/native 1099MB（native 由崩溃转可完成）；**T=128（§6.x 规定小块）为 720p 196MB（绿）/1080p 228MB（绿）/4K 376MB（黄）**，tile 数随尺寸增（4K 510 tile～180s） | 2026-09-29 | **水位线/驱逐为必需组件实锤**（§6.2 rembg 510MB 参考值远低于本机 naive 实测）；**改道「强制分块 + 输出流式合成 + 分辨率上限 + 用完即 unload」全套验证通过**：**128px 小块 + 逐带流式合成把超分压进绿区（≤1080p）/黄区（4K）**，抠图真分块同样进绿/黄。决议带入 Phase 10：超分固定采用 128px tile + 流式合成，单次分辨率上限 ≤**4K**（native 级 tile 数/耗时翻倍且近红区）；模型会话用完立即 unload（§7.5）。旧口径数据（未 resize 裁片 / 未流式全缓冲 / tile 坐标越界假死）全部废弃 |
+| R8 | 用户独显占比 | 产品调研项，未做 | — | 待问卷；**Phase 11 门禁不变** |
+| R9 | API 面验证清单 | Phase 8 结束才到期，未到验证窗口 | — | — |
+| R10 | @mtcute/node（计划增补项） | 双通道（Node 24 / Electron utilityProcess）均通过：ESM 装载 ~0.9s、webcrypto.subtle AES 可用、TCP 收发可用（loopback 3-4ms）、`TelegramClient` 类可用；**真实 TG DC（149.154.167.51:443）TCP 超时不可达** | 2026-09-29 | **运行时部分通过**（utilityProcess 无阻塞项）；端到端补图链路受阻于网络+凭据，`configureTgClientFactory` 生产工厂仍不能开工，需代理/专网环境复验 |
 
 ### 附录 B：外部实测参考值来源清单
 

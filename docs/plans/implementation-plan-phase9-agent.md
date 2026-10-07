@@ -13,7 +13,7 @@ related_plan: ai-crawler-direction-2026-q4.md
 > 本文把 [ai-crawler-direction-2026-q4.md](./ai-crawler-direction-2026-q4.md) 的方向（§9 向量存储 / §12 爬虫 / §14 分期）落成任务级拆解，并新增贯穿全项目的 **Agent 决策层**。
 > **需求来源**：[requirements.md](../../requirements.md) 第二阶段 5/6 节 · [docs/roadmap.md](../roadmap.md) 第五节 #32-#36、#38、#39
 > **前序文档**：[implementation-plan-2026-q3-q4.md](./implementation-plan-2026-q3-q4.md)（Phase 5-7 已完成）· Phase 8 插件系统（已交付，见 `.superpowers/sdd/phase8-ai-plugin-system/progress.md`）
-> **预估总工时**：核心闭环（M0-M4）**28 天**（M0-M2 已按原口径交付；M3 因接入范围从「1 个适配插件」扩充为「网站/App/PC 应用三端」调整为 ≈13 天）；索引能力（M5，受 PoC 门禁）**7 天**；JobRunner 收编（M6）**2 天**。合计 **37.5 天**，加 20% 风险缓冲 ≈ **45 天**（单人全职）。
+> **预估总工时**：核心闭环（M0-M4）**28 天**（M0-M2 已按原口径交付；M3 因接入范围从「1 个适配插件」扩充为「网站/App/PC 应用三端」调整为 ≈13 天）；索引能力（M5，PoC 已开门）**≈10 天**（原 7 天，R5 改道引入 vectors.db/HNSW +3 天）；JobRunner 收编（M6）**2 天**。合计 **≈40.5 天**，加 20% 风险缓冲 ≈ **48 天**（单人全职）。
 
 ---
 
@@ -40,11 +40,11 @@ Phase 8 已交付插件宿主（`utilityProcess` + MessagePort RPC）、JobRunne
 | **M2 Jev 决策插件** | A | 3 | 3.5 天 | — |
 | **M3 采集 Agent 爬虫执行（三端接入）** | B | 9 | ≈13 天 | — |
 | **M4 UI 交互层** | B | 4 | 4.5 天 | — |
-| **M5 索引能力** | C | 4 | 7 天 | PoC R2/R5 |
+| **M5 索引能力** | C | 4 | ≈10 天（原 7 天，R5 改道 +3） | PoC R2/R5/R7 已实测开门 |
 | **M6 JobRunner 收编** | D | 1 | 2 天 | — |
-| **总计** | — | **28** | **37.5 天** | — |
+| **总计** | — | **28** | **≈40.5 天** | — |
 
-> **核心闭环 = M0-M4（28 天）**，可独立交付"关键词匹配版"采集 Agent，不依赖 M5。M5 是视觉匹配升级与 Phase 9 §14a 的索引义务，受 PoC 门禁；M6 是 §14 收尾的技术债统一。
+> **核心闭环 = M0-M4（28 天）**，可独立交付"关键词匹配版"采集 Agent，不依赖 M5。M5 是视觉匹配升级与 Phase 9 §14a 的索引义务（PoC R2/R5/R7 已于 2026-09-29 实测开门，方案按实测改道，见 D14）；M6 是 §14 收尾的技术债统一。
 
 ### 🔗 任务依赖图
 
@@ -67,8 +67,8 @@ M3  T11(CrawlerService+浏览器层) ─► T12(adapter契约+规则引擎) ─�
 M4  T16 ─► T17(DiscoverPanel) ─► T18(确认/跳过/拒绝 ─► FeedbackAggregator)
      T19(CrawlSourceManager) / T20(AgentSettings)  ← 独立并行
                                                      │
-M5  T21(CLIP索引流水线) ─► T22(语义搜索) / T23(AI标签+IQA) / T24(视觉匹配升级)
-     (gated by PoC R2/R5；T24 增强 T16，非闭环必需)
+M5  T21(CLIP索引+vectors.db/HNSW基座) ─► T22(语义搜索) / T23(AI标签+IQA) / T24(视觉匹配升级)
+    (R2/R5/R7 已开门；HNSW 自 Phase 10 提前至 T21；T24 增强 T16，非闭环必需)
 
 M6  T25(scanner/phash/export 收编 JobRunner)  ← 独立
 ```
@@ -168,6 +168,15 @@ T1-T7 交付后经 Ultra Review 发现 **2 Critical / 6 Warning / 6 Suggestion**
 | **理由** | Telegram 不存在「接入桌面客户端本体」的正规通道（无本机 IPC/API）；MTProto 账号级 API 正是官方给「PC 端第三方客户端」开放的能力，是业界成熟做法（Telethon/Pyrogram/telegram_media_downloader 同路线）。UI 自动化驱动 tdesktop 极脆弱且无官方接口 |
 | **被否决** | ① Python sidecar 跑 Telethon（违 D2）② 读取 tdesktop 本地加密数据库（格式私有）③ Bot API（无法读取非bot管理的既有聊天历史） |
 | **失效条件** | 账号风控收紧致 MTProto 不可用时，退化为仅导出导入通道；mtcute 停维护则评估 gramjs（同为 TS MIT） |
+
+### D14 M5 向量存储改道：vectors.db + HNSW 一期引入 + int8-only + 128px 分块
+
+| 要素 | 内容 |
+|---|---|
+| **决策** | M5 向量存储独立为每库 `.ivlib/vectors.db`，一期即引入 HNSW（原列 Phase 10）；索引作业 int8-only + 会话分时 load/unload；大图统一 128px 分块 + 逐带流式合成 + 单次分辨率 ≤4K |
+| **理由** | PoC 实测（2026-09-29，附录 A）：R5 暴力扫描 P95 4.6s 超 §9.4 目标且 EQP 全表 SCAN；R2 fp32 478MB 入内存红线、int8 235MB 且无 VNNI 不提速；R7 naive 4K+ OOM |
+| **被否决** | ① 维持「一期暴力扫描、二期再 HNSW」（被 R5 实测直接否）② 向量内联 thumbs.db（被 R5 全表 SCAN + 拖累缩略图链路否）③ fp32 常驻（违反 C3） |
+| **失效条件** | 若目标机普遍带 VNNI/独显，int8-only 的内存妥协可重估；若 HNSW 召回不达标回退 sqlite-vec 精确扫描 |
 
 ---
 
@@ -802,5 +811,34 @@ T11 2d + T12 1.5d + T13 4.5d + T14 1.5d + T15 1d + T16 1.5d + 登录辅助/杂�
 - `findPhashDuplicate` 全表线性扫描（`crawl-item-store.ts`）：M3 规模可暂容忍；大库前需引入 BK-tree/分段索引或限比对窗口。
 
 > 上述修复不改变 M3 已确立的架构与硬约束（双闸零网络、D8 人在回路、D9 隐私白名单、轮初快照时序、三级去重），仅加固并发安全、退让 enforcement、契约完整性与故障隔离。
+
+---
+
+## 🎯 M5：索引能力（Track C，≈10 天，PoC 已开门 · 方案按实测改道）
+
+> **门禁状态**：PoC R2/R5/R7 已于 2026-09-29 实测（附录 A），原「受 PoC 门禁」已解除。
+> **改道要点（据实测推翻原 M5 方案，见 D14）**：
+> ① R5 → 向量存储独立 `.ivlib/vectors.db` + **HNSW 一期引入**（从 Phase 10 提前）；
+> ② R2 → 索引作业 **int8-only + 会话分时 load/unload**（fp32 入 §7.4 红线）；
+> ③ R7 → 大图 **128px 分块 + 逐带流式合成 + 单次分辨率 ≤4K**（T21/T23 预处理与 Phase 10 共用同一约束）。
+
+### Task T21：CLIP 索引流水线 + 向量存储基座（≈4 天，原口径 +3 天）
+- **交付**：`vectors.db` 独立分库（迁移建 `image_embeddings`，quant 固定 int8）+ HNSW 图索引；`ai-index` 内置插件走 `model-manager` 会话，作业级 **load→批量推理→unload**（R2 会话分时）；预处理按 R7 分块/分辨率上限，lanczos3 降采样到模型输入尺寸。
+- **验收**：1M 库冷索引 ETA ≤ R2 实测口径（≈20.5h）；单库体积对齐 §9.3/R5（≈578MB）；**零 fp32 常驻**；作业可断点续跑（复用 JobRunner，4.6 批处理通道）。
+- **门禁**：`ai.enabled` + `plugins.enabled` 双闸，默认关。
+
+### Task T22：语义搜索（≈2 天）
+- **交付**：查询文本→embedding（同 model_id）→ **HNSW ANN** 召回；结果并入 searchStore 高级搜索维度。
+- **验收**：1M 库语义查询 **P95 < 1-3s（§9.4 目标，靠 HNSW 达成，非暴力扫描）**；模型绑定 §9.7（换模型拒绝跨 model_id 比较）。
+
+### Task T23：AI 标签 + IQA 质量分（≈2 天）
+- **交付**：AI 标签复用 `tags.source='ai'`+`image_tags.confidence`（Q7 人在回路，不自动写库）；IQA 写 `quality_scores`。**大图推理前按 R7 resize/分块，禁止整图常驻。**
+- **验收**：标签可一键采纳/撤销；IQA 内存峰值对齐 §7.4（≤黄区）。
+
+### Task T24：视觉匹配升级（增强 T16，非闭环必需，≈2 天）
+- **交付**：`RecommendScorer` 增视觉相似信号（采集团候选 vs 用户收藏向量），经 vectors.db ANN。
+- **约束**：仅在 `ai.enabled` 开启时挂载，关闭时 T16 原关键词版零依赖、不受影响。
+
+### M5 工时小计：≈10 天（原 7 天 + R5 改道引入 HNSW/vectors.db +3 天）
 
 

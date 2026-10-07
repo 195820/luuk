@@ -86,7 +86,7 @@ updated: 2026-09-29
 - ✅ IPC 暴露 + preload 接口 + `historyStore.ts` + 侧边栏「最近浏览」（缩略图列表、点击跳转原图、清空）
 - ✅ 查看器播放/翻页时自动记录（连续重复自动跳过）
 
-> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。第八轮（插件系统 Phase 8）已交付 — 插件宿主（utilityProcess + MessagePort RPC）/PluginLoader 生命周期/JobRunner 后台作业调度/内存水位线/模型管理器/编辑版本链/内置插件 autotone/Feature Flags，评审 10 项修复完成。第九轮（Agent 体系 Phase 9）进行中 — M0+M1（T1-T7 Agent 基座：数据库迁移 v3/偏好画像/决策层/提案存储/反馈强化/调度循环，Ultra Review 14 项修复）、M2（T8-T10 Jev 决策插件 + 隐私护栏）、M3（T11-T16 采集 Agent 三端接入：爬虫服务/下载器/三级去重/四内置适配器/RecommendScorer 提案闭环）均已交付，全量 552 测试通过；待做：M4 UI 交互层（DiscoverPanel/CrawlSourceManager/AgentSettings，IPC 能力已就绪）、M5 索引能力（受 PoC R2/R5 门禁）、M6 JobRunner 收编。计划详见 [plans/implementation-plan-phase9-agent.md](plans/implementation-plan-phase9-agent.md)。
+> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。第八轮（插件系统 Phase 8）已交付 — 插件宿主（utilityProcess + MessagePort RPC）/PluginLoader 生命周期/JobRunner 后台作业调度/内存水位线/模型管理器/编辑版本链/内置插件 autotone/Feature Flags，评审 10 项修复完成。第九轮（Agent 体系 Phase 9）进行中 — M0+M1（T1-T7 Agent 基座：数据库迁移 v3/偏好画像/决策层/提案存储/反馈强化/调度循环，Ultra Review 14 项修复）、M2（T8-T10 Jev 决策插件 + 隐私护栏）、M3（T11-T16 采集 Agent 三端接入：爬虫服务/下载器/三级去重/四内置适配器/RecommendScorer 提案闭环）均已交付，全量 552 测试通过；待做：M4 UI 交互层（IPC 能力已就绪）、M5 索引能力（PoC R2/R5/R7 已于 2026-09-29 实测开门，方案据实测改道：向量独立 vectors.db + HNSW 自 Phase 10 提前、int8-only、128px 分块，见计划文档 D14）、M6 JobRunner 收编。计划详见 [plans/implementation-plan-phase9-agent.md](plans/implementation-plan-phase9-agent.md)。
 
 ---
 
@@ -247,6 +247,7 @@ CREATE TABLE album_items (
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
 | `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
+| 向量检索若内联 thumbs.db 会全表 SCAN 拖累主链路（R5 实测 P95 4.6s） | 索引查询延迟超红线 | ⬜ 待解 — M5 改道 vectors.db + HNSW（D14，2026-09-29 决策） |
 
 ### 工程化欠账
 
@@ -282,7 +283,7 @@ CREATE TABLE album_items (
 
 **第八轮**：~~插件系统（Phase 8）~~（已交付 — 插件宿主/JobRunner/内存水位线/模型管理器/编辑版本链/内置插件 autotone，评审 10 项修复）
 
-**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC 门禁）→ ⬜ M6 JobRunner 收编（T25）
+**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）→ ⬜ M6 JobRunner 收编（T25）
 
 ---
 
