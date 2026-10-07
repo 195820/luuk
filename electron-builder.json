@@ -5,6 +5,10 @@
     "output": "release"
   },
   "npmRebuild": false,
+  "asarUnpack": [
+    "**/node_modules/onnxruntime-node/**",
+    "**/node_modules/onnxruntime-common/**"
+  ],
   "files": [
     "dist/**/*",
     "dist-electron/**/*",

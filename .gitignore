@@ -62,6 +62,9 @@ data/*
 .agents/
 .claude/
 
+# Qoder
+.qoder/
+
 # Test data
 test-data/
 
