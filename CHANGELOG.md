@@ -12,6 +12,11 @@
   - Jev 决策插件（M2）：`decision-provider` 插件形态 + 隐私护栏（出站文本元数据白名单过滤，API Key 明文不下渲染进程），默认关闭可回落本地规则
   - 采集 Agent 三端接入（M3）：CrawlerService 宿主编排 + per-host 闸门频控退让 + 隐藏窗口浏览器层 + 流式下载（.part 原子落盘/Range 续传）+ url_hash→file_hash→pHash 三级去重入库 + sidecar 溯源；内置适配器 bili-web / xhs-web / tg-mtproto / tg-export-import；RecommendScorer 打分→提案闭环（人在回路，UI 属 M4）
   - 新增 IPC：`triggerCrawlDiscovery` / `getSourceLoginStatus` / `startSourceLogin` 等（preload 已暴露）；Feature Flags `agent.enabled` / `jev.enabled` 默认关闭
+- **CLIP 索引与语义搜索**（Phase 9 M5，T21 2026-10-07 / T22 2026-10-07）：
+  - T21：`vectors.db` 独立分库（`image_embeddings`，quant 固定 int8）+ usearch HNSW 图索引；真实 `OnnxClipEngine`（sharp 预处理 + onnxruntime 图像塔 + int8 量化）经 `ModelManager` SHA256 校验；扫描后自动增量索引（`ai.clip-index` 作业，R2 会话分时 load/unload + 引擎引用计数）
+  - T22 语义搜索：自实现纯 JS CLIP 分词器 `clip-tokenizer.ts`（byte-level BPE + SOT/EOT + pad 77，逐位对齐 transformers.js 黄金 fixture）+ `text-encoder.ts`（`OnnxClipTextEncoder` 文本塔，int8 默认 / fp32 兜底，C2 串行化 load）+ `semantic-search.ts`（DI 编排）+ `ai-wiring.runSemanticQuery`（文本引用计数 + idle TTL 60s + 与索引会话互斥）；`SearchPanel` 新增独立「语义搜索」模式（与关键词互斥）
+  - 新增 IPC：`semanticSearchImages`（camelCase、动态 import 保持 C1 零原生加载）；需已索引且 `ai.enabled` 开启方可用。`VectorIndexService.search()` 获得首个生产调用方（W13 技术债清偿）
+  - 代码审查修复（2026-10-07）：修出 2 Critical（语义框回车与关键词搜索竞态双触发→`stopPropagation` + 请求序号丢弃过期响应；`ai.enabled` 未门控 + 失败静默→按 `getAiStatus` 隐入口 + `semanticError` 上屏）与 7 Warning（`textInflight` 变负致常驻→防负 + 拆链代际；旧文本编码器未 unload 泄漏→换链卸旧；索引可在查询 await 期卸载共享 ANN→收敛同步临界区；只读检索误落盘 sidecar→`countIndexed` 守卫；§9.7 跨模型拒绝比较未强制→`getModelId` 断言；分词 golden 门控脱离 gitignore cache 入库 fixture；语义结果被过期关键词高亮）；硬红线（C1 零原生 / verifyModel 只读 / 文本塔指纹 / 相似度口径 / HF 截断）经三视角核查无问题（其中“词表 miss 回落 EOT”经核查为误报，保留 EOT）
 - **插件系统**（Phase 8）：插件宿主（utilityProcess + MessagePort RPC，崩溃隔离）、PluginLoader 生命周期与 kind 白名单、内置插件静态登记双路径契约、JobRunner 后台作业调度（持久化/断点续跑/优先级）、三级内存水位线监控、模型管理器（SHA256 完整性校验）、编辑版本链（非破坏性编辑输出）、内置插件 autotone、Feature Flags（`plugins.enabled`/`ai.enabled`/`crawler.enabled`）
 - **搜索增强与离线库检测**（Phase 5）：离线库自动探测置灰、搜索历史与预设、高亮匹配
 - **主题皮肤与直方图**（Phase 6）：themeStore + SettingsPanel 主题/强调色/密度、图片 RGB/亮度直方图、文件夹封面设置

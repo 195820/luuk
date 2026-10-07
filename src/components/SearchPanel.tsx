@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import { Search, X, Loader2, Bookmark, BookmarkCheck, Clock, Trash2 } from 'lucide-react'
+import { Search, X, Loader2, Bookmark, BookmarkCheck, Clock, Trash2, Sparkles } from 'lucide-react'
 import { useSearchStore } from '../stores/searchStore'
 import type { SearchCriteria } from '../types'
 
@@ -25,12 +25,25 @@ interface SearchPanelProps {
 
 export function SearchPanel({ libraryId }: SearchPanelProps) {
   const {
-    active, searching, criteria, results, total, hasSearched,
+    active, searching, criteria, results, total, hasSearched, semanticError,
     history, presets,
-    openPanel, closePanel, setCriteria, search,
+    openPanel, closePanel, setCriteria, search, searchSemantic,
     loadHistoryAndPresets, addToHistory, clearHistory,
     saveAsPreset, removePreset, loadPreset,
   } = useSearchStore()
+
+  // 语义搜索（T22）：自然语言查询文本（局部态，命中走 store.searchSemantic）
+  const [semanticInput, setSemanticInput] = useState('')
+
+  // AI 启用态（#2）：语义 UI 仅在 ai.enabled 时出现；面板展开时刷新（捕获运行中开关变更）
+  const [aiOn, setAiOn] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    window.electronAPI.getAiStatus()
+      .then((res) => { if (!cancelled) setAiOn(Boolean(res?.data?.enabled)) })
+      .catch(() => { if (!cancelled) setAiOn(false) })
+    return () => { cancelled = true }
+  }, [active])
 
   // 本地文件大小输入状态（数值 + 单位分离）
   const [minSizeVal, setMinSizeVal] = useState('')
@@ -96,12 +109,14 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
   const handleClear = () => {
     setMinSizeVal('')
     setMaxSizeVal('')
+    setSemanticInput('')
     // 重置全部条件
     const reset: SearchCriteria = {}
     Object.keys(criteria).forEach(k => {
       (reset as any)[k] = undefined
     })
-    useSearchStore.setState({ criteria: reset, results: [], total: 0, hasSearched: false })
+    // #11：清空一并复位语义态（mode + error），避免残留语义模式
+    useSearchStore.setState({ criteria: reset, results: [], total: 0, hasSearched: false, mode: 'keyword', semanticError: null })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -381,6 +396,35 @@ export function SearchPanel({ libraryId }: SearchPanelProps) {
                   </button>
                 )}
               </div>
+
+              {/* 语义搜索（T22）：仅 ai.enabled 时出现（#2）；自然语言 → CLIP 文本塔 → HNSW */}
+              {aiOn && (
+                <div className="pt-2 mt-1 border-t border-border/40 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={14} className="text-accent shrink-0" />
+                    <input
+                      type="text"
+                      value={semanticInput}
+                      onChange={(e) => setSemanticInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); searchSemantic(libraryId, semanticInput) } }}
+                      placeholder="用自然语言描述，如“一只猫在草地上”…（需已索引）"
+                      className="flex-1 h-8 px-2 bg-glass-l2 border border-border rounded text-xs text-text-primary outline-none focus:border-accent"
+                      disabled={searching}
+                    />
+                    <button
+                      onClick={() => searchSemantic(libraryId, semanticInput)}
+                      disabled={searching || !semanticInput.trim()}
+                      className="btn-text primary"
+                    >
+                      {searching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      语义搜索
+                    </button>
+                  </div>
+                  {semanticError && (
+                    <p className="text-[11px] text-error pl-6">{semanticError}</p>
+                  )}
+                </div>
+              )}
 
               {/* 已保存的预设 */}
               {(presets ?? []).length > 0 && (

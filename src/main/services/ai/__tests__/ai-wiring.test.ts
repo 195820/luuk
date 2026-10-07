@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import os from 'os'
+import path from 'path'
 import type { JobRunner } from '../../job-runner'
 
 vi.mock('electron', () => ({ app: { getPath: () => os.tmpdir() } }))
@@ -24,12 +25,14 @@ vi.mock('../../settings-service', () => ({
   setSetting: vi.fn(),
 }))
 
-// ann 替身：load/unload/upsert 记录调用
+// ann 替身：load/unload/upsert/search/isOpen 记录调用
 const annMock = {
   load: vi.fn(),
   unload: vi.fn(),
   upsert: vi.fn(),
   isOpen: vi.fn(() => true),
+  search: vi.fn(() => [] as Array<{ id: number; distance: number }>),
+  getModelId: vi.fn(() => 'clip-vit-b32-int8'),
 }
 const getVectorIndexServiceMock = vi.fn(() => annMock as never)
 vi.mock('../../vectors/vector-index-service', () => ({
@@ -42,6 +45,7 @@ const vectorsMock = {
   markPending: vi.fn(),
   upsertEmbedding: vi.fn(),
   countDirty: vi.fn(() => 0),
+  countIndexed: vi.fn(() => 5),
 }
 const thumbsMock = {
   listIndexableImages: vi.fn(() => [
@@ -60,8 +64,9 @@ vi.mock('../../database', () => ({
 }))
 
 import { FakeEmbeddingEngine } from '../embedding-engine'
+import { FakeTextEncoder } from '../text-encoder'
 import { ensureAiLayer, resetAiLayer, getAiLayer } from '../ai-bootstrap'
-import { enqueueIndexForLibrary, disposeAiLayer } from '../ai-wiring'
+import { enqueueIndexForLibrary, disposeAiLayer, runSemanticQuery, setQueryTextEncoder, setQueryImageResolver, loadTokenizerFromFile } from '../ai-wiring'
 
 const MODEL = 'clip-vit-b32-int8'
 const DIM = 512
@@ -102,6 +107,10 @@ beforeEach(() => {
   vi.clearAllMocks()
   getSettingMock.mockReturnValue(true)
   vectorsMock.listIndexedImageIds.mockReturnValue([])
+  vectorsMock.countIndexed.mockReturnValue(5) // 默认本库已有干净索引行（查询守卫放行）
+  annMock.isOpen.mockReturnValue(true)
+  annMock.search.mockReturnValue([])
+  annMock.getModelId.mockReturnValue('clip-vit-b32-int8')
   thumbsMock.listIndexableImages.mockReturnValue([
     { id: 1, relativePath: 'a.jpg' },
     { id: 2, relativePath: 'b.jpg' },
@@ -207,5 +216,147 @@ describe('ai-wiring 生命周期（R2 会话分时 + 引擎引用计数）', () 
     expect(engine.unloads).toBe(1)
     resetAiLayer()
     expect(getAiLayer()).toBeNull()
+  })
+})
+
+describe('ai-wiring 查询会话（T22 runSemanticQuery：文本引用计数 + idle TTL + 索引互斥）', () => {
+  /** 装配图像层（使 getAiLayer 非空）+ 注入 FakeTextEncoder 与映射器（查询链不碰图像引擎） */
+  function setupQuery(): { tenc: FakeTextEncoder } {
+    buildLayer(new FakeEmbeddingEngine(MODEL, DIM))
+    const tenc = new FakeTextEncoder('clip-text', DIM)
+    setQueryTextEncoder(tenc)
+    setQueryImageResolver((_lib, id) => ({ id, relative_path: `${id}.jpg` }))
+    return { tenc }
+  }
+
+  it('无文本编码器 → [] 且零会话（不 load ANN）', async () => {
+    buildLayer(new FakeEmbeddingEngine(MODEL, DIM))
+    setQueryTextEncoder(null)
+    setQueryImageResolver(() => null)
+    expect(await runSemanticQuery(1, 'a cat', 5)).toEqual([])
+    expect(annMock.load).not.toHaveBeenCalled()
+  })
+
+  it('无映射器 → []，不加载编码器', async () => {
+    const { tenc } = setupQuery()
+    setQueryImageResolver(null)
+    expect(await runSemanticQuery(1, 'a cat', 5)).toEqual([])
+    expect(tenc.loads).toBe(0)
+  })
+
+  it('空查询 → [] 且不加载编码器/不建会话', async () => {
+    const { tenc } = setupQuery()
+    expect(await runSemanticQuery(1, '   ', 5)).toEqual([])
+    expect(tenc.loads).toBe(0)
+    expect(annMock.load).not.toHaveBeenCalled()
+  })
+
+  it('正常：编码器 load + ANN 复用（isOpen）→ 组装 Image+similarity，不自卸载', async () => {
+    const { tenc } = setupQuery()
+    annMock.isOpen.mockReturnValue(true)
+    annMock.search.mockReturnValue([{ id: 7, distance: 0.1 }, { id: 3, distance: 0.4 }])
+    const res = await runSemanticQuery(1, 'a cat', 5)
+    expect(tenc.loads).toBe(1)
+    expect(annMock.load).not.toHaveBeenCalled()
+    expect(res.map((r) => r.id)).toEqual([7, 3])
+    expect(res[0].similarity).toBe(90)
+    expect(annMock.unload).not.toHaveBeenCalled()
+  })
+
+  it('ANN 关闭且无索引 → 查询自加载并在结束后卸载', async () => {
+    const { tenc } = setupQuery()
+    annMock.isOpen.mockReturnValue(false)
+    annMock.search.mockReturnValue([{ id: 1, distance: 0.2 }])
+    const res = await runSemanticQuery(1, 'cat', 3)
+    expect(tenc.loads).toBe(1)
+    expect(annMock.load).toHaveBeenCalledTimes(1)
+    expect(res[0].similarity).toBe(80)
+    expect(annMock.unload).toHaveBeenCalledTimes(1)
+  })
+
+  it('只读守卫（#7）：本库无干净索引向量 → [] 且不 load ANN（不在未索引库落盘 sidecar）', async () => {
+    const { tenc } = setupQuery()
+    vectorsMock.countIndexed.mockReturnValue(0)
+    annMock.isOpen.mockReturnValue(false)
+    const res = await runSemanticQuery(1, 'cat', 3)
+    expect(res).toEqual([])
+    expect(tenc.loads).toBe(0)
+    expect(annMock.load).not.toHaveBeenCalled()
+    expect(annMock.unload).not.toHaveBeenCalled()
+  })
+
+  it('模型绑定守卫（#8 · §9.7）：ANN 模型 ≠ 查询模型 → [] 且不建会话', async () => {
+    const { tenc } = setupQuery()
+    annMock.getModelId.mockReturnValue('some-other-model')
+    const res = await runSemanticQuery(1, 'cat', 3)
+    expect(res).toEqual([])
+    expect(tenc.loads).toBe(0)
+    expect(annMock.load).not.toHaveBeenCalled()
+  })
+
+  it('索引会话活跃 → 查询即便自加载也绝不卸载其 ANN（不夺所有权）', async () => {
+    buildLayer(new FakeEmbeddingEngine(MODEL, DIM))
+    setQueryTextEncoder(new FakeTextEncoder('clip-text', DIM))
+    setQueryImageResolver((_l, id) => ({ id }))
+    const { runner, cap } = makeRunner()
+    await enqueueIndexForLibrary(1, runner) // librarySessions.has(1)=true
+    annMock.unload.mockClear()
+    annMock.isOpen.mockReturnValue(false) // 逼查询走自加载分支
+    annMock.search.mockReturnValue([{ id: 1, distance: 0.1 }])
+    const res = await runSemanticQuery(1, 'cat', 3)
+    expect(res.length).toBe(1)
+    expect(annMock.unload).not.toHaveBeenCalled() // 索引接管 → 让位不卸载
+    cap.emit!({ jobId: 'job-1', state: 'done' })
+    expect(annMock.unload).toHaveBeenCalledTimes(1) // 由索引自己卸载
+  })
+
+  it('空闲 TTL：末次查询后驻留，60s 无新查询则卸载编码器', async () => {
+    vi.useFakeTimers()
+    try {
+      const { tenc } = setupQuery()
+      annMock.isOpen.mockReturnValue(true)
+      annMock.search.mockReturnValue([{ id: 1, distance: 0.1 }])
+      await runSemanticQuery(1, 'cat', 3)
+      expect(tenc.unloads).toBe(0)
+      vi.advanceTimersByTime(60_000)
+      expect(tenc.unloads).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('TTL 内新查询取消卸载（复用驻留会话）', async () => {
+    vi.useFakeTimers()
+    try {
+      const { tenc } = setupQuery()
+      annMock.isOpen.mockReturnValue(true)
+      annMock.search.mockReturnValue([{ id: 1, distance: 0.1 }])
+      await runSemanticQuery(1, 'cat', 3)
+      vi.advanceTimersByTime(30_000)
+      await runSemanticQuery(1, 'dog', 3)
+      vi.advanceTimersByTime(30_000) // 距上次仅 30s < TTL
+      expect(tenc.unloads).toBe(0)
+      vi.advanceTimersByTime(60_000) // 再满 TTL → 卸载
+      expect(tenc.unloads).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('层未装配（disable）→ []', async () => {
+    resetAiLayer()
+    setQueryTextEncoder(new FakeTextEncoder('clip-text', DIM))
+    setQueryImageResolver((_l, id) => ({ id }))
+    expect(await runSemanticQuery(1, 'cat', 3)).toEqual([])
+  })
+})
+
+describe('ai-wiring 资产载入（#9）', () => {
+  it('loadTokenizerFromFile 路径不存在 → null（不抛，语义搜索退回空结果）', () => {
+    expect(loadTokenizerFromFile('/no/such/clip-tokenizer.json')).toBeNull()
+  })
+  it('loadTokenizerFromFile 载入入库 fixture → 非空分词器', () => {
+    const p = path.join(import.meta.dirname, '__fixtures__', 'clip-tokenizer.json')
+    expect(loadTokenizerFromFile(p)).not.toBeNull()
   })
 })

@@ -827,11 +827,14 @@ T11 2d + T12 1.5d + T13 4.5d + T14 1.5d + T15 1d + T16 1.5d + 登录辅助/杂�
 - **交付**：`vectors.db` 独立分库（迁移建 `image_embeddings`，quant 固定 int8）+ HNSW 图索引；`ai-index` 内置插件走 `model-manager` 会话，作业级 **load→批量推理→unload**（R2 会话分时）；预处理按 R7 分块/分辨率上限，lanczos3 降采样到模型输入尺寸。
 - **验收**：1M 库冷索引 ETA ≤ R2 实测口径（≈20.5h）；单库体积对齐 §9.3/R5（≈578MB）；**零 fp32 常驻**；作业可断点续跑（复用 JobRunner，4.6 批处理通道）。
 - **门禁**：`ai.enabled` + `plugins.enabled` 双闸，默认关。
-- **交付边界**：本任务交付「嵌入生成 + 向量持久化 + HNSW 索引 + 扫描后增量索引 + UI 开关」；`VectorIndexService.search()` 已实现并有端到端自检索冒烟覆盖，但**尚无生产调用方**（搜索 UI/查询向量化未接入），该消费侧由 T22 语义搜索承接。
+- **交付边界**：本任务交付「嵌入生成 + 向量持久化 + HNSW 索引 + 扫描后增量索引 + UI 开关」；`VectorIndexService.search()` 已实现并有端到端自检索冒烟覆盖，其首个生产调用方由 T22 语义搜索承接（已接入，见下）。
 
 ### Task T22：语义搜索（≈2 天）
-- **交付**：查询文本→embedding（同 model_id）→ **HNSW ANN** 召回；结果并入 searchStore 高级搜索维度。
-- **验收**：1M 库语义查询 **P95 < 1-3s（§9.4 目标，靠 HNSW 达成，非暴力扫描）**；模型绑定 §9.7（换模型拒绝跨 model_id 比较）。
+- **状态**：✅ 已完成（2026-10-07）——详见 [phase9-t22-semantic-search.md](./phase9-t22-semantic-search.md) §8 实施回填
+- **交付**：查询文本→embedding（同 model_id）→ **HNSW ANN** 召回；结果并入 searchStore（独立语义模式，与关键词互斥）。
+- **实现要点**：`clip-tokenizer.ts`（自实现 byte-level BPE，逐位对齐 transformers.js 黄金 fixture）+ `text-encoder.ts`（`OnnxClipTextEncoder`，int8 默认 / fp32 兜底，C2 去重）+ `semantic-search.ts`（纯 DI 编排）+ `ai-wiring.runSemanticQuery`（文本引用计数 + idle TTL 60s + 索引互斥：查询绝不卸载索引持有的 ANN）+ IPC `semanticSearchImages` + `searchStore.searchSemantic` + SearchPanel 语义输入行。
+- **验收**：典型库语义查询走 HNSW（非暴力扫描）；模型绑定 §9.7（按图像 `model_id` 命中对应库 ANN）；门控 e2e（`IV_AI_E2E=1`）实跑生产混合配对（文本 int8/fp32 × 图像 int8 存储）top-1 全链真实通过。
+- **交付边界**：`ai.textPrecision`（fp32 兜底）运行时开关本轮**未接线**——生产默认 int8 文本塔，fp32 仅在门控 e2e 中用于验证检索空间一致；分词器/cache 资产沿用 T21「开发期直连 + `ai.enabled` 默认关」口径，生产打包与下载不在本任务范围。
 
 ### Task T23：AI 标签 + IQA 质量分（≈2 天）
 - **交付**：AI 标签复用 `tags.source='ai'`+`image_tags.confidence`（Q7 人在回路，不自动写库）；IQA 写 `quality_scores`。**大图推理前按 R7 resize/分块，禁止整图常驻。**
@@ -866,6 +869,6 @@ T21 交付后经 Code Review 发现 **4 Critical / 9 Warning / 3 Suggestion**，
 | Suggestion | embed 单条失败被吞、无根因 | `embedAndPersistOne` catch 内 `logger.warn` 记 image/path/err | `ai/index-session.ts` |
 | Suggestion | UI 开关失败静默回滚 | 失败展示 `aiError` 文案 | `AgentSettings.tsx` |
 
-**交付边界（技术债登记）**：`VectorIndexService.search()` 及 HNSW 检索尚无生产调用方，随 T22 语义搜索接入。
+**交付边界（技术债登记）**：~~`VectorIndexService.search()` 及 HNSW 检索尚无生产调用方~~ —— 已由 T22 语义搜索接入（首个生产调用方，`ann.search` 经 `semantic-search` 编排），W13 技术债清偿。
 
 

@@ -40,6 +40,11 @@ export class VectorIndexService {
     return this.dim
   }
 
+  /** 暴露绑定 modelId 供工厂复用判定与查询侧模型绑定校验（§9.7 跨模型拒绝比较） */
+  getModelId(): string | undefined {
+    return this.modelId
+  }
+
   size(): number {
     return this.ann?.size() ?? 0
   }
@@ -113,8 +118,8 @@ const instances = new Map<string, VectorIndexService>()
 export function getVectorIndexService(libraryPath: string, dim: number, modelId?: string): VectorIndexService {
   const s = instances.get(libraryPath)
   if (s) {
-    // dim 不一致（换模型/换维度）→ sidecar 与 dim 不匹配不可复用：丢弃重建
-    if (s.getDim() !== dim) {
+    // dim 或 modelId 不一致（换模型/换维度）→ sidecar 与之不匹配不可复用：丢弃重建
+    if (s.getDim() !== dim || s.getModelId() !== modelId) {
       s.close()
       const next = new VectorIndexService(libraryPath, dim, modelId)
       instances.set(libraryPath, next)

@@ -19,6 +19,8 @@ import { getMasterDB, getVectorsDB } from '../services/database'
 const LOG = 'AiHandlers'
 // 与 ai-wiring 保持一致的模型标识（只读状态查询用，避免为此静态引入 usearch 链）
 const CLIP_MODEL_ID = 'clip-vit-b32-int8'
+// #6：查询文本长度上限（防止粘贴长文触发主进程完整 BPE 阻塞）；CLIP 上下文仅 77 token，超长无意义
+const SEMANTIC_QUERY_MAX_LEN = 512
 
 type AiWiring = typeof import('../services/ai/ai-wiring')
 type VectorIndexModule = typeof import('../services/vectors/vector-index-service')
@@ -37,24 +39,42 @@ async function loadAiModules(): Promise<AiWiring> {
   return cachedWiring
 }
 
-/** 开发期：在若干基准目录找 cache/poc-r2 的 int8 模型；找不到返回 null（AI 层退回零引擎） */
-export function resolveClipModelFile(): string | null {
-  const file = path.join('cache', 'poc-r2', 'clip-vit-b32-int8.onnx')
+/** 开发期：在若干基准目录（cwd / appPath）按相对路径找文件；找不到返回 null */
+function findCacheFile(relPath: string): string | null {
   const bases: Array<string | null> = []
   try { bases.push(process.cwd()) } catch { /* ignore */ }
   try { bases.push(app.getAppPath()) } catch { /* ignore */ }
   for (const b of bases) {
     if (!b) continue
-    const f = path.join(b, file)
+    const f = path.join(b, relPath)
     if (fs.existsSync(f)) return f
   }
   return null
+}
+
+/** 开发期：在若干基准目录找 cache/poc-r2 的 int8 图像模型；找不到返回 null（AI 层退回零引擎） */
+export function resolveClipModelFile(): string | null {
+  return findCacheFile(path.join('cache', 'poc-r2', 'clip-vit-b32-int8.onnx'))
+}
+
+/** T22：文本塔 int8 模型绝对路径（缺 → 语义搜索退回空结果） */
+export function resolveClipTextModelFile(): string | null {
+  return findCacheFile(path.join('cache', 'poc-r2', 'clip-text-b32-int8.onnx'))
+}
+
+/** T22：分词器数据 tokenizer.json 绝对路径 */
+export function resolveTokenizerFile(): string | null {
+  return findCacheFile(path.join('cache', 'poc-r2', 'clip-token', 'tokenizer.json'))
 }
 
 function bootOpts() {
   return {
     modelsDir: path.join(app.getPath('userData'), 'models'),
     modelFile: resolveClipModelFile(),
+    textModelFile: resolveClipTextModelFile(),
+    tokenizerFile: resolveTokenizerFile(),
+    // 语义结果 imageId→Image 映射能力（注入 wiring，不把 monolith 静态链入动态导入边界）
+    mapImage: (libraryId: number, imageId: number) => getImageService().getMappedImageById(libraryId, imageId),
     runner: getJobRunner(),
     imageService: getImageService(),
   }
@@ -119,11 +139,31 @@ export function registerAiHandlers(): void {
     }
   })
 
+  // T22 语义搜索：关闭态短路（零 usearch）；启用态动态拉起 ai-wiring 跑查询会话
+  ipcMain.handle('semanticSearchImages', async (_e, libraryId: number, query: string, limit: number) => {
+    try {
+      // #6 入参收紧：非法 libraryId / 过长查询直接拒绝，limit 夹 [1,500]
+      const libId = Number(libraryId)
+      if (!Number.isInteger(libId) || libId <= 0) return { success: false, error: '无效库 ID', images: [] }
+      const q = String(query ?? '')
+      if (q.length > SEMANTIC_QUERY_MAX_LEN) return { success: false, error: `查询过长（>${SEMANTIC_QUERY_MAX_LEN} 字符）`, images: [] }
+      const k = Math.min(500, Math.max(1, Number(limit) || 200))
+      // #2 关闭态：返回 success:false + error（区分「未就绪」与「真 0 命中」；UI 侧另按 getAiStatus 隐语义入口）
+      if (!getSetting('ai.enabled')) return { success: false, error: 'AI 未启用', images: [] }
+      const wiring = await loadAiModules()
+      const hits = await wiring.runSemanticQuery(libId, q, k)
+      return { success: true, images: hits }
+    } catch (err) {
+      logger.error(LOG, 'semanticSearchImages 失败', err)
+      return { success: false, error: (err as Error).message, images: [] }
+    }
+  })
+
   logger.info(LOG, 'AI IPC 处理器已注册')
 }
 
 export function unregisterAiHandlers(): void {
-  for (const channel of ['getAiStatus', 'setAiEnabled']) {
+  for (const channel of ['getAiStatus', 'setAiEnabled', 'semanticSearchImages']) {
     ipcMain.removeHandler(channel)
   }
 }

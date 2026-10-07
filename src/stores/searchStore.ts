@@ -22,6 +22,10 @@ interface SearchState {
   total: number
   /** 是否已执行过搜索（区分「未搜索」与「搜索无结果」） */
   hasSearched: boolean
+  /** 搜索模式：关键词条件 / 语义自然语言（T22） */
+  mode: 'keyword' | 'semantic'
+  /** 语义搜索错误提示（null=无；#2 失败/未就绪上屏，区分「真 0 命中」与「链未就绪」） */
+  semanticError: string | null
   /** 搜索历史（最近 10 次） */
   history: string[]
   /** 搜索预设 */
@@ -32,6 +36,8 @@ interface SearchState {
   setCriteria: (patch: Partial<SearchCriteria>) => void
   /** 执行搜索（重置分页，从 offset=0 开始） */
   search: (libraryId: number) => Promise<void>
+  /** 语义搜索（自然语言 → CLIP 文本塔 → HNSW）；一次性 top-k，不分页 */
+  searchSemantic: (libraryId: number, query: string) => Promise<void>
   /** 按标签搜索（清空其他条件，仅按标签筛选） */
   searchByTags: (libraryId: number, tagIds: number[]) => Promise<void>
   /** 滚动加载下一页 */
@@ -51,6 +57,10 @@ interface SearchState {
 }
 
 const PAGE_SIZE = 100
+/** 语义搜索一次性 top-k（ANN 无 offset 分页，一次取足展示量） */
+const SEMANTIC_LIMIT = 200
+/** 请求序号（#1）：关键词/语义共用以丢弃过期响应——后发起的请求胜，先前在飞的回包不再写回结果/mode */
+let searchSeq = 0
 
 const EMPTY_CRITERIA: SearchCriteria = {}
 
@@ -61,6 +71,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   results: [],
   total: 0,
   hasSearched: false,
+  mode: 'keyword',
+  semanticError: null,
   history: [],
   presets: [],
 
@@ -73,6 +85,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     hasSearched: false,
     criteria: { ...EMPTY_CRITERIA },
     searching: false,
+    mode: 'keyword',
+    semanticError: null,
   }),
 
   setCriteria: (patch) => set((state) => ({
@@ -80,7 +94,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   })),
 
   search: async (libraryId: number) => {
-    set({ searching: true, hasSearched: true })
+    const seq = ++searchSeq
+    set({ searching: true, hasSearched: true, mode: 'keyword', semanticError: null })
     try {
       // 添加到搜索历史（如果有文件名搜索词）
       const { fileName } = get().criteria
@@ -93,6 +108,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         get().criteria,
         { limit: PAGE_SIZE, offset: 0 }
       )
+      if (seq !== searchSeq) return // 过期响应丢弃（#1）
       if (!res.success) {
         logger.error('SearchStore', res.error || '搜索失败')
         set({ results: [], total: 0, searching: false })
@@ -100,8 +116,39 @@ export const useSearchStore = create<SearchState>((set, get) => ({
       }
       set({ results: res.images, total: res.total, searching: false })
     } catch (err) {
+      if (seq !== searchSeq) return
       logger.error('SearchStore', '搜索异常', err)
       set({ results: [], total: 0, searching: false })
+    }
+  },
+
+  searchSemantic: async (libraryId: number, query: string) => {
+    const q = (query ?? '').trim()
+    const seq = ++searchSeq
+    // #11：进入语义模式清空关键词条件（避免语义结果被过期文件名关键词高亮），#2：清旧错误
+    set({ mode: 'semantic', hasSearched: true, active: true, criteria: { ...EMPTY_CRITERIA }, semanticError: null })
+    if (!q) {
+      set({ results: [], total: 0, searching: false })
+      return
+    }
+    set({ searching: true })
+    try {
+      await get().addToHistory(q)
+      const res = await window.electronAPI.semanticSearchImages(libraryId, q, SEMANTIC_LIMIT)
+      if (seq !== searchSeq) return // 过期响应丢弃（#1）
+      if (!res.success) {
+        const msg = res.error || '语义搜索失败'
+        logger.error('SearchStore', msg)
+        set({ results: [], total: 0, searching: false, semanticError: msg })
+        return
+      }
+      const imgs = res.images ?? []
+      set({ results: imgs, total: imgs.length, searching: false, semanticError: null })
+    } catch (err) {
+      if (seq !== searchSeq) return
+      const msg = err instanceof Error ? err.message : '语义搜索异常'
+      logger.error('SearchStore', msg, err)
+      set({ results: [], total: 0, searching: false, semanticError: msg })
     }
   },
 
@@ -114,7 +161,8 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   },
 
   loadMore: async (libraryId: number) => {
-    const { results, total, searching } = get()
+    const { results, total, searching, mode } = get()
+    if (mode === 'semantic') return // 语义结果为一次性 top-k，无 offset 分页
     if (searching || results.length >= total) return
     set({ searching: true })
     try {

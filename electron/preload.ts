@@ -148,6 +148,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) =>
     ipcRenderer.invoke('findSimilarImages', libraryId, imagePath, threshold, limit),
 
+  // Phase 9 M5 · T22 — 语义搜索（自然语言 → CLIP 文本塔 → HNSW）
+  semanticSearchImages: (libraryId: number, query: string, limit: number) =>
+    ipcRenderer.invoke('semanticSearchImages', libraryId, query, limit),
+
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 

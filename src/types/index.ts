@@ -181,6 +181,8 @@ export interface ElectronAPI {
   onPhashProgress: (callback: (progress: PhashProgress) => void) => () => void
   // 相似图片查找
   findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) => Promise<{ success: boolean; images?: any[]; error?: string }>
+  // Phase 9 M5 · T22 — 语义搜索（自然语言 → CLIP 文本塔 → HNSW）
+  semanticSearchImages: (libraryId: number, query: string, limit: number) => Promise<{ success: boolean; images?: SemanticImage[]; error?: string }>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -457,6 +459,11 @@ export interface SearchResult {
   images: Image[]
   total: number
   error?: string
+}
+
+/** 语义搜索命中：Image + 相似度百分比（0–100，对齐 SimilarImage.similarity 口径） */
+export interface SemanticImage extends Image {
+  similarity: number
 }
 
 export interface SearchOptions {

@@ -215,6 +215,14 @@ e:\luuk\
 - **合规红线**：per-host 闸门 + 频控退让 + robots 检查；禁止 App 抓包/解签名（小红书走网页版 `inPageFetch` 零逆向）
 - **默认全关双闸**：调度侧看 `agent.enabled`，执行侧看 `crawler.enabled`，任一关闭都不出流；`@mtcute/node` 未安装，TgClient 接口注入 + 工厂位，未注入时 discover 明确拒跑
 
+### 索引与语义搜索（Phase 9 M5）
+- **C1 零原生加载**：`ai-handlers.ts` 被 `main.ts` 静态引入，**绝不同态** import `ai-wiring`/`usearch`/`onnxruntime-node`；仅 `ai.enabled` 时经 `loadAiModules()` 动态载入。关闭态启动零 usearch/零 ort/零模型/零网络
+- **R2 会话分时**：索引与查询各自 `load→工作→unload`；`OnnxClipEngine`/`OnnxClipTextEncoder` 顶层零原生依赖（ort 全在方法内 `await import()`），C2 用 in-flight Promise 去重并发 `load()`
+- **查询/索引互斥铁律**：`runSemanticQuery` 对目标库 ANN **只 load 不夺卸载所有权**——空闲 TTL(60s)/自加载卸载前必判 `!librarySessions.has(libId)`，绝不把正在写入的共享单例挤出；文本编码会话独立引用计数归零才 unload
+- **模型绑定（§9.7）**：文本塔与图像塔同 checkpoint（Xenova/clip-vit-base-patch32）→ 同 512 维投影空间；检索空间键始终是图像 `model_id`（`clip-vit-b32-int8`），文本塔 id 仅资产标识
+- **分词器**：`clip-tokenizer.ts` 纯 JS byte-level BPE，正确性以 transformers.js 黄金 fixture 逐位对齐为准（HF 截断=后处理后按 77 保头截断，超长尾 EOT 被切）；此 CLIP 变体 `pre_tokenizer` invert 丢弃空白 → 词无空格前缀、无 `Ġ` token
+- **开发期资产口径**：模型/tokenizer 直连 `cache/poc-r2`（gitignore），`verifyModel(..., {deleteOnMismatch:false})` 只读校验避免误删唯一本地副本；生产打包/下载不在 M5 范围
+
 ### 缩略图缓存链路
 ```
 内存 LRU 缓存 (200MB) → thumbs.db 数据库缓存 → 原图实时生成 (Sharp)

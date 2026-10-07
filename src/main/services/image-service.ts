@@ -498,6 +498,19 @@ export class ImageService {
   }
 
   /**
+   * T22 语义搜索用：按 (库, imageId) 返回已映射的 Image 记录（含 mediaType / library_*）；缺行/缺库返回 null。
+   * 供 ai-wiring 查询会话注入的 imageResolver 复用现有映射口径（与 findSimilarImages 一致）。
+   */
+  getMappedImageById(libraryId: number, imageId: number): any | null {
+    const library = this.masterDB.getLibrary(libraryId);
+    if (!library) return null;
+    const db = this.connectLibrary(libraryId);
+    const img = db.getImage(imageId);
+    if (!img) return null;
+    return this.mapImageWithLibraryInfo(img, libraryId, library.name);
+  }
+
+  /**
    * 获取文件夹树
    */
   getFolderTree(libraryId: number): Array<{ path: string; name: string; imageCount: number; children: any[]; depth: number }> {

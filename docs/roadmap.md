@@ -283,7 +283,7 @@ CREATE TABLE album_items (
 
 **第八轮**：~~插件系统（Phase 8）~~（已交付 — 插件宿主/JobRunner/内存水位线/模型管理器/编辑版本链/内置插件 autotone，评审 10 项修复）
 
-**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）→ ⬜ M6 JobRunner 收编（T25）
+**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）：~~T21 CLIP 索引+vectors.db/HNSW~~ + ~~T22 语义搜索（2026-10-07 交付：真分词器 byte-level BPE 对齐黄金 fixture + 文本塔 int8/fp32 + HNSW 端到端混合配对；`ann.search` 首个生产调用方，W13 技术债清偿）~~ ✅ → ⬜ T23 AI 标签+IQA / T24 视觉匹配升级 → ⬜ M6 JobRunner 收编（T25）
 
 ---
 
