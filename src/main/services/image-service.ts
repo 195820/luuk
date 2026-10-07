@@ -47,6 +47,13 @@ export class ImageService {
   private scanners: Map<string, LibraryScanner> = new Map();
   private cache: LRUCache;
   private initialized: boolean = false;
+  /** Phase 9 M5：扫描完成监听（AI 增量索引经 setScanCompleteListener 注入；null=未接） */
+  private scanCompleteListener: ((libraryId: number) => void) | null = null;
+
+  /** 注入/清除扫描完成监听：ImageService 不感知消费者，纯回调解耦（消费者在 ai-wiring） */
+  setScanCompleteListener(fn: ((libraryId: number) => void) | null): void {
+    this.scanCompleteListener = fn;
+  }
   private scanningLibraries: Set<number> = new Set();
   private backfillRunning: { libraryId: number; stopped: boolean } | null = null;
 
@@ -241,6 +248,12 @@ export class ImageService {
         imageCount: result.total,
         status: 'online',
       });
+      // Phase 9 M5：扫描成功后通知（fire-and-forget，异常吞掉不影响扫描结果返回）
+      try {
+        this.scanCompleteListener?.(libraryId);
+      } catch (err) {
+        logger.error('ImageService', '扫描完成监听异常', err);
+      }
       return result;
     } finally {
       this.scanningLibraries.delete(libraryId);

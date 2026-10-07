@@ -1490,6 +1490,24 @@ export class ThumbnailsDB {
     return stmt.all('image', limit) as Array<{ id: number; relative_path: string }>;
   }
 
+  /** 列出可嵌入的图片（未删除、media_type=image）：返回 id + relative_path，供索引增量计划 */
+  listIndexableImages(): Array<{ id: number; relativePath: string }> {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      "SELECT id, relative_path FROM images WHERE is_deleted = 0 AND media_type = 'image' ORDER BY id"
+    ).all() as Array<{ id: number; relative_path: string }>;
+    return rows.map(r => ({ id: r.id, relativePath: r.relative_path }));
+  }
+
+  /** 按 id 取相对路径（未删除）；索引作业据此拼绝对路径喂引擎 */
+  getImageRelativePath(id: number): string | null {
+    if (!this.db) return null;
+    const row = this.db.prepare(
+      'SELECT relative_path FROM images WHERE id = ? AND is_deleted = 0'
+    ).get(id) as { relative_path: string } | undefined;
+    return row?.relative_path ?? null;
+  }
+
   /**
    * 统计无 phash 的图片数量
    */
@@ -2016,6 +2034,153 @@ export class ThumbnailsDB {
   }
 }
 
+/**
+ * 向量分库数据库服务 - 管理每库 .ivlib/vectors.db（Phase 9 M5，D14/§9.1 改道）
+ *
+ * 独立于 thumbs.db：向量全表/ANN 检索不抢缩略图页缓存（R5）。
+ * image_embeddings 以 int8 BLOB 存本库；HNSW/vec0 图索引另建（由 ai-index 作业维护，不在本类职责内）。
+ * 表结构与 §9.2 一致；quant 固定 int8 由调用方保证（R2：fp32 入内存红线）。
+ */
+export class VectorsDB {
+  private db: DatabaseType | null = null;
+  private dbPath: string = '';
+
+  initialize(libraryPath: string): void {
+    if (!fs.existsSync(libraryPath)) {
+      throw new Error(`库路径不存在：${libraryPath}`);
+    }
+    const libDir = path.join(libraryPath, '.ivlib');
+    if (!fs.existsSync(libDir)) {
+      fs.mkdirSync(libDir, { recursive: true });
+    }
+    this.dbPath = path.join(libDir, 'vectors.db');
+    this.db = new Database(this.dbPath);
+    this.createTables();
+  }
+
+  private createTables(): void {
+    if (!this.db) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS image_embeddings (
+        image_id   INTEGER PRIMARY KEY,
+        model_id   TEXT NOT NULL,
+        dim        INTEGER NOT NULL,
+        quant      TEXT NOT NULL,
+        vector     BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        dirty      INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_emb_model ON image_embeddings(model_id);
+      CREATE INDEX IF NOT EXISTS idx_emb_dirty ON image_embeddings(dirty);
+    `);
+  }
+
+  /** 幂等写入单条向量（写后清 dirty） */
+  upsertEmbedding(input: {
+    imageId: number;
+    modelId: string;
+    dim: number;
+    quant: string;
+    vector: Uint8Array;
+  }): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO image_embeddings (image_id, model_id, dim, quant, vector, created_at, dirty)
+      VALUES (@imageId, @modelId, @dim, @quant, @vector, @createdAt, 0)
+      ON CONFLICT(image_id) DO UPDATE SET
+        model_id=excluded.model_id, dim=excluded.dim, quant=excluded.quant,
+        vector=excluded.vector, created_at=excluded.created_at, dirty=0
+    `).run({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  /** scanner 检测到文件变动时标脏（§9.5 增量失效，复用现有判定不新建机制） */
+  markDirty(imageId: number): void {
+    if (!this.db) return;
+    this.db.prepare('UPDATE image_embeddings SET dirty = 1 WHERE image_id = ?').run(imageId);
+  }
+
+  /** 索引作业取待处理（脏）条目；limit 分批，对齐 JobRunner 批处理通道（4.6） */
+  getDirtyImageIds(limit: number): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      'SELECT image_id FROM image_embeddings WHERE dirty = 1 ORDER BY image_id LIMIT ?'
+    ).all(limit) as Array<{ image_id: number }>;
+    return rows.map(r => r.image_id);
+  }
+
+  countDirty(): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 1').get() as { c: number }).c;
+  }
+
+  /** 按模型计数（§9.7 模型绑定：换 model_id 不互比，全量重建前用它判存在旧向量） */
+  countByModel(modelId: string): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM image_embeddings WHERE model_id = ?').get(modelId) as { c: number }).c;
+  }
+
+  getEmbedding(imageId: number): { model_id: string; dim: number; quant: string; vector: Uint8Array } | undefined {
+    if (!this.db) return undefined;
+    const r = this.db.prepare('SELECT model_id, dim, quant, vector FROM image_embeddings WHERE image_id = ?').get(imageId) as
+      { model_id: string; dim: number; quant: string; vector: Buffer } | undefined;
+    if (!r) return undefined;
+    return { model_id: r.model_id, dim: r.dim, quant: r.quant, vector: new Uint8Array(r.vector) };
+  }
+
+  /** 全量列出向量（供 HNSW sidecar 索引全量重建；int8 BLOB→Uint8Array） */
+  listAllEmbeddings(): Array<{ imageId: number; vector: Uint8Array }> {
+    if (!this.db) return [];
+    const rows = this.db.prepare('SELECT image_id, vector FROM image_embeddings').all() as
+      Array<{ image_id: number; vector: Buffer }>;
+    return rows.map(r => ({ imageId: r.image_id, vector: new Uint8Array(r.vector) }));
+  }
+
+  /**
+   * 入队待嵌入：无行则插占位脏行（零向量占位，稍后由索引作业覆写），有行则标脏。
+   * 解决「新图片没有 embedding 行 → markDirty 的 UPDATE 命不中 → 永远进不了待办」的空洞。
+   * 占位零向量仅存活于本会话内：会话先 embed 再 upsert 覆写，落盘 sidecar 已是真实向量。
+   */
+  markPending(imageId: number, modelId: string, dim: number): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO image_embeddings (image_id, model_id, dim, quant, vector, created_at, dirty)
+      VALUES (@imageId, @modelId, @dim, 'int8', @vector, @createdAt, 1)
+      ON CONFLICT(image_id) DO UPDATE SET dirty = 1
+    `).run({ imageId, modelId, dim, vector: new Uint8Array(dim), createdAt: new Date().toISOString() });
+  }
+
+  /** 已干净嵌入某模型的 image_id 集合（增量计划据此判定「谁还缺这个模型的向量」） */
+  listIndexedImageIds(modelId: string): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      'SELECT image_id FROM image_embeddings WHERE model_id = ? AND dirty = 0'
+    ).all(modelId) as Array<{ image_id: number }>;
+    return rows.map(r => r.image_id);
+  }
+
+  /** 删除某图向量（文件删除 / 换模型全量重建时调用；§9.7） */
+  deleteEmbedding(imageId: number): void {
+    if (!this.db) return;
+    this.db.prepare('DELETE FROM image_embeddings WHERE image_id = ?').run(imageId);
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+  }
+
+  getDbPath(): string {
+    return this.dbPath;
+  }
+
+  /** 暴露底层连接供上层调试；ANN 索引不在此类职责内（由 VectorIndexService 用 USearch HNSW 维护） */
+  getRawDb(): DatabaseType | null {
+    return this.db;
+  }
+}
+
 let masterDBInstance: MasterDB | null = null;
 const thumbnailsDBInstances = new Map<string, ThumbnailsDB>();
 
@@ -2047,6 +2212,26 @@ export function closeThumbnailsDB(libraryPath: string): void {
   }
 }
 
+const vectorsDBInstances = new Map<string, VectorsDB>();
+
+/** 按库懒开 vectors.db（与 thumbs.db 同生命周期，随 .ivlib 整体迁移/关闭） */
+export function getVectorsDB(libraryPath: string): VectorsDB {
+  if (!vectorsDBInstances.has(libraryPath)) {
+    const db = new VectorsDB();
+    db.initialize(libraryPath);
+    vectorsDBInstances.set(libraryPath, db);
+  }
+  return vectorsDBInstances.get(libraryPath)!;
+}
+
+export function closeVectorsDB(libraryPath: string): void {
+  const db = vectorsDBInstances.get(libraryPath);
+  if (db) {
+    db.close();
+    vectorsDBInstances.delete(libraryPath);
+  }
+}
+
 export function closeAllDatabases(): void {
   masterDBInstance?.close();
   masterDBInstance = null;
@@ -2054,4 +2239,8 @@ export function closeAllDatabases(): void {
     db.close();
   }
   thumbnailsDBInstances.clear();
+  for (const db of vectorsDBInstances.values()) {
+    db.close();
+  }
+  vectorsDBInstances.clear();
 }

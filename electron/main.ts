@@ -14,6 +14,7 @@ import {
   ensureCrawlerLayerOnBoot,
 } from '../src/main/ipc/agent-handlers'
 import { registerJobHandlers, unregisterJobHandlers } from '../src/main/ipc/job-handlers'
+import { registerAiHandlers, unregisterAiHandlers, ensureAiLayerOnBoot, disposeAiOnQuit } from '../src/main/ipc/ai-handlers'
 import { initJobRunner, getJobRunner } from '../src/main/services/job-runner'
 import { getPluginManager } from '../src/main/services/plugin-manager'
 import { getMasterDB } from '../src/main/services/database'
@@ -271,6 +272,10 @@ app.whenReady().then(async () => {
   // 爬虫层装配（T11，crawler.enabled 默认关闭 → 零窗口零网络）
   ensureCrawlerLayerOnBoot()
 
+  // AI 向量索引层装配（T21，ai.enabled 默认关闭 → 零引擎零 onnxruntime 零模型）
+  registerAiHandlers()
+  await ensureAiLayerOnBoot()
+
   createWindow()
 
   app.on('activate', () => {
@@ -327,6 +332,8 @@ function shutdownApp(): Promise<void> {
         unregisterPluginHandlers()
         unregisterJobHandlers()
         unregisterAgentHandlers()
+        unregisterAiHandlers()
+        disposeAiOnQuit()
 
         libraryMonitor.stop()
         stopMediaRegistryCleanup()

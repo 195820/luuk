@@ -7,6 +7,20 @@ import type {
   Proposal, ProposalQuery, ProposalPage, ProposalState, AgentKind, FeedbackAction,
   AgentStatus, CrawlSourceRecord, CreateCrawlSourceInput,
 } from './agent'
+
+/**
+ * Phase 9 M5 · T21 — AI 向量索引层状态（ai.enabled 开关 + 在线库索引进度概览）。
+ * indexed/pending 针对当前在线库（多库时取首个 online），仅用于展示。
+ */
+export interface AiStatus {
+  /** ai.enabled 开关（默认关，关闭时零引擎零模型） */
+  enabled: boolean
+  /** 在线库已完成索引的图片数 */
+  indexed: number
+  /** 在线库待索引（dirty）图片数 */
+  pending: number
+}
+
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
@@ -123,6 +137,9 @@ export interface ElectronAPI {
   createCrawlSource: (input: CreateCrawlSourceInput) => Promise<{ success: boolean; data?: CrawlSourceRecord; error?: string }>
   deleteCrawlSource: (id: number) => Promise<{ success: boolean; data?: boolean; error?: string }>
   setCrawlSourceEnabled: (id: number, enabled: boolean) => Promise<{ success: boolean; data?: CrawlSourceRecord | null; error?: string }>
+  // Phase 9 M5 · T21 — AI 向量索引（开关 + 索引状态）
+  getAiStatus: () => Promise<{ success: boolean; data?: AiStatus; error?: string }>
+  setAiEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: { enabled: boolean }; error?: string }>
   // JobRunner 作业管理
   jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
   jobsGet: (jobId: string) => Promise<{ success: boolean; data?: Job & { items: JobItem[] }; error?: string }>

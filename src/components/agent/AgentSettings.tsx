@@ -6,9 +6,9 @@
  * 画像重建节流固定 5 分钟（展示项，非可配）。
  */
 import { useEffect, useState } from 'react'
-import { X, Bot, KeyRound, Loader2 } from 'lucide-react'
+import { X, Bot, KeyRound, Loader2, Sparkles } from 'lucide-react'
 import { useAgentStore } from '../../stores/agentStore'
-import type { JevStatus } from '../../types'
+import type { JevStatus, AiStatus } from '../../types'
 
 interface Props {
   onClose: () => void
@@ -50,9 +50,27 @@ export function AgentSettings({ onClose }: Props) {
   const [keyInput, setKeyInput] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const [ai, setAi] = useState<AiStatus | null>(null)
+  const [aiSaving, setAiSaving] = useState(false)
+
   useEffect(() => {
     void window.electronAPI.getJevStatus().then(r => { if (r.success && r.data) setJev(r.data) })
   }, [])
+
+  useEffect(() => {
+    void window.electronAPI.getAiStatus().then(r => { if (r.success && r.data) setAi(r.data) })
+  }, [])
+
+  const toggleAi = async (v: boolean) => {
+    if (aiSaving) return
+    setAiSaving(true)
+    const r = await window.electronAPI.setAiEnabled(v)
+    if (r.success) {
+      const s = await window.electronAPI.getAiStatus()
+      if (s.success && s.data) setAi(s.data)
+    }
+    setAiSaving(false)
+  }
 
   const intervalMs = status?.intervalMs ?? 6 * 60 * 60 * 1000
 
@@ -154,6 +172,28 @@ export function AgentSettings({ onClose }: Props) {
                 <span>Jev 插件：{jev.pluginEnabled ? '启用' : '停用'}（{jev.pluginState}）</span>
                 <span>Key：{jev.hasKey ? '已设置' : '未设置'}</span>
                 <span>调用 {jev.stats.calls} / 成功 {jev.stats.successes} / 回落 {jev.stats.failures} / 跳过 {jev.stats.skipped}</span>
+              </div>
+            )}
+          </div>
+
+          {/* AI 向量索引（T21，默认关；开启后扫描完成自动增量索引） */}
+          <div className="border-t border-border pt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium block flex items-center gap-1.5"><Sparkles size={14} />AI 向量索引</label>
+                <span className="text-xs text-text-muted">
+                  本地 CLIP 图像嵌入（int8）：开启后扫描完成自动为新增图片建向量索引（模型缺失/校验失败则不启用推理）
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {aiSaving && <Loader2 size={14} className="animate-spin text-text-muted" />}
+                <Toggle checked={!!ai?.enabled} onChange={v => void toggleAi(v)} />
+              </div>
+            </div>
+            {ai && (
+              <div className="text-xs text-text-muted flex flex-wrap gap-x-4 gap-y-1">
+                <span>已索引：<span className="text-text-secondary">{ai.indexed}</span> 张</span>
+                <span>待索引：<span className="text-text-secondary">{ai.pending}</span> 张</span>
               </div>
             )}
           </div>

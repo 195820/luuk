@@ -220,6 +220,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteCrawlSource: (id: number) => ipcRenderer.invoke('deleteCrawlSource', id),
   setCrawlSourceEnabled: (id: number, enabled: boolean) => ipcRenderer.invoke('setCrawlSourceEnabled', id, enabled),
 
+  // Phase 9 M5 · T21 — AI 向量索引（开关 + 索引状态）
+  getAiStatus: () => ipcRenderer.invoke('getAiStatus'),
+  setAiEnabled: (enabled: boolean) => ipcRenderer.invoke('setAiEnabled', enabled),
+
   // JobRunner 作业管理
   jobsList: () => ipcRenderer.invoke('jobs:list'),
   jobsGet: (jobId: string) => ipcRenderer.invoke('jobs:get', jobId),
