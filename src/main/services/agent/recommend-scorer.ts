@@ -45,6 +45,8 @@ export const SCORER_PARAMS = {
   DECAY_FLOOR: 0.5,
   /** 决策端 noul 在最终分中的融合权重 */
   DECISION_BLEND: 0.3,
+  /** T24 视觉相似度在基础分中的融合权重（仅 ai.enabled 且 provider 命中时参与） */
+  VISUAL_WEIGHT: 0.25,
 } as const
 
 /** 决策统一入口（DecisionRegistry.judge 同形，单测注 fake） */
@@ -75,6 +77,11 @@ export interface RecommendScorerDeps {
   proposals: ProposalWriterLike
   /** 同 sourceUrl 已有 pending 提案 → 不重复提案（accept 前重轮次防刷屏） */
   hasPendingProposal: (sourceUrl: string) => boolean
+  /**
+   * T24 可选视觉相似度 provider（仅 ai.enabled 时注入）：候选本地图 vs 本库收藏图的 CLIP
+   * 图像塔相似度 [0,1]；返回 null/NaN → 原样回退纯文本分。缺省（AI 关）→ 与 T16 行为完全等价。
+   */
+  getVisualSimilarity?: (draft: CandidateDraft, libraryId: number | null) => Promise<number | null>
   /** 时钟注入（测试确定性） */
   now?: () => number
 }
@@ -172,6 +179,19 @@ export class RecommendScorer {
         continue
       }
 
+      // T24：视觉信号融入基础分（provider 存在且命中才融合；失败/null 回退纯文本分，不阻断提案）
+      let base = s.score
+      if (this.deps.getVisualSimilarity) {
+        try {
+          const sim = await this.deps.getVisualSimilarity(draft, libraryId)
+          if (sim !== null && Number.isFinite(sim)) {
+            base = (1 - SCORER_PARAMS.VISUAL_WEIGHT) * base + SCORER_PARAMS.VISUAL_WEIGHT * clamp01(sim)
+          }
+        } catch (err) {
+          logger.warn(LOG_KEY, `视觉相似度失败（回退纯规则分）: ${err}`)
+        }
+      }
+
       // 决策统一入口（D6）：noul 型问题天然规避单选项（S9）；provider 全缺 → 转人工
       let decisionSrc: DecisionSource = 'human'
       let confidence = 0
@@ -189,8 +209,8 @@ export class RecommendScorer {
       // NaN/Infinity 的 provider noul 不参与融合（clamp01 不挡 NaN，会污染 score 排序），回退纯规则分
       const noulValid = noul !== null && Number.isFinite(noul)
       const score = clamp01(noulValid
-        ? (1 - SCORER_PARAMS.DECISION_BLEND) * s.score + SCORER_PARAMS.DECISION_BLEND * (noul as number)
-        : s.score)
+        ? (1 - SCORER_PARAMS.DECISION_BLEND) * base + SCORER_PARAMS.DECISION_BLEND * (noul as number)
+        : base)
 
       const payload: CandidateItem = {
         ...draftToCandidateBase(draft, source.id),

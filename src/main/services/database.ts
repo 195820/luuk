@@ -202,6 +202,16 @@ const MIGRATIONS: Array<{ version: number; description: string; sql: string; tol
       'ALTER TABLE favorites ADD COLUMN updated_at TEXT',
     ],
   },
+  {
+    version: 4,
+    description: 'Phase 9 M5 · T23 — AI 标签：tags.source（人工/AI 词表）+ image_tags.confidence（AI 采纳置信度）',
+    // 纯补列迁移：ALTER 一律走 tolerant（duplicate column 容忍），sql 留无害注释
+    sql: `SELECT 1;`,
+    tolerant: [
+      "ALTER TABLE tags ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+      'ALTER TABLE image_tags ADD COLUMN confidence REAL',
+    ],
+  },
 ]
 
 /**
@@ -345,6 +355,7 @@ export class MasterDB {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         color TEXT DEFAULT '#888888',
+        source TEXT NOT NULL DEFAULT 'manual',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -352,6 +363,7 @@ export class MasterDB {
         tag_id INTEGER NOT NULL,
         library_id INTEGER NOT NULL,
         image_path TEXT NOT NULL,
+        confidence REAL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (tag_id, library_id, image_path),
         FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
@@ -768,11 +780,27 @@ export class MasterDB {
 
   // ==================== 标签系统 ====================
 
-  createTag(name: string, color: string = '#888888'): Tag {
+  createTag(name: string, color: string = '#888888', source: 'manual' | 'ai' = 'manual'): Tag {
     if (!this.db) throw new Error('MasterDB 未初始化');
-    const stmt = this.db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)');
-    const result = stmt.run(name, color);
-    return { id: result.lastInsertRowid as number, name, color };
+    const stmt = this.db.prepare('INSERT INTO tags (name, color, source) VALUES (?, ?, ?)');
+    const result = stmt.run(name, color, source);
+    return { id: result.lastInsertRowid as number, name, color, source };
+  }
+
+  /** 按名取标签，不存在则以指定来源创建（AI 采纳标签建议时 source='ai'） */
+  getOrCreateTagByName(name: string, source: 'manual' | 'ai' = 'manual'): Tag {
+    if (!this.db) throw new Error('MasterDB 未初始化');
+    const trimmed = name.trim();
+    const existing = this.db.prepare('SELECT id, name, color, source FROM tags WHERE name = ?').get(trimmed) as
+      { id: number; name: string; color: string; source: 'manual' | 'ai' } | undefined;
+    if (existing) return { id: existing.id, name: existing.name, color: existing.color, source: existing.source };
+    return this.createTag(trimmed, '#888888', source);
+  }
+
+  /** 全部标签名（AI 标签候选词表用，去重按名） */
+  listTagNames(): string[] {
+    if (!this.db) return [];
+    return (this.db.prepare('SELECT name FROM tags ORDER BY name').all() as Array<{ name: string }>).map(r => r.name);
   }
 
   deleteTag(id: number): void {
@@ -817,6 +845,26 @@ export class MasterDB {
       ).run(...tagIds, libraryId, ...normalizedPaths);
     });
     tx();
+  }
+
+  /** 带置信度打标（AI 采纳）：INSERT OR IGNORE，命中已有行不覆写人工 confidence */
+  tagImageWithConfidence(tagId: number, libraryId: number, imagePath: string, confidence: number): void {
+    if (!this.db) return;
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    this.db.prepare(
+      'INSERT OR IGNORE INTO image_tags (tag_id, library_id, image_path, confidence) VALUES (?, ?, ?, ?)'
+    ).run(tagId, libraryId, normalizedPath, confidence);
+  }
+
+  /** 撤销 AI 标签：仅删除 tags.source='ai' 命中的 image_tags 行（不动人工标注） */
+  removeAiTagFromImage(libraryId: number, imagePath: string, tagName: string): void {
+    if (!this.db) return;
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    this.db.prepare(
+      `DELETE FROM image_tags
+       WHERE library_id = ? AND image_path = ?
+         AND tag_id IN (SELECT id FROM tags WHERE name = ? AND source = 'ai')`
+    ).run(libraryId, normalizedPath, tagName.trim());
   }
 
   // ─── Phase 9 — Agent 偏好画像读写与数据源（T3） ───────────────────
@@ -1351,6 +1399,18 @@ export class ThumbnailsDB {
         FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
       );
 
+      -- Phase 9 M5 · T23 IQA 质量分（非向量元数据，随 images 留 thumbs.db；对齐方向文档 §9.2）
+      CREATE TABLE IF NOT EXISTS quality_scores (
+        image_id    INTEGER PRIMARY KEY,
+        total       REAL,
+        sharpness   REAL,
+        exposure    REAL,
+        composition REAL,
+        model_id    TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
+      );
+
     `);
 
     // 迁移：为已存在的 images 表添加多媒体字段
@@ -1517,6 +1577,71 @@ export class ThumbnailsDB {
       'SELECT COUNT(*) as count FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = ?'
     );
     return (stmt.get('image') as { count: number }).count;
+  }
+
+  /** 列出全部无 phash 的图片 id（T25 pHash 回填作业入队用；项级幂等可续跑） */
+  listImageIdsWithoutPhash(): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      "SELECT id FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = 'image' ORDER BY id"
+    ).all() as Array<{ id: number }>;
+    return rows.map(r => r.id);
+  }
+
+  /** 写回单条 pHash（幂等 UPDATE，独立于 updateImage 的多字段语义） */
+  updatePhash(imageId: number, phash: string | null): void {
+    if (!this.db) return;
+    this.db.prepare('UPDATE images SET phash = ? WHERE id = ?').run(phash, imageId);
+  }
+
+  // ==================== Phase 9 M5 · T23 IQA 质量分 ====================
+
+  /** 幂等写入单条质量分（按 image_id upsert） */
+  upsertQualityScore(input: {
+    imageId: number;
+    total: number;
+    sharpness: number;
+    exposure: number;
+    composition: number;
+    modelId: string;
+  }): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO quality_scores (image_id, total, sharpness, exposure, composition, model_id, created_at)
+      VALUES (@imageId, @total, @sharpness, @exposure, @composition, @modelId, @createdAt)
+      ON CONFLICT(image_id) DO UPDATE SET
+        total=excluded.total, sharpness=excluded.sharpness, exposure=excluded.exposure,
+        composition=excluded.composition, model_id=excluded.model_id, created_at=excluded.created_at
+    `).run({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  /** 读单条质量分；无行返回 null */
+  getQualityScore(imageId: number): { total: number; sharpness: number; exposure: number; composition: number; modelId: string } | null {
+    if (!this.db) return null;
+    const r = this.db.prepare(
+      'SELECT total, sharpness, exposure, composition, model_id FROM quality_scores WHERE image_id = ?'
+    ).get(imageId) as
+      { total: number; sharpness: number; exposure: number; composition: number; model_id: string } | undefined;
+    if (!r) return null;
+    return { total: r.total, sharpness: r.sharpness, exposure: r.exposure, composition: r.composition, modelId: r.model_id };
+  }
+
+  /** 已打分总数（供作业进度/短路判定） */
+  countQualityScored(): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM quality_scores').get() as { c: number }).c;
+  }
+
+  /** 列出未打质量分的可嵌入图片 id（force=全量时忽略此过滤，由调用方决定） */
+  listImageIdsWithoutQuality(): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      `SELECT i.id FROM images i
+       WHERE i.is_deleted = 0 AND i.media_type = 'image'
+         AND NOT EXISTS (SELECT 1 FROM quality_scores q WHERE q.image_id = i.id)
+       ORDER BY i.id`
+    ).all() as Array<{ id: number }>;
+    return rows.map(r => r.id);
   }
 
   /**

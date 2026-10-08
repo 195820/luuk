@@ -15,6 +15,8 @@ import { getSetting, setSetting } from '../services/settings-service'
 import { getJobRunner } from '../services/job-runner'
 import { getImageService } from '../services/image-service'
 import { getMasterDB, getVectorsDB } from '../services/database'
+import { getProposalStore } from '../services/agent/proposal-store'
+import type { Proposal, TagSuggestionItem, TagSuggestionPayload } from '../../types/agent'
 
 const LOG = 'AiHandlers'
 // 与 ai-wiring 保持一致的模型标识（只读状态查询用，避免为此静态引入 usearch 链）
@@ -159,11 +161,127 @@ export function registerAiHandlers(): void {
     }
   })
 
+  // ── T23 · AI 标签建议 / IQA 质量分 ──
+
+  // 触发标签作业：门禁关/依赖缺 → 拒绝；本库无已索引图或同库已有活跃作业 → 无可处理提示
+  ipcMain.handle('triggerAiTagging', async (_e, libraryId: number) => {
+    try {
+      const libId = Number(libraryId)
+      if (!Number.isInteger(libId) || libId <= 0) return { success: false, error: '无效库 ID' }
+      if (!getSetting('ai.enabled')) return { success: false, error: 'AI 未启用' }
+      const wiring = await loadAiModules()
+      const jobId = await wiring.enqueueLabelForLibrary(libId, getJobRunner())
+      if (!jobId) return { success: false, error: '无可处理图片（尚未索引，或本库已有 AI 作业在跑）' }
+      return { success: true, data: { jobId } }
+    } catch (err) {
+      logger.error(LOG, 'triggerAiTagging 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  // 触发质量分作业（零模型零引擎；force 全量重算）
+  ipcMain.handle('triggerAiQuality', async (_e, libraryId: number, force?: boolean) => {
+    try {
+      const libId = Number(libraryId)
+      if (!Number.isInteger(libId) || libId <= 0) return { success: false, error: '无效库 ID' }
+      if (!getSetting('ai.enabled')) return { success: false, error: 'AI 未启用' }
+      const wiring = await loadAiModules()
+      const jobId = await wiring.enqueueQualityForLibrary(libId, getJobRunner(), Boolean(force))
+      if (!jobId) return { success: false, error: '无可处理图片' }
+      return { success: true, data: { jobId } }
+    } catch (err) {
+      logger.error(LOG, 'triggerAiQuality 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  // 待确认标签建议列表（纯 DB 薄封装，零原生；仿 listProposals 不设门禁，供拆除历史残留）
+  ipcMain.handle('listTagSuggestions', async (_e, libraryId: number) => {
+    try {
+      const libId = Number(libraryId)
+      if (!Number.isInteger(libId) || libId <= 0) return { success: false, error: '无效库 ID', data: [] }
+      const page = getProposalStore(getMasterDB()).list({ agentKind: 'quality', state: 'pending', pageSize: 200 })
+      const items: TagSuggestionItem[] = []
+      for (const p of page.items) {
+        if (p.libraryId !== libId) continue
+        const pl = p.payload as TagSuggestionPayload | null
+        if (!pl || typeof pl.imageId !== 'number' || !Array.isArray(pl.suggestions)) continue
+        items.push({
+          proposalId: p.id,
+          imageId: pl.imageId,
+          imageRelativePath: pl.imageRelativePath,
+          suggestions: pl.suggestions,
+          confidence: p.confidence,
+          createdAt: p.createdAt,
+        })
+      }
+      return { success: true, data: items }
+    } catch (err) {
+      logger.error(LOG, 'listTagSuggestions 失败', err)
+      return { success: false, error: (err as Error).message, data: [] }
+    }
+  })
+
+  // 采纳：先落 image_tags（tags.source='ai' + 置信度）再提案终态（Q7 人在回路的唯一落库点）
+  ipcMain.handle('adoptTagSuggestion', async (_e, proposalId: number) => {
+    try {
+      const id = Number(proposalId)
+      if (!Number.isInteger(id) || id <= 0) return { success: false, error: '无效提案 ID' }
+      const db = getMasterDB()
+      const store = getProposalStore(db)
+      const proposal: Proposal | null = store.get(id)
+      if (!proposal) return { success: false, error: `提案不存在: ${id}` }
+      if (proposal.agentKind !== 'quality') return { success: false, error: '非标签建议提案' }
+      if (proposal.state !== 'pending') return { success: false, error: `提案已是终态 ${proposal.state}` }
+      const pl = proposal.payload as TagSuggestionPayload
+      const libId = proposal.libraryId ?? pl.libraryId
+      for (const s of pl.suggestions) {
+        const tag = db.getOrCreateTagByName(s.tagName, 'ai')
+        db.tagImageWithConfidence(tag.id, libId, pl.imageRelativePath, s.confidence)
+      }
+      store.resolve(id, 'accept')
+      return { success: true, data: { adopted: pl.suggestions.length } }
+    } catch (err) {
+      logger.error(LOG, 'adoptTagSuggestion 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  ipcMain.handle('dismissTagSuggestion', async (_e, proposalId: number) => {
+    try {
+      const id = Number(proposalId)
+      if (!Number.isInteger(id) || id <= 0) return { success: false, error: '无效提案 ID' }
+      getProposalStore(getMasterDB()).resolve(id, 'reject')
+      return { success: true }
+    } catch (err) {
+      logger.error(LOG, 'dismissTagSuggestion 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
+  // 撤销已采纳的 AI 标签（仅删 tags.source='ai' 命中行，不动人工标注）
+  ipcMain.handle('removeAiTag', async (_e, libraryId: number, imageRelativePath: string, tagName: string) => {
+    try {
+      const libId = Number(libraryId)
+      if (!Number.isInteger(libId) || libId <= 0) return { success: false, error: '无效库 ID' }
+      if (!imageRelativePath || !tagName) return { success: false, error: '参数不完整' }
+      getMasterDB().removeAiTagFromImage(libId, String(imageRelativePath), String(tagName))
+      return { success: true }
+    } catch (err) {
+      logger.error(LOG, 'removeAiTag 失败', err)
+      return { success: false, error: (err as Error).message }
+    }
+  })
+
   logger.info(LOG, 'AI IPC 处理器已注册')
 }
 
 export function unregisterAiHandlers(): void {
-  for (const channel of ['getAiStatus', 'setAiEnabled', 'semanticSearchImages']) {
+  for (const channel of [
+    'getAiStatus', 'setAiEnabled', 'semanticSearchImages',
+    'triggerAiTagging', 'triggerAiQuality', 'listTagSuggestions',
+    'adoptTagSuggestion', 'dismissTagSuggestion', 'removeAiTag',
+  ]) {
     ipcMain.removeHandler(channel)
   }
 }

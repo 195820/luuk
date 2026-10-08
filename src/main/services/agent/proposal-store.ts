@@ -152,6 +152,17 @@ export class ProposalStore {
     return row !== undefined
   }
 
+  /** T23 防重提案：同 imageId 是否已有 pending 标签建议提案（payload 为 LabelProposalInput JSON） */
+  hasPendingForQualityImage(imageId: number): boolean {
+    const row = this.db.prepare(`
+      SELECT 1 FROM proposals
+      WHERE agent_kind = 'quality' AND state = 'pending'
+        AND json_valid(payload) AND json_extract(payload, '$.imageId') = ?
+      LIMIT 1
+    `).get(imageId)
+    return row !== undefined
+  }
+
   /** 按 agent_kind / state 过滤，score 降序分页（DiscoverPanel 消费） */
   list(query: ProposalQuery = {}): ProposalPage {
     const page = Math.max(1, query.page ?? 1)

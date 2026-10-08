@@ -11,9 +11,11 @@
  * 用 FakeEmbeddingEngine + runner 替身；mock 掉 database / vector-index-service / settings-service
  * 三个重依赖模块（其顶层会链入 usearch 原生与 electron-store）。
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest'
 import os from 'os'
 import path from 'path'
+import fs from 'fs'
+import sharp from 'sharp'
 import type { JobRunner } from '../../job-runner'
 
 vi.mock('electron', () => ({ app: { getPath: () => os.tmpdir() } }))
@@ -46,6 +48,7 @@ const vectorsMock = {
   upsertEmbedding: vi.fn(),
   countDirty: vi.fn(() => 0),
   countIndexed: vi.fn(() => 5),
+  getEmbedding: vi.fn(() => undefined as { model_id: string; vector: Uint8Array } | undefined),
 }
 const thumbsMock = {
   listIndexableImages: vi.fn(() => [
@@ -53,10 +56,23 @@ const thumbsMock = {
     { id: 2, relativePath: 'b.jpg' },
   ]),
   getImageRelativePath: vi.fn((id: number) => `${id}.jpg`),
+  getImageByRelativePath: vi.fn((_rel: string) => null as { id: number } | null),
+  listImageIdsWithoutQuality: vi.fn(() => [] as number[]),
+  upsertQualityScore: vi.fn(),
 }
 const masterMock = {
   getLibrary: vi.fn((id: number) => ({ id, rootPath: '/tmp/ivlib-root', status: 'online' })),
+  listTagNames: vi.fn(() => [] as string[]),
+  getFavorites: vi.fn(() => [] as Array<{ library_id: number; image_path: string; tags: string[]; rating: number }>),
 }
+// T23 提案存储替身（处理器落提案/防重查询不经真 MasterDB）
+const storeMock = {
+  create: vi.fn(),
+  hasPendingForQualityImage: vi.fn(() => false),
+}
+vi.mock('../../agent/proposal-store', () => ({
+  getProposalStore: () => storeMock as never,
+}))
 vi.mock('../../database', () => ({
   getVectorsDB: () => vectorsMock,
   getThumbnailsDB: () => thumbsMock,
@@ -66,7 +82,11 @@ vi.mock('../../database', () => ({
 import { FakeEmbeddingEngine } from '../embedding-engine'
 import { FakeTextEncoder } from '../text-encoder'
 import { ensureAiLayer, resetAiLayer, getAiLayer } from '../ai-bootstrap'
-import { enqueueIndexForLibrary, disposeAiLayer, runSemanticQuery, setQueryTextEncoder, setQueryImageResolver, loadTokenizerFromFile } from '../ai-wiring'
+import {
+  enqueueIndexForLibrary, disposeAiLayer, runSemanticQuery, setQueryTextEncoder,
+  setQueryImageResolver, loadTokenizerFromFile, enqueueLabelForLibrary, enqueueQualityForLibrary,
+  firstLocalMedia, runVisualSimilarity,
+} from '../ai-wiring'
 
 const MODEL = 'clip-vit-b32-int8'
 const DIM = 512
@@ -108,6 +128,7 @@ beforeEach(() => {
   getSettingMock.mockReturnValue(true)
   vectorsMock.listIndexedImageIds.mockReturnValue([])
   vectorsMock.countIndexed.mockReturnValue(5) // 默认本库已有干净索引行（查询守卫放行）
+  vectorsMock.getEmbedding.mockReturnValue(undefined)
   annMock.isOpen.mockReturnValue(true)
   annMock.search.mockReturnValue([])
   annMock.getModelId.mockReturnValue('clip-vit-b32-int8')
@@ -115,6 +136,12 @@ beforeEach(() => {
     { id: 1, relativePath: 'a.jpg' },
     { id: 2, relativePath: 'b.jpg' },
   ])
+  thumbsMock.listImageIdsWithoutQuality.mockReturnValue([])
+  thumbsMock.getImageByRelativePath.mockReturnValue(null)
+  masterMock.listTagNames.mockReturnValue([])
+  masterMock.getFavorites.mockReturnValue([])
+  masterMock.getLibrary.mockImplementation((id: number) => ({ id, rootPath: '/tmp/ivlib-root', status: 'online' }))
+  storeMock.hasPendingForQualityImage.mockReturnValue(false)
 })
 
 afterEach(() => {
@@ -358,5 +385,256 @@ describe('ai-wiring 资产载入（#9）', () => {
   it('loadTokenizerFromFile 载入入库 fixture → 非空分词器', () => {
     const p = path.join(import.meta.dirname, '__fixtures__', 'clip-tokenizer.json')
     expect(loadTokenizerFromFile(p)).not.toBeNull()
+  })
+})
+
+// ==================== T23 · 标签/质量作业接线 ====================
+
+describe('ai-wiring T23 标签作业（enqueueLabelForLibrary）', () => {
+  /** 装配带引擎层 + 注入文本编码器；返回编码器替身 */
+  function setupLabelEncoder(): FakeTextEncoder {
+    ensureAiLayer({
+      isEnabled: () => true,
+      engineFactory: () => new FakeEmbeddingEngine(MODEL, DIM),
+      getVectorsDB: () => vectorsMock as never,
+      getAnn: () => annMock as never,
+      resolvePath: (_l, id) => `/tmp/ivlib-root/${id}.jpg`,
+      modelId: MODEL,
+      dim: DIM,
+    })
+    const tenc = new FakeTextEncoder('clip-text-b32', DIM)
+    setQueryTextEncoder(tenc)
+    return tenc
+  }
+
+  it('短路：门禁关 / 无编码器 / 无已索引图 → 全 null 且零会话', async () => {
+    const tenc = setupLabelEncoder()
+    getSettingMock.mockReturnValue(false)
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBeNull()
+    getSettingMock.mockReturnValue(true)
+    setQueryTextEncoder(null)
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBeNull()
+    setQueryTextEncoder(tenc)
+    vectorsMock.listIndexedImageIds.mockReturnValue([])
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBeNull()
+    expect(annMock.load).not.toHaveBeenCalled()
+    expect(tenc.encodeCalls).toBe(0)
+  })
+
+  it('正常：批量编码 prompt → handler 产 quality 提案；库守卫串行；done 收尾后可再次入队', async () => {
+    const tenc = setupLabelEncoder()
+    await tenc.load()
+    const vec = await tenc.encode('a photo of a portrait') // 图像向量 == portrait prompt → 强命中
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: vec })
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+
+    const { runner, cap } = makeRunner()
+    expect(await enqueueLabelForLibrary(1, runner)).toBe('job-1')
+    // 同库活跃守卫：索引/标签共享 librarySessions → 第二次直接 null
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBeNull()
+    // 标签链不碰 ANN（只读 vectors.db 行，规避查询互斥）
+    expect(annMock.load).not.toHaveBeenCalled()
+
+    await cap.handler!({ libraryId: 1, imageId: 1 })
+    expect(tenc.encodeCalls).toBeGreaterThan(40) // 首条懒构建：内置 ~40 项 prompt 批量编码（含事前 1 次单条）
+    expect(storeMock.create).toHaveBeenCalledTimes(1)
+    const input = storeMock.create.mock.calls[0][0] as never as { agentKind: string; payload: { imageRelativePath: string; suggestions: Array<{ tagName: string }> } }
+    expect(input.agentKind).toBe('quality')
+    expect(input.payload.imageRelativePath).toBe('1.jpg')
+    expect(input.payload.suggestions[0].tagName).toBe('portrait')
+
+    // done → 退订 + 释放库守卫 → 可再次入队
+    cap.emit!({ jobId: 'job-1', state: 'done' })
+    expect(cap.unsubscribed).toBe(1)
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBe('job-1')
+  })
+
+  it('handler 幂等：同图已有 pending 提案 → done 不重复产提案', async () => {
+    const tenc = setupLabelEncoder()
+    await tenc.load()
+    const vec = await tenc.encode('a photo of a portrait')
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: vec })
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+    storeMock.hasPendingForQualityImage.mockReturnValue(true)
+    const { runner, cap } = makeRunner()
+    await enqueueLabelForLibrary(1, runner)
+    await cap.handler!({ libraryId: 1, imageId: 1 })
+    expect(storeMock.create).not.toHaveBeenCalled()
+  })
+
+  it('模型绑定不符（§9.7）/缺行 → skipped 不抛不产提案', async () => {
+    const tenc = setupLabelEncoder()
+    await tenc.load()
+    const vec = await tenc.encode('a photo of a portrait')
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: 'other-model', vector: vec })
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+    const { runner, cap } = makeRunner()
+    await enqueueLabelForLibrary(1, runner)
+    await expect(cap.handler!({ libraryId: 1, imageId: 1 })).resolves.toBeUndefined()
+    expect(storeMock.create).not.toHaveBeenCalled()
+  })
+
+  it('入队异常 → finish 清守卫，不阻塞后续入队', async () => {
+    setupLabelEncoder()
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: new Uint8Array(DIM).fill(10) })
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+    const { runner } = makeRunner({ enqueue: async () => { throw new Error('boom') } })
+    expect(await enqueueLabelForLibrary(1, runner)).toBeNull()
+    expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBe('job-1')
+  })
+})
+
+describe('ai-wiring T23 质量作业（enqueueQualityForLibrary）', () => {
+  let qDir: string
+
+  beforeAll(async () => {
+    qDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiring-q-'))
+    const px = new Uint8Array(60 * 40 * 3).fill(128)
+    await sharp(Buffer.from(px), { raw: { width: 60, height: 40, channels: 3 } }).png().toFile(path.join(qDir, 'q.png'))
+  })
+  afterAll(() => {
+    fs.rmSync(qDir, { recursive: true, force: true })
+  })
+
+  it('门禁关 → null；项集：增量=listImageIdsWithoutQuality，force=全量 listIndexableImages', async () => {
+    getSettingMock.mockReturnValue(false)
+    expect(await enqueueQualityForLibrary(1, makeRunner().runner)).toBeNull()
+    getSettingMock.mockReturnValue(true)
+
+    thumbsMock.listImageIdsWithoutQuality.mockReturnValue([1, 2])
+    const a = makeRunner()
+    expect(await enqueueQualityForLibrary(1, a.runner)).toBe('job-1')
+    const callA = vi.mocked(a.runner.enqueue).mock.calls[0] as never as [string, unknown, { items: unknown[] }]
+    expect(callA[0]).toBe('ai.quality')
+    expect(callA[1]).toEqual({ libraryId: 1, force: false })
+    expect(callA[2].items).toHaveLength(2)
+
+    const b = makeRunner()
+    expect(await enqueueQualityForLibrary(1, b.runner, true)).toBe('job-1')
+    const callB = vi.mocked(b.runner.enqueue).mock.calls[0] as never as [string, unknown, { items: unknown[] }]
+    expect(callB[1]).toEqual({ libraryId: 1, force: true })
+    expect(callB[2].items).toHaveLength(2)
+  })
+
+  it('无待处理图 → null 不入队', async () => {
+    const r = makeRunner()
+    expect(await enqueueQualityForLibrary(1, r.runner)).toBeNull()
+    expect(r.runner.enqueue).not.toHaveBeenCalled()
+  })
+
+  it('handler：真图打分 → upsertQualityScore(heuristic-v1)；缺文件 → 抛错记 failed', async () => {
+    masterMock.getLibrary.mockImplementation((id: number) => ({ id, rootPath: qDir, status: 'online' }))
+    thumbsMock.getImageRelativePath.mockReturnValue('q.png')
+    thumbsMock.listImageIdsWithoutQuality.mockReturnValue([7])
+    const { runner, cap } = makeRunner()
+    expect(await enqueueQualityForLibrary(1, runner)).toBe('job-1')
+    expect(runner.registerHandler).toHaveBeenCalledWith('ai.quality', expect.any(Function))
+
+    await cap.handler!({ libraryId: 1, imageId: 7 })
+    expect(thumbsMock.upsertQualityScore).toHaveBeenCalledTimes(1)
+    const input = thumbsMock.upsertQualityScore.mock.calls[0][0] as never as { imageId: number; modelId: string; total: number }
+    expect(input).toMatchObject({ imageId: 7, modelId: 'heuristic-v1' })
+    expect(typeof input.total).toBe('number')
+
+    thumbsMock.getImageRelativePath.mockReturnValue('missing.png')
+    await expect(cap.handler!({ libraryId: 1, imageId: 8 })).rejects.toThrow(/ai-quality/)
+  })
+})
+
+// ── T24 视觉相似度：firstLocalMedia 纯函数 + runVisualSimilarity 会话/回退 ──
+
+describe('T24 firstLocalMedia（候选本地媒体识别）', () => {
+  it('file:// 转绝对路径；win/posix 绝对路径直收', () => {
+    expect(firstLocalMedia({ mediaUrls: ['file:///C:/media/a.jpg'] })).toBe('C:\\media\\a.jpg')
+    expect(firstLocalMedia({ mediaUrls: ['C:\\media\\a.jpg'] })).toBe('C:\\media\\a.jpg')
+    expect(firstLocalMedia({ mediaUrls: ['/mnt/a.jpg'] })).toBe('/mnt/a.jpg')
+    expect(firstLocalMedia({ mediaUrls: ['\\\\srv\\share\\a.jpg'] })).toBe('\\\\srv\\share\\a.jpg')
+  })
+
+  it('纯远端 URL/协议相对 URL/空集 → null（打分期不拉网络）', () => {
+    expect(firstLocalMedia({ mediaUrls: [] })).toBeNull()
+    expect(firstLocalMedia({ mediaUrls: ['https://cdn/1.jpg', 'http://cdn/2.jpg'] })).toBeNull()
+    expect(firstLocalMedia({ mediaUrls: ['//cdn/1.jpg'] })).toBeNull()
+    expect(firstLocalMedia({ mediaUrls: ['relative/a.jpg'] })).toBeNull()
+  })
+
+  it('混合媒体取首个本地项', () => {
+    expect(firstLocalMedia({ mediaUrls: ['https://cdn/x.jpg', '/data/a.jpg', '/data/b.jpg'] })).toBe('/data/a.jpg')
+  })
+})
+
+describe('T24 runVisualSimilarity（图像-图像相似度，零 ANN 零文本塔）', () => {
+  it('前置不满足一律 null：门禁关/无库/无引擎/无收藏/收藏未索引', async () => {
+    const engine = new FakeEmbeddingEngine(MODEL, DIM)
+    buildLayer(engine)
+    // 门禁关
+    getSettingMock.mockReturnValue(false)
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    getSettingMock.mockReturnValue(true)
+    // 无库
+    masterMock.getLibrary.mockReturnValue(null as never)
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    masterMock.getLibrary.mockImplementation((id: number) => ({ id, rootPath: '/tmp/ivlib-root', status: 'online' }))
+    // 无收藏
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    // 收藏未索引（getEmbedding undefined / image 反查不到）
+    masterMock.getFavorites.mockReturnValue([{ library_id: 1, image_path: 'fav.jpg', tags: [], rating: 0 }])
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    thumbsMock.getImageByRelativePath.mockReturnValue({ id: 5 })
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    expect(engine.embedCalls).toBe(0) // 收藏集空 → 不碰引擎
+  })
+
+  it('命中：收藏向量 ≡ 候选嵌入 → cos=1 → sim=1；会话分时 load/release 成对', async () => {
+    const engine = new FakeEmbeddingEngine(MODEL, DIM)
+    buildLayer(engine)
+    const candPath = '/tmp/ivlib-root/7.jpg'
+    await engine.load() // 预热取确定性伪向量（测试用，不计数断言）
+    const vec = await engine.embed(candPath)
+    engine.loads = 0; engine.unloads = 0; engine.embedCalls = 0
+
+    masterMock.getFavorites.mockReturnValue([
+      { library_id: 1, image_path: 'a.jpg', tags: [], rating: 0 },
+      { library_id: 9, image_path: 'other.jpg', tags: [], rating: 0 }, // 他库收藏被过滤
+    ])
+    thumbsMock.getImageByRelativePath.mockImplementation((rel: string) => (rel === 'a.jpg' ? { id: 7 } : null))
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: vec } as never)
+
+    const sim = await runVisualSimilarity(1, candPath)
+    expect(sim).toBeCloseTo(1, 6)
+    expect(engine.embedCalls).toBe(1)
+    expect(engine.loads).toBe(1)
+    expect(engine.unloads).toBe(1) // 引用计数归零即卸载（R2 会话分时）
+  })
+
+  it('模型不符/占位行（长度≠dim）全被剔除 → null，不碰引擎；异库收藏 → null', async () => {
+    const engine = new FakeEmbeddingEngine(MODEL, DIM)
+    buildLayer(engine)
+    masterMock.getFavorites.mockReturnValue([{ library_id: 1, image_path: 'a.jpg', tags: [], rating: 0 }])
+    thumbsMock.getImageByRelativePath.mockReturnValue({ id: 7 })
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: 'other-model', vector: new Uint8Array(DIM) } as never)
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: new Uint8Array(0) } as never) // 脏占位行
+    expect(await runVisualSimilarity(1, '/tmp/x.jpg')).toBeNull()
+    expect(engine.embedCalls).toBe(0)
+  })
+
+  it('embed 抛错 → 静默回退 null（不阻断提案链），引用计数仍归零', async () => {
+    const engine = new FakeEmbeddingEngine(MODEL, DIM)
+    buildLayer(engine)
+    const candPath = '/tmp/ivlib-root/7.jpg'
+    await engine.load()
+    const vec = await engine.embed(candPath)
+    masterMock.getFavorites.mockReturnValue([{ library_id: 1, image_path: 'a.jpg', tags: [], rating: 0 }])
+    thumbsMock.getImageByRelativePath.mockReturnValue({ id: 7 })
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: vec } as never)
+    engine.unload() // 回到未加载态；内部会再 load（FakeEngine load 幂等），改用 spy 制造失败
+    const spy = vi.spyOn(engine, 'embed').mockRejectedValue(new Error('ort boom'))
+    expect(await runVisualSimilarity(1, candPath)).toBeNull()
+    spy.mockRestore()
+    // 失败路径释放后计数归零（不泄漏会话）
+    engine.loads = 0; engine.unloads = 0
+    expect(await runVisualSimilarity(1, candPath)).toBeCloseTo(1, 6)
+    expect(engine.unloads).toBe(1)
   })
 })

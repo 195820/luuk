@@ -152,6 +152,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   semanticSearchImages: (libraryId: number, query: string, limit: number) =>
     ipcRenderer.invoke('semanticSearchImages', libraryId, query, limit),
 
+  // Phase 9 M5 · T23 — AI 标签提案（CLIP 零样本）+ 质量分作业
+  triggerAiTagging: (libraryId: number) =>
+    ipcRenderer.invoke('triggerAiTagging', libraryId),
+  triggerAiQuality: (libraryId: number, force?: boolean) =>
+    ipcRenderer.invoke('triggerAiQuality', libraryId, force),
+  listTagSuggestions: (libraryId: number) =>
+    ipcRenderer.invoke('listTagSuggestions', libraryId),
+  adoptTagSuggestion: (proposalId: number) =>
+    ipcRenderer.invoke('adoptTagSuggestion', proposalId),
+  dismissTagSuggestion: (proposalId: number) =>
+    ipcRenderer.invoke('dismissTagSuggestion', proposalId),
+  removeAiTag: (libraryId: number, imageRelativePath: string, tagName: string) =>
+    ipcRenderer.invoke('removeAiTag', libraryId, imageRelativePath, tagName),
+
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 

@@ -9,6 +9,7 @@
  * 本模块顶层 import getVectorIndexService（→ usearch 原生），仅由主进程 ai-handlers 引入，不进 vitest。
  */
 import fs from 'fs'
+import { fileURLToPath } from 'url'
 import { logger } from '../../../utils/logger'
 import { getSetting } from '../settings-service'
 import { ModelManager } from '../model-manager'
@@ -21,6 +22,13 @@ import { ClipTokenizer } from './clip-tokenizer'
 import { assembleSemanticResults, type SemanticImage } from './semantic-search'
 import { ensureAiLayer, getAiLayer, type AiLayerDeps } from './ai-bootstrap'
 import { AI_INDEX_JOB_KIND, embedAndPersistOne } from './index-session'
+import {
+  AI_LABEL_JOB_KIND, AI_QUALITY_JOB_KIND, labelOne, qualityOne,
+  type LabelItemDeps, type QualityItemDeps,
+} from './label-quality-session'
+import { buildTagCandidates, int8Cosine } from './tag-suggester'
+import { QUALITY_MODEL_ID, scoreQuality } from './quality-scorer'
+import { getProposalStore } from '../agent/proposal-store'
 import { planPendingImages, toAbsolutePath } from './index-planner'
 import type { JobRunner } from '../job-runner'
 import type { ModelInfo } from '../../../types/plugin'
@@ -153,6 +161,8 @@ let queryEpoch = 0
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** 每库并发查询引用计数：仅「自加载 + 最后离开 + 索引未接管」才卸载该库 ANN */
 const queryRefCounts = new Map<number, number>()
+// —— T23 标签会话模块态：prompt 向量缓存（会话级构建一次，编码器引用变更即失效重建）——
+let labelPromptCache: { encoder: TextEncoder; candidates: ReturnType<typeof buildTagCandidates>; promptVecs: Uint8Array[] } | null = null
 
 /**
  * 供 boot/测试注入查询文本编码器（null → 语义搜索退回空结果）。
@@ -192,6 +202,7 @@ function teardownQuerySession(): void {
   const enc = queryTextEncoder
   queryTextEncoder = null
   imageResolver = null
+  labelPromptCache = null   // T23：prompt 向量属于旧编码器会话，作废以防新链复用旧向量
   if (enc?.isLoaded()) void enc.unload().catch(() => { /* 不致命 */ })
 }
 
@@ -344,6 +355,215 @@ export async function enqueueIndexForLibrary(libraryId: number, runner: JobRunne
   }
   logger.info(LOG_KEY, `扫描后增量索引入队：库 ${libraryId}，${pending.length} 项（job ${jobId}）`)
   return jobId
+}
+
+// ==================== T23 · AI 标签 / IQA 质量分作业 ====================
+
+/** 库感知标签处理器（幂等覆盖）：首条构建/复用 prompt 向量缓存（C2 load 由编码器内部去重，
+ * 卸载交给文本链 idle TTL），逐条读 vectors.db 向量→零样本建议→产 quality 提案。
+ * 依赖缺失/库离线 → 抛错记 failed（不假成功，可 resume）。 */
+function registerLibraryAwareLabelHandler(runner: JobRunner): void {
+  runner.registerHandler(AI_LABEL_JOB_KIND, async (item) => {
+    if (item.imageId == null) return
+    const layer = getAiLayer()
+    const enc = queryTextEncoder
+    if (!layer || !enc) throw new Error('ai-label: AI 层/文本编码器不可用')
+    const lib = getMasterDB().getLibrary(item.libraryId)
+    if (!lib) throw new Error(`ai-label: 库不存在 ${item.libraryId}`)
+    if (!labelPromptCache || labelPromptCache.encoder !== enc) {
+      await enc.load()
+      const candidates = buildTagCandidates(getMasterDB().listTagNames())
+      const promptVecs = await enc.encodeBatch(candidates.map(c => c.prompt))
+      labelPromptCache = { encoder: enc, candidates, promptVecs }
+    }
+    const vectorsDB = getVectorsDB(lib.rootPath)
+    const thumbs = getThumbnailsDB(lib.rootPath)
+    const store = getProposalStore(getMasterDB())
+    const deps: LabelItemDeps = {
+      modelId: layer.modelId,
+      getEmbedding: (id) => vectorsDB.getEmbedding(id),
+      resolvePath: (id) => thumbs.getImageRelativePath(id),
+      candidates: labelPromptCache.candidates,
+      promptVecs: labelPromptCache.promptVecs,
+      createProposal: (input) => {
+        const maxConf = input.suggestions[0]?.confidence ?? 0
+        store.create({ agentKind: 'quality', libraryId: input.libraryId, payload: input, score: maxConf, confidence: maxConf })
+      },
+      hasPendingProposal: (id) => store.hasPendingForQualityImage(id),
+    }
+    const status = labelOne(deps, item.libraryId, item.imageId)
+    if (status === 'failed') throw new Error(`ai-label 失败 image=${item.imageId}`)
+  })
+}
+
+/** 库感知质量处理器（幂等覆盖）：纯 sharp 启发式，零引擎/零 ANN 会话，可与任意作业并行。 */
+function registerLibraryAwareQualityHandler(runner: JobRunner): void {
+  runner.registerHandler(AI_QUALITY_JOB_KIND, async (item) => {
+    if (item.imageId == null) return
+    const lib = getMasterDB().getLibrary(item.libraryId)
+    if (!lib) throw new Error(`ai-quality: 库不存在 ${item.libraryId}`)
+    const thumbs = getThumbnailsDB(lib.rootPath)
+    const rel = thumbs.getImageRelativePath(item.imageId)
+    const deps: QualityItemDeps = {
+      modelId: QUALITY_MODEL_ID,
+      score: scoreQuality,
+      upsert: (input) => thumbs.upsertQualityScore(input),
+    }
+    const status = await qualityOne(deps, rel ? toAbsolutePath(lib.rootPath, rel) : '', item.imageId)
+    if (status === 'failed') throw new Error(`ai-quality 失败 image=${item.imageId}`)
+  })
+}
+
+/**
+ * 为本库已索引（dirty=0）图像入队一次标签建议作业；未启用/无文本链/无已索引图/同库已有活跃作业 → null。
+ * 不 load ANN（只读 vectors.db 行，规避与语义查询的互斥复杂度）；文本编码器复用查询链的
+ * textInflight 计数 + idle TTL 卸载机器；同库串行沿用 librarySessions 守卫。
+ */
+export async function enqueueLabelForLibrary(libraryId: number, runner: JobRunner): Promise<string | null> {
+  if (!getSetting('ai.enabled')) return null
+  const layer = getAiLayer()
+  const enc = queryTextEncoder
+  if (!layer || !enc) return null
+  if (librarySessions.has(libraryId)) return null // 同库已有活跃 AI 会话：跳过，避免提案/向量读写交错
+  const lib = getMasterDB().getLibrary(libraryId)
+  if (!lib) return null
+
+  const vectorsDB = getVectorsDB(lib.rootPath)
+  const imageIds = vectorsDB.listIndexedImageIds(layer.modelId)
+  if (imageIds.length === 0) return null
+
+  registerLibraryAwareLabelHandler(runner)
+  librarySessions.set(libraryId, '')
+  textInflight++
+  cancelIdleTimer()
+
+  let jobId = ''
+  let unsub: (() => void) | null = null
+  let settled = false
+  const finish = (): void => {
+    if (settled) return
+    settled = true
+    activeFinishes.delete(finish)
+    if (unsub) { try { unsub() } catch { /* ignore */ } }
+    if (librarySessions.get(libraryId) === jobId) librarySessions.delete(libraryId)
+    textInflight = Math.max(0, textInflight - 1)
+    scheduleIdleUnload()
+  }
+  activeFinishes.add(finish)
+
+  try {
+    jobId = await runner.enqueue(
+      AI_LABEL_JOB_KIND,
+      { libraryId },
+      { items: imageIds.map((id) => ({ libraryId, imageId: id })) },
+    )
+    librarySessions.set(libraryId, jobId)
+    unsub = runner.subscribeProgress((p) => {
+      if (p.jobId === jobId && (p.state === 'done' || p.state === 'cancelled')) finish()
+    })
+    await runner.start(jobId)
+  } catch (err) {
+    finish()
+    logger.error(LOG_KEY, `标签作业入队/启动失败 库=${libraryId}`, err)
+    return null
+  }
+  logger.info(LOG_KEY, `AI 标签建议入队：库 ${libraryId}，${imageIds.length} 项（job ${jobId}）`)
+  return jobId
+}
+
+/**
+ * 为本库入队一次质量分作业（零模型零引擎：ai.enabled 仅作统一门禁）。无待处理图 → null；
+ * 异常上抛由 IPC 层捕获（信息更优于静默 null）；与索引/标签作业可并行（不碰共享 ANN/引擎）。
+ */
+export async function enqueueQualityForLibrary(libraryId: number, runner: JobRunner, force = false): Promise<string | null> {
+  if (!getSetting('ai.enabled')) return null
+  const lib = getMasterDB().getLibrary(libraryId)
+  if (!lib) return null
+  const thumbs = getThumbnailsDB(lib.rootPath)
+  const imageIds = force
+    ? thumbs.listIndexableImages().map((r) => r.id)
+    : thumbs.listImageIdsWithoutQuality()
+  if (imageIds.length === 0) return null
+  registerLibraryAwareQualityHandler(runner)
+  const jobId = await runner.enqueue(
+    AI_QUALITY_JOB_KIND,
+    { libraryId, force },
+    { items: imageIds.map((id) => ({ libraryId, imageId: id })) },
+  )
+  await runner.start(jobId)
+  logger.info(LOG_KEY, `质量分作业入队：库 ${libraryId}，${imageIds.length} 项（job ${jobId}${force ? '，全量重算' : ''}）`)
+  return jobId
+}
+
+// ── T24 视觉相似度（候选本地图 vs 本库收藏图，图像-图像同空域，无需文本塔/ANN）──
+
+/** 候选媒体里首个本地媒体路径（file:// 或绝对路径）；纯远端 URL → null（打分期不拉网络） */
+export function firstLocalMedia(draft: { mediaUrls: string[] }): string | null {
+  for (const u of draft.mediaUrls ?? []) {
+    if (typeof u !== 'string' || !u) continue
+    if (u.startsWith('file:')) {
+      try { return fileURLToPath(u) } catch { /* 非法 file URI 跳过 */ }
+    } else if (u.startsWith('//')) {
+      // 协议相对 URL（//cdn/...）是网络资源，不算本地
+    } else if (/^[a-zA-Z]:[\\/]/.test(u) || u.startsWith('\\\\') || u.startsWith('/')) {
+      // Windows 盘符 / UNC / POSIX 绝对路径
+      return u
+    }
+  }
+  return null
+}
+
+/**
+ * 候选本地图 vs 本库收藏图的 CLIP 图像塔相似度（top-k 余弦均值 → (1+cos)/2 夹 [0,1]）。
+ * 前置不满足一律 null（AI 关/无引擎/无收藏/收藏未索引）；只读 vectors.db 行，不 load ANN
+ * （同标签会话口径，规避查询互斥）；模型绑定 §9.7 走行级 model_id === layer.modelId；
+ * 引擎 load/embed 失败静默回退 null（打分期低延迟，不阻断提案链）。
+ */
+export async function runVisualSimilarity(libraryId: number | null, localMediaPath: string, topK = 8): Promise<number | null> {
+  if (libraryId === null || !localMediaPath || !getSetting('ai.enabled')) return null
+  const layer = getAiLayer()
+  const engine = layer?.engine ?? null
+  if (!layer || !engine) return null
+  const lib = getMasterDB().getLibrary(libraryId)
+  if (!lib) return null
+
+  // 本库收藏图 → 已索引（同模型、向量完整）的 int8 向量集
+  const master = getMasterDB()
+  const thumbs = getThumbnailsDB(lib.rootPath)
+  const vectorsDB = getVectorsDB(lib.rootPath)
+  const favVecs: Uint8Array[] = []
+  for (const fav of master.getFavorites()) {
+    if (fav.library_id !== libraryId) continue
+    const img = thumbs.getImageByRelativePath(fav.image_path)
+    if (!img) continue
+    const row = vectorsDB.getEmbedding(img.id)
+    if (!row || row.model_id !== layer.modelId || row.vector.length !== layer.dim) continue // §9.7 绑定 + 排占位行
+    favVecs.push(row.vector)
+  }
+  if (favVecs.length === 0) return null
+
+  let candVec: Uint8Array
+  let acquired = false
+  try {
+    await engine.load()
+    acquireEngine()
+    acquired = true
+    candVec = await engine.embed(localMediaPath)
+  } catch (err) {
+    if (acquired) releaseEngine(engine) // load 失败未计数，不重复释放
+    logger.warn(LOG_KEY, `视觉相似度 embed 失败（回退无视觉分）: ${err}`)
+    return null
+  }
+  // 同步算完即释放（不跨 await 持有共享引擎会话）
+  releaseEngine(engine)
+  if (candVec.length !== layer.dim) return null
+
+  const sims = favVecs
+    .map((v) => int8Cosine(candVec, v))
+    .sort((a, b) => b - a)
+    .slice(0, Math.max(1, topK))
+  const avg = sims.reduce((s, x) => s + x, 0) / sims.length
+  return Math.max(0, Math.min(1, (1 + avg) / 2))
 }
 
 /**

@@ -242,7 +242,7 @@ describe('MasterDB migration v3 — Phase 9 Agent 体系', () => {
       DROP TABLE IF EXISTS feedback_log;
       DROP TABLE IF EXISTS crawl_sources;
       DROP TABLE IF EXISTS crawl_items;
-      DELETE FROM schema_version WHERE version = 3;
+      DELETE FROM schema_version WHERE version >= 3; -- T23 后需一并回退 v4，否则 MAX(version) 短路重跑
       ALTER TABLE favorites ADD COLUMN updated_at TEXT;
     `)
     expect(() => (db as any).ensureSchemaVersion()).not.toThrow()
@@ -288,15 +288,15 @@ describe('MasterDB migration v3 — Phase 9 Agent 体系', () => {
     db = db2 // 交给 afterEach 关闭
   })
 
-  it('老库 v2 无感升级到 v3：jobs 数据保留且新表可用', () => {
-    // 模拟 v2 老库：删掉 v3 记录并DROP v3 表，再重新初始化触发升级
+  it('老库 v2 无感升级到最新（v4）：jobs 数据保留且新表可用', () => {
+    // 模拟 v2 老库：删掉 v3+ 记录与表再重新初始化触发升级（T23 后 v4 为纯补列，重跑 duplicate 容忍）
     ;(db as any).db.exec(`
       DROP TABLE IF EXISTS preference_profile;
       DROP TABLE IF EXISTS proposals;
       DROP TABLE IF EXISTS feedback_log;
       DROP TABLE IF EXISTS crawl_sources;
       DROP TABLE IF EXISTS crawl_items;
-      DELETE FROM schema_version WHERE version = 3;
+      DELETE FROM schema_version WHERE version >= 3;
     `)
     db.createJob('legacy-job', 'test.kind', 0, 1, '{}')
     db.close()
@@ -309,7 +309,7 @@ describe('MasterDB migration v3 — Phase 9 Agent 体系', () => {
     const max = (db2 as any).db.prepare(
       'SELECT MAX(version) as version FROM schema_version'
     ).get() as { version: number }
-    expect(max.version).toBe(3)
+    expect(max.version).toBe(4)
     db = db2 // 交给 afterEach 关闭
   })
 

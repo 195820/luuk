@@ -95,12 +95,14 @@ function makeScorer(deps: {
   registry?: ReturnType<typeof fakeJudge>
   proposals?: ReturnType<typeof fakeProposals>
   hasPendingProposal?: (u: string) => boolean
+  getVisualSimilarity?: (draft: CandidateDraft, libraryId: number | null) => Promise<number | null>
 } = {}): RecommendScorer {
   return new RecommendScorer({
     getProfile: () => deps.profile ?? profile(),
     registry: deps.registry ?? fakeJudge(null),
     proposals: deps.proposals ?? fakeProposals(),
     hasPendingProposal: deps.hasPendingProposal ?? (() => false),
+    getVisualSimilarity: deps.getVisualSimilarity,
     now: () => NOW,
   })
 }
@@ -321,10 +323,80 @@ describe('T16 全链路集成（真 MasterDB + fake 出流）', () => {
     })
     expect((page.items[0].payload as { score: number }).score).toBeGreaterThan(0)
 
-    // 第二轮：同 url 已在 crawl_items → 轮初快照判重，propose 收不到新面孔
+    // 第二轮：同 url 已在 crawl_items → 轮初快照防重，propose 收不到新面孔
     const r2 = await svc.runSource(1)
     expect(r2.ingested).toBe(0)
     expect(items.count()).toBe(1)
     expect(proposals.list({ agentKind: 'crawler', state: 'pending' }).total).toBe(1) // 零重复提案
+  })
+})
+
+// ── T24 视觉相似度融合（可选 provider；缺省与 T16 完全等价）──
+
+describe('T24 getVisualSimilarity 融合', () => {
+  // 无 provider 时基础分：hitRatio=1（sunset+beach 全命中） affinity=0.5（中性） decay=1 → 0.7*1+0.3*0.5=0.85
+  it('provider 命中 → base = 0.75*0.85 + 0.25*sim（无 noul 融合时直达 score）', async () => {
+    const proposals = fakeProposals()
+    const scorer = makeScorer({ proposals, getVisualSimilarity: async () => 1 })
+    await scorer.propose(makeSource(), [draft()], 7)
+    expect(proposals.calls).toHaveLength(1)
+    expect(proposals.calls[0].score).toBeCloseTo(0.75 * 0.85 + 0.25 * 1, 6)
+  })
+
+  it('provider 返回 null / NaN → 原样回退纯文本分 0.85', async () => {
+    for (const sim of [null, NaN]) {
+      const proposals = fakeProposals()
+      const scorer = makeScorer({ proposals, getVisualSimilarity: async () => sim })
+      await scorer.propose(makeSource(), [draft()], 7)
+      expect(proposals.calls[0].score).toBeCloseTo(0.85, 6)
+    }
+  })
+
+  it('provider 抛错 → 不阻断提案，回退纯规则分', async () => {
+    const proposals = fakeProposals()
+    const scorer = makeScorer({ proposals, getVisualSimilarity: async () => { throw new Error('boom') } })
+    const r = await scorer.propose(makeSource(), [draft()], 7)
+    expect(r.proposed).toBe(1)
+    expect(proposals.calls[0].score).toBeCloseTo(0.85, 6)
+  })
+
+  it('provider 缺省（AI 关）→ 不被调用且行为与 T16 等价；命中时收到 draft+libraryId', async () => {
+    const proposals = fakeProposals()
+    const scorer = makeScorer({ proposals })
+    const r = await scorer.propose(makeSource(), [draft()], 7)
+    expect(r.proposed).toBe(1)
+    expect(proposals.calls[0].score).toBeCloseTo(0.85, 6)
+
+    const seen: Array<{ lib: number | null }> = []
+    const spy = makeScorer({
+      proposals: fakeProposals(),
+      getVisualSimilarity: async (d, libId) => { seen.push({ lib: libId }); return d.mediaUrls.length > 0 ? 0.5 : null },
+    })
+    await spy.propose(makeSource(), [draft()], 7)
+    expect(seen).toEqual([{ lib: 7 }])
+  })
+
+  it('excluded/skipped 候选不触发 provider（只在过闸后融合）', async () => {
+    let calls = 0
+    const scorer = makeScorer({
+      profile: profile({ exclusions: { terms: ['sunset'], sourceIds: [] } }),
+      getVisualSimilarity: async () => { calls++; return 0.5 },
+    })
+    const r = await scorer.propose(makeSource(), [draft()], 7)
+    expect(r.vetoed).toBe(1)
+    expect(calls).toBe(0)
+  })
+
+  it('视觉分与 noul 决策融合叠加：先视觉后决策（两层融合不互斥）', async () => {
+    const proposals = fakeProposals()
+    const scorer = makeScorer({
+      proposals,
+      registry: fakeJudge({ answers: { worth: { noul: 0, confidence: 0.7 } }, decisionSrc: 'jev', confidence: 0.7 }),
+      getVisualSimilarity: async () => 1,
+    })
+    await scorer.propose(makeSource(), [draft()], 7)
+    // base(无视觉) = 0.7*1 + 0.3*0.5 = 0.85（sunset+beach 全命中）；含视觉 = 0.75*0.85+0.25*1=0.8875；noul=0 → 0.7*0.8875
+    expect(proposals.calls[0].score).toBeCloseTo(0.7 * (0.75 * 0.85 + 0.25), 6)
+    expect(SCORER_PARAMS.VISUAL_WEIGHT).toBe(0.25)
   })
 })

@@ -6,6 +6,7 @@ import type {
   JevStatus, JevToggleResult,
   Proposal, ProposalQuery, ProposalPage, ProposalState, AgentKind, FeedbackAction,
   AgentStatus, CrawlSourceRecord, CreateCrawlSourceInput,
+  TagSuggestionItem,
 } from './agent'
 
 /**
@@ -100,7 +101,8 @@ export interface ElectronAPI {
   }>
   // 导出
   exportSingleImage: (libraryId: number, relativePath: string, options: ExportOptions, taskId: string) => Promise<{ success: boolean; outputPath?: string; error?: string }>
-  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; error?: string }>
+  // T25：批量导出收编 JobRunner，同步返回 jobId，进度/完成由 'export-progress' 事件驱动
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
   cancelExport: (taskId: string) => Promise<{ success: boolean }>
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   // 幻灯片
@@ -176,13 +178,21 @@ export interface ElectronAPI {
   getImageTags: (libraryId: number, imagePath: string) => Promise<{ success: boolean; data?: Tag[]; error?: string }>
   getAllTags: (libraryId: number) => Promise<{ success: boolean; data?: Array<Tag & { count: number }>; error?: string }>
   // pHash 回填
-  startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; error?: string }>
+  // T25：收编 JobRunner，成功时返回 jobId（同库重复调用复用活跃作业）
+  startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
   stopPhashBackfill: () => Promise<{ success: boolean; error?: string }>
   onPhashProgress: (callback: (progress: PhashProgress) => void) => () => void
   // 相似图片查找
   findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) => Promise<{ success: boolean; images?: any[]; error?: string }>
   // Phase 9 M5 · T22 — 语义搜索（自然语言 → CLIP 文本塔 → HNSW）
   semanticSearchImages: (libraryId: number, query: string, limit: number) => Promise<{ success: boolean; images?: SemanticImage[]; error?: string }>
+  // Phase 9 M5 · T23 — AI 标签提案（CLIP 零样本）+ 质量分作业
+  triggerAiTagging: (libraryId: number) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
+  triggerAiQuality: (libraryId: number, force?: boolean) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
+  listTagSuggestions: (libraryId: number) => Promise<{ success: boolean; data?: TagSuggestionItem[]; error?: string }>
+  adoptTagSuggestion: (proposalId: number) => Promise<{ success: boolean; data?: { adopted: number }; error?: string }>
+  dismissTagSuggestion: (proposalId: number) => Promise<{ success: boolean; error?: string }>
+  removeAiTag: (libraryId: number, imageRelativePath: string, tagName: string) => Promise<{ success: boolean; error?: string }>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -427,6 +437,8 @@ export interface Tag {
   name: string
   color: string
   count?: number
+  /** 词表来源：manual 人工 / ai AI 触发创建（Phase 9 M5 · T23） */
+  source?: 'manual' | 'ai'
 }
 
 // ==================== 搜索类型 ====================
@@ -569,4 +581,5 @@ export type {
   WeightedKeyword, PreferenceProfile, AgentKind, ProposalState, DecisionSource,
   Proposal, FeedbackAction, DecisionQuestion, DecisionAnswer, DecisionContext,
   DecisionProvider, CandidateItem, CrawlProvenance,
+  TagSuggestionEntry, TagSuggestionPayload, TagSuggestionItem,
 } from './agent'

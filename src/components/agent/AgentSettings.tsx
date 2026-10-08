@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { X, Bot, KeyRound, Loader2, Sparkles } from 'lucide-react'
 import { useAgentStore } from '../../stores/agentStore'
+import { AiLabelPanel } from './AiLabelPanel'
 import type { JevStatus, AiStatus } from '../../types'
 
 interface Props {
@@ -204,6 +205,9 @@ export function AgentSettings({ onClose }: Props) {
               <div className="text-xs text-red-400">{aiError}</div>
             )}
           </div>
+
+          {/* AI 标签提案 + 质量分（T23；ai.enabled 关闭时面板自隐） */}
+          <AiLabelPanel />
         </div>
       </div>
     </div>

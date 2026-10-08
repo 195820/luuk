@@ -141,12 +141,26 @@ function onlineLibrary(): { id: number; rootPath: string } | null {
 
 /** 打分提案段：画像一律经 profiler（含 learnedDeltas，不绕过）、决策走 Registry 统一入口 */
 function buildProposalStage(): ProposalStage {
-  const scorer = new RecommendScorer({
+  const deps: ConstructorParameters<typeof RecommendScorer>[0] = {
     getProfile: libraryId => getProfiler().getProfile(libraryId),
     registry: getDecisionRegistry(),
     proposals: getProposalStore(getMasterDB()),
     hasPendingProposal: sourceUrl => getProposalStore(getMasterDB()).hasPendingForSourceUrl(sourceUrl),
-  })
+  }
+  // T24 视觉相似度：仅 ai.enabled 路径动态拉起 ai-wiring（C1 不破：关态零 import 零会话）；
+  // 候选需含本地媒体（纯远端 URL → null，打分期不拉网络）；任何异常回退无视觉分
+  deps.getVisualSimilarity = async (draft, libraryId) => {
+    if (!getSetting('ai.enabled') || libraryId === null) return null
+    try {
+      const wiring = await import('../services/ai/ai-wiring')
+      const local = wiring.firstLocalMedia(draft)
+      return local ? await wiring.runVisualSimilarity(libraryId, local) : null
+    } catch (err) {
+      logger.warn('AgentHandlers', `视觉相似度 provider 异常（回退纯规则分）: ${err}`)
+      return null
+    }
+  }
+  const scorer = new RecommendScorer(deps)
   return { propose: (source, drafts, libraryId) => scorer.propose(source, drafts, libraryId) }
 }
 

@@ -25,6 +25,8 @@ export interface TextEncoder {
   isLoaded(): boolean
   /** 自然语言查询 → int8 量化向量（长度 = dim）；未 load 时抛错 */
   encode(text: string): Promise<Uint8Array>
+  /** 批量编码（AI 标签 prompt 用）：单次会话内循环 encode，避免逐条 load/unload 抖动；空输入返回 [] */
+  encodeBatch(texts: string[]): Promise<Uint8Array[]>
 }
 
 export interface OnnxClipTextEncoderOptions {
@@ -123,6 +125,14 @@ export class OnnxClipTextEncoder implements TextEncoder {
     }
     return quantizeEmbedToInt8(emb.data as Float32Array)
   }
+
+  /** 批量：复用同一会话循环单条 encode（prompt 数 ≤ ~60，无会话 churn）；空输入短路 */
+  async encodeBatch(texts: string[]): Promise<Uint8Array[]> {
+    if (texts.length === 0) return []
+    const out: Uint8Array[] = []
+    for (const t of texts) out.push(await this.encode(t))
+    return out
+  }
 }
 
 /** 由文本确定性生成 dim 维伪向量（值域 0..127 保证 int8 有符号解释为正，同 FakeEmbeddingEngine 策略） */
@@ -173,5 +183,12 @@ export class FakeTextEncoder implements TextEncoder {
     if (!this.loaded) throw new Error('TextEncoder 未加载，请先 load()（R2 会话分时）')
     this.encodeCalls++
     return pseudoVector(text, this.dim)
+  }
+
+  async encodeBatch(texts: string[]): Promise<Uint8Array[]> {
+    if (texts.length === 0) return []
+    const out: Uint8Array[] = []
+    for (const t of texts) out.push(await this.encode(t))
+    return out
   }
 }

@@ -349,3 +349,31 @@ export interface ProposalPage {
   pageSize: number
 }
 
+// ─── M5 · T23 AI 标签建议 / IQA 质量分契约 ───────────────────────
+
+/** 单条标签建议（零样本 softmax 概率 0–1） */
+export interface TagSuggestionEntry {
+  tagName: string
+  confidence: number
+}
+
+/** quality 提案 payload（label 作业产出，采纳前不落 image_tags） */
+export interface TagSuggestionPayload {
+  libraryId: number
+  imageId: number
+  /** 库内相对路径（与 image_tags.image_path 同形态） */
+  imageRelativePath: string
+  suggestions: TagSuggestionEntry[]
+}
+
+/** listTagSuggestions IPC 视图（提案 + 缩略图定位所需字段） */
+export interface TagSuggestionItem {
+  proposalId: number
+  imageId: number
+  imageRelativePath: string
+  suggestions: TagSuggestionEntry[]
+  /** 最高建议置信度（提案 score 同值） */
+  confidence: number
+  createdAt: string
+}
+
