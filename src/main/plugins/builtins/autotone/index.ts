@@ -2,6 +2,10 @@ import sharp from 'sharp'
 import { calculateHistogram, getHistogramStats } from '../../../utils/histogram'
 import type { LuukSdk, PluginInstance } from '../../../../types/plugin'
 
+/** 插件与 op 标识（manifest、Worker 注册表与宿主入口共用同一事实源，沿 M2 契约） */
+export const AUTOTONE_PLUGIN_ID = 'builtin.autotone'
+export const AUTOTONE_OP_AUTO = 'autotone.auto'
+
 /** 自动调色参数 */
 export interface AutotoneParams {
   /** 是否启用曝光修正（默认 true） */
@@ -202,13 +206,14 @@ interface AutotoneInput {
 }
 
 /**
- * 插件入口：返回符合 executeOp 契约的实例。
+ * 插件入口：SDK 契约，返回 PluginInstance（非破坏性 edit.write）。
  * 支持两种输入：菜单批处理（paths[]）与单元执行（path）。
+ * 注：master 的落盘版 applyAutotone(inputPath,outputPath) 仍作为导出辅助保留，供无 SDK 场景调用。
  */
 export function activate(_luuk: LuukSdk): PluginInstance {
   return {
     executeOp: async (sdk, opId, rawInput) => {
-      if (opId !== 'autotone.auto') {
+      if (opId !== AUTOTONE_OP_AUTO) {
         throw new Error(`未知 op: ${opId}`)
       }
       const input = (rawInput ?? {}) as AutotoneInput
@@ -223,7 +228,7 @@ export function activate(_luuk: LuukSdk): PluginInstance {
         const out = await applyAutotoneBuffer(buf, input.params)
         const editId = await sdk.edit.write({
           sourcePath: p,
-          op: 'autotone.auto',
+          op: AUTOTONE_OP_AUTO,
           outputBuffer: out,
           libraryId: input.libraryId,
           imageId: input.imageId,

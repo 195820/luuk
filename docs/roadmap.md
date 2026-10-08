@@ -3,7 +3,7 @@ title: 开发路线图
 description: 项目功能优化与开发任务总览 — 优先级、进度、执行顺序、技术选型建议
 type: roadmap
 status: current
-updated: 2026-09-19
+updated: 2026-09-29
 ---
 
 # 开发路线图
@@ -86,7 +86,7 @@ updated: 2026-09-19
 - ✅ IPC 暴露 + preload 接口 + `historyStore.ts` + 侧边栏「最近浏览」（缩略图列表、点击跳转原图、清空）
 - ✅ 查看器播放/翻页时自动记录（连续重复自动跳过）
 
-> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。
+> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。第八轮（插件系统 Phase 8）已交付 — 插件宿主（utilityProcess + MessagePort RPC）/PluginLoader 生命周期/JobRunner 后台作业调度/内存水位线/模型管理器/编辑版本链/内置插件 autotone/Feature Flags，评审 10 项修复完成。第九轮（Agent 体系 Phase 9）进行中 — M0+M1（T1-T7 Agent 基座：数据库迁移 v3/偏好画像/决策层/提案存储/反馈强化/调度循环，Ultra Review 14 项修复）、M2（T8-T10 Jev 决策插件 + 隐私护栏）、M3（T11-T16 采集 Agent 三端接入：爬虫服务/下载器/三级去重/四内置适配器/RecommendScorer 提案闭环）均已交付，全量 552 测试通过；待做：M4 UI 交互层（IPC 能力已就绪）、M5 索引能力（PoC R2/R5/R7 已于 2026-09-29 实测开门，方案据实测改道：向量独立 vectors.db + HNSW 自 Phase 10 提前、int8-only、128px 分块，见计划文档 D14）、M6 JobRunner 收编。计划详见 [plans/implementation-plan-phase9-agent.md](plans/implementation-plan-phase9-agent.md)。
 
 ---
 
@@ -139,9 +139,7 @@ updated: 2026-09-19
 
 ## 五、Phase 3 — AI / 爬虫（需确认）
 
-> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: current`）。**Phase 8 已于 2026-09-18/19 交付**（实施计划归档于 [archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md](archive/superpowers/plans/2026-09-13-phase8-ai-plugin-system.md)，缺陷修复 M1-M5 见 CHANGELOG「修复」节，人工验收进行中：[plans/Phase8人工验收清单](plans/Phase8人工验收清单-2026-09-19.md)）。下表工时为旧估算，Phase 9-11 仍以该设计文档的分期路线为准，工时留待 `implementation-plan-2027-q1.md`。
-
-> **衍生新方向**（如智能体化）先落 `plans/` 草案再回填本文排期，不占本轮工时：当前草案 [Agent 架构派生规划](plans/Agent架构派生规划-2026-09-22.md)（`status: draft`，未开工，仅定切入点与形态）。
+> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: draft`，待评审）。下表工时为旧估算，**以该设计文档的分期路线为准**（Phase 8-11），工时留待 `implementation-plan-2027-q1.md`。
 
 | # | 功能 | 预计工时 |
 |---|------|----------|
@@ -150,20 +148,21 @@ updated: 2026-09-19
 | 34 | 智能筛选最佳照片（构图/清晰度/曝光评分） | 3-5 天 |
 | 35a | **AI 修图 D1 轻量修复类**（超分/抠图/去水印/调色/老照片修复，单次前向，**本地 CPU 可行**） | Phase 8-10 |
 | 35b | **AI 修图 D2 扩散生成类**（生图/图生图/局部重绘/扩图，迭代去噪，**本地 CPU 不可行**，走可替换 provider 插件） | Phase 11，**前置 R6+R8** |
-| 36 | 图片爬虫模块（`SiteAdapter` = `crawler-adapter` 插件） | Phase 9 |
+| 36 | 图片爬虫模块 ✅ Phase 9 M3 交付（T11-T16）：`SiteAdapter` = `crawler-adapter` 插件，bili-web/xhs-web/tg-mtproto/tg-export-import 四内置适配器 + 三级去重入库 | — |
 | — | **图集缺图补全**（AI × 爬虫交叉能力，#35 与 #36 的衍生项） | Phase 10 |
 | 37 | 云同步（收藏/标签） | 待确认 |
-| 38 | **插件系统 —— 已升级为 Phase 8 主轴**，承载 #32-#36 全部能力（AI 索引/修图/生图/补图/站点适配均以插件形态交付，核心不写死模型与站点） | Phase 8 |
+| 38 | **插件系统 —— Phase 8 主轴 ✅ 已交付**（2026-09 评审 10 项修复完成），承载 #32-#36 全部能力（AI 索引/修图/生图/补图/站点适配均以插件形态交付，核心不写死模型与站点） | — |
 
 ---
 
 ## 六、特色功能建议
 
-### 39. 智能收藏推荐
+### 39. 智能收藏推荐 ✅
 
 根据浏览行为（停留时间长、放大查看、反复回看）自动标记"可能喜欢"的图片，提供一键收藏入口。纯行为分析，无需 AI 模型。
 
-- **预计工时**：1-2 天
+- **实施**：由 Phase 9 采集 Agent 承载（2026-09-26 M3 交付）——`PreferenceProfiler` 消化浏览/收藏/评分信号，`RecommendScorer` 打分生成提案，人在回路确认；UI 入口属 M4（T17 DiscoverPanel）
+- **涉及文件**：`src/main/services/agent/preference-profiler.ts`、`recommend-scorer.ts`、`proposal-store.ts`、`feedback-aggregator.ts`
 
 ### 40. 自定义相册
 
@@ -200,7 +199,7 @@ CREATE TABLE album_items (
 
 - [ ] 归档测试方案中的待测试用例：执行记录模板已创建（`archive/文件操作阶段测试执行记录.md`），9 个用例待手动执行
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
-- [x] 补充自动化单元测试：69 用例（含多选逻辑 + 文件操作边界）
+- [x] 补充自动化单元测试：全量 49 files / 552 用例（含文件操作/插件系统/Agent/爬虫回归）
 
 ### 性能优化
 
@@ -244,25 +243,25 @@ CREATE TABLE album_items (
 | 隐患 | 影响 | 状态 |
 |------|------|------|
 | 收藏/历史以 `image_path` 字符串为主键 | 文件重命名/移动后引用失效 | ✅ 已解决 — 路径级联更新机制（Phase 1） |
-| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 已大幅拆分 — 现共 11 个 store（selection/view/tag/search/history/similar/slideshow/theme/plugin/audio 独立），imageStore 仍为核心但职责收窄，后续按需继续拆分 |
+| `imageStore` 已成巨石 store | 承载库/图片/收藏/文件夹树/视图/排序 | 🟡 部分拆分 — 已拆出 `selectionStore`（多选）+ `viewStore`（视图/布局），主体仍有 541 行，后续按需继续拆分 |
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
-| `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论；2026-09 媒体改造后 token 同会话内确定（HMAC），但密钥进程级随机，重启仍失效 |
+| `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
-| AI 推理内存峰值可能越性能红线 | Worker 熔断/系统卡死 | ✅ Phase 8 M1-M5 已治理 — 水位线双闸门（聚合 yellow=1500/red=2500MB 可配置 + Worker RSS 硬闸门 500MB）、InferencePool LRU 驱逐、upscale 像素预算 40M 上限；常量见 `plugin-manager.ts` |
+| 向量检索若内联 thumbs.db 会全表 SCAN 拖累主链路（R5 实测 P95 4.6s） | 索引查询延迟超红线 | ⬜ 待解 — M5 改道 vectors.db + HNSW（D14，2026-09-29 决策） |
 
 ### 工程化欠账
 
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
 - [ ] 归档测试方案中 `TC-THUMB-004/005`、`TC-GRID-001~004`、`TC-PERF-001~003` 未执行（模板已建，待手动执行）
-- [ ] 单元测试（60+ 用例）可持续扩充
+- [ ] 单元测试（现 552 用例）可持续扩充，交付门禁：tsc 零错误 + 全量 vitest 通过
 
 ### 性能红线
 
 任何新功能不得突破以下约束（来自 requirements.md）：
 
 - 启动时间 < 3s
-- 内存占用 < 500MB（**Phase 8 实测口径**：此红线按单插件 Worker 进程衡量，`memory.workerRedMB` 默认 500；全应用聚合水位线 `memory.yellowMB`/`memory.redMB` 默认 1500/2500，均为可配置设置项，常量见 `src/main/services/plugin-manager.ts`）
-- 滚动帧率 ≥ 30 FPS（2026-09 媒体性能改造的验收目标：滚动 P95 帧时间 <16.7ms，待人工实测确认）
+- 内存占用 < 500MB
+- 滚动帧率 ≥ 30 FPS
 
 ---
 
@@ -282,33 +281,10 @@ CREATE TABLE album_items (
 
 **第七轮 (2 天)**：~~archiver 依赖引入 → 导出服务 → 批量 ZIP → 格式转换 → ExportDialog UI → 幻灯片增强~~（2026-09-12 完成，Phase 7 Task 7.0/7.1/7.2 全部完成，135 测试通过）
 
-**第八轮**：~~Phase 8 AI 插件系统~~（2026-09-18 骨架交付 `59c12e1`，遗留项回填 `932ca12`）→ ~~Phase 8 缺陷修复 M1-M5~~（2026-09-19，分支 `fix/phase8-defects`，`c885f4d`..`b1c83b7`，P0-1~P2-19 全部实施，43 文件 393 用例全绿）。代码已交付，**人工验收进行中**（[plans/Phase8人工验收清单](plans/Phase8人工验收清单-2026-09-19.md)）。
+**第八轮**：~~插件系统（Phase 8）~~（已交付 — 插件宿主/JobRunner/内存水位线/模型管理器/编辑版本链/内置插件 autotone，评审 10 项修复）
 
-**穿插修复轮**：2026-09-13~18 两轮回归——`0db1c02` 7 项缺陷；`07c1c3d` 搜索 jpg 归一/浅色主题/密度/后台扫描/关闭卡顿（对应 [archive/defect-summary-2026-09-15.md](archive/defect-summary-2026-09-15.md) 的 R-1/R-2/R-3）；ABI 测试基建解耦 `9e7de8f`。
-
----
-
-## 十一、已知遗留项（2026-09-19 汇总）
-
-| # | 项 | 来源 | 状态/触发条件 |
-|---|---|---|---|
-| L1 | upscale 逐带（band）流式写盘——放宽 40M 像素预算上限 | Phase8 M1/P0-2 降级 | 需 `edit.write` SDK 契约变更，后续项 |
-| L2 | `plugin.cancel` 协作式逐瓦片即时取消 | Phase8 M4/P1-7 降级 | 需 SDK 取消令牌契约变更；当前作业项跑完即停 |
-| L3 | matting 真实含主体照片的抠图画质抽检 | CHANGELOG 遗留项 | test-library 为无主体生成图，需人工实拍验 |
-| L4 | ai-crawler PoC R2/R4/R5/R6/R8/R9 实测回填；Q1/Q2/Q3/Q7 设计决策 | plans/ai-crawler-direction §15/§16 | Phase 9 开工前必须定案 |
-| L5 | 安装包随 Phase8 M1-M5 与媒体性能改动重新打包；首启建库/升级路径人工验 | 回归计划 §6.4 | 09-18 已产 138.8MB Setup + CDP 冒烟 6/6；代码再次变更后需重打 |
-| L6 | 回归计划 M0~M8 人工 UI 走查（DEF-2~9 在新构建上复验） | [plans/回归测试计划-2026-09-13.md](plans/回归测试计划-2026-09-13.md) §6.4 | 待人工 |
-| L7 | 媒体性能人工 DevTools 项：memory cache 命中、P95 帧时间、大视频(>1GB) seek、退出 temp 终清 | archive/媒体加载性能提升方案 §三 | CDP 29/29 已验自动化可达项，余下需人工 |
-| L8 | P2-2 缩略图生成迁 utilityProcess | 同上 | 数据不达标（扫描期主进程 >50ms 长任务）才做 |
-| L9 | TC-THUMB-004/005、TC-GRID-001~004、TC-PERF-001~003 待手动执行 | archive/测试方案.md（工程化欠账） | 模板已建，待执行 |
-
-## 十二、进行中（2026-09-19）
-
-- **媒体加载性能提升**：P0-1/P0-2/P1-1/P1-2/P1-3/P2-1 已全部实施，`scripts/cdp-verify-media.mjs` 真机验证 29/29 通过；代码已提交至 `fix/phase8-defects`（`6df2c18`）。方案与基线详见 [archive/媒体加载性能提升方案-2026-09.md](archive/媒体加载性能提升方案-2026-09.md)。
-- **Phase 8 人工验收**：☐ 项进行中，完成后本项与第八轮状态同步更新。
-- **全面测试方案**：已产出 [plans/全面测试方案-2026-09-19.md](plans/全面测试方案-2026-09-19.md)（自动化七层 + 人工六类 + P0/P1/P2 分层，已合并两轮代码审查结论）；**新发现待办：DEF-7 属未闭环失踪项（需定级/豁免）、IPC 半死通道 `updateScanProgress`/`clearScanProgress` 待决断、N1（JobRunner shutdown 后 pump 复活作业）待单独排期修复**。
-- **AI 修图批处理体验验证**：>20 张多选入队后台批处理（P0-1 交付）的真实场量验证随人工验收清单一并进行。
+**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）：~~T21 CLIP 索引+vectors.db/HNSW~~ + ~~T22 语义搜索（2026-10-07 交付：真分词器 byte-level BPE 对齐黄金 fixture + 文本塔 int8/fp32 + HNSW 端到端混合配对；`ann.search` 首个生产调用方，W13 技术债清偿）~~ ✅ + ~~T23 AI 标签+IQA（2026-10-08 交付：迁移 v4 + 零模型启发式 IQA + CLIP 零样本人在回路 + AiLabelPanel）~~ ✅ + ~~T24 视觉匹配升级（2026-10-08 交付：RecommendScorer 可选 provider，仅本地媒体出信号）~~ ✅ → ~~M6 JobRunner 收编（T25，2026-10-08 交付：phash 库级作业 + export.batch 复合作业，D-3 仅 phash+export）~~ ✅（全量 807 测试通过）
 
 ---
 
-**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22｜**Phase 8/回归/媒体性能回写**：2026-09-19
+**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22｜**Phase 8/9 进度回写**：2026-09-29｜**T23-T25 交付回写**：2026-10-08

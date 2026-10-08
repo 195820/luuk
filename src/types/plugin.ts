@@ -5,6 +5,7 @@ export type PluginKind =
   | 'diffusion-provider' // 扩散生成后端
   | 'crawler-adapter'    // 站点解析适配
   | 'ui-panel'           // 声明式 UI 贡献
+  | 'decision-provider'  // 决策提供者（D6，如 Jev 云端判断）
 
 /** 插件权限 */
 export type PluginPermission =
@@ -19,6 +20,12 @@ export type PluginPermission =
   | 'browser'
   | 'fetch'
   | 'mask'
+  // Phase 9 M3（T12）：爬虫接入层权限。声明式管控（D10）：
+  // crawler.fetch = 宿主代执行网络计划；crawler.protocol = pc-app 形态插件自跑协议栈（启用需二次确认，M4）；
+  // crawler.write.media = 向库内 _downloads 写媒体文件
+  | 'crawler.fetch'
+  | 'crawler.protocol'
+  | 'crawler.write.media'
 
 /** 插件清单 plugin.json */
 export interface PluginManifest {

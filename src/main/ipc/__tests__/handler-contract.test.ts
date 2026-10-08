@@ -235,14 +235,14 @@ describe('IPC 契约（静态扫描）', () => {
   })
 
   describe('总量锚定', () => {
-    it('preload 总键数 = invoke(102) + send(4) + on*(9) = 115', () => {
+    it('preload 总键数 = invoke(128) + send(4) + on*(9) = 141', () => {
       const total = preloadInvokes.length + preloadSends.length + preloadOns.length
-      expect(total).toBe(115)
+      expect(total).toBe(141)
     })
 
-    it('ipcMain.handle 总数 = 104（含半死通道 2 个 + main.ts 4 个）', () => {
+    it('ipcMain.handle 总数 = 130（含半死通道 2 个 + main.ts 内联 + Phase 9 agent/ai/crawler）', () => {
       // 注：如果后续增删 handle，只需更新此数字并保证四类断言通过
-      expect(handleChannels.length).toBe(104)
+      expect(handleChannels.length).toBe(130)
     })
   })
 })

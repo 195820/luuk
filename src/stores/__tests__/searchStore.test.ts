@@ -5,6 +5,7 @@ import { useSearchStore } from '../searchStore'
 function installApiMock() {
   const api = {
     searchImages: vi.fn(),
+    semanticSearchImages: vi.fn(),
     getSearchHistory: vi.fn().mockResolvedValue([]),
     getSearchPresets: vi.fn().mockResolvedValue([]),
     addSearchHistory: vi.fn().mockResolvedValue(undefined),
@@ -24,6 +25,8 @@ function resetStore() {
     results: [],
     total: 0,
     hasSearched: false,
+    mode: 'keyword',
+    semanticError: null,
     history: [],
     presets: [],
   })
@@ -53,6 +56,7 @@ describe('searchStore 条件与面板', () => {
     expect(st.total).toBe(0)
     expect(st.hasSearched).toBe(false)
     expect(st.criteria).toEqual({})
+    expect(st.mode).toBe('keyword')
   })
 })
 
@@ -141,6 +145,79 @@ describe('searchStore.search', () => {
     await useSearchStore.getState().search(1)
     expect(useSearchStore.getState().results).toEqual([])
     expect(useSearchStore.getState().searching).toBe(false)
+  })
+
+  it('searchSemantic 成功：写入 results/total、切 mode=semantic、记录查询到历史', async () => {
+    api.semanticSearchImages.mockResolvedValue({ success: true, images: [{ id: 1, similarity: 88 }, { id: 2, similarity: 70 }] })
+    await useSearchStore.getState().searchSemantic(1, '一只猫在草地上')
+    const st = useSearchStore.getState()
+    expect(st.mode).toBe('semantic')
+    expect(st.hasSearched).toBe(true)
+    expect(st.searching).toBe(false)
+    expect(st.results).toHaveLength(2)
+    expect(st.total).toBe(2)
+    expect(api.semanticSearchImages).toHaveBeenCalledWith(1, '一只猫在草地上', 200)
+    expect(api.addSearchHistory).toHaveBeenCalledWith('一只猫在草地上')
+  })
+
+  it('searchSemantic 空查询：提前清空结果且不调用 IPC', async () => {
+    useSearchStore.setState({ results: [{ id: 1 } as any], total: 1 })
+    await useSearchStore.getState().searchSemantic(1, '   ')
+    const st = useSearchStore.getState()
+    expect(st.results).toEqual([])
+    expect(st.total).toBe(0)
+    expect(st.mode).toBe('semantic')
+    expect(api.semanticSearchImages).not.toHaveBeenCalled()
+  })
+
+  it('searchSemantic 失败：清空结果并结束搜索态（#2：同时上屏 semanticError）', async () => {
+    api.semanticSearchImages.mockResolvedValue({ success: false, error: 'boom' })
+    await useSearchStore.getState().searchSemantic(1, 'cat')
+    const st = useSearchStore.getState()
+    expect(st.results).toEqual([])
+    expect(st.total).toBe(0)
+    expect(st.searching).toBe(false)
+    expect(st.semanticError).toBe('boom')
+  })
+
+  it('searchSemantic 成功：清除旧 semanticError（#2）', async () => {
+    useSearchStore.setState({ semanticError: '陈旧错误' })
+    api.semanticSearchImages.mockResolvedValue({ success: true, images: [{ id: 1, similarity: 88 }] })
+    await useSearchStore.getState().searchSemantic(1, 'cat')
+    expect(useSearchStore.getState().semanticError).toBeNull()
+  })
+
+  it('searchSemantic 进入语义模式清空关键词条件（#11）', async () => {
+    useSearchStore.getState().setCriteria({ fileName: 'A' })
+    api.semanticSearchImages.mockResolvedValue({ success: true, images: [{ id: 1, similarity: 88 }] })
+    await useSearchStore.getState().searchSemantic(1, 'B')
+    expect(useSearchStore.getState().criteria).toEqual({})
+  })
+
+  it('过期响应丢弃（#1 seq guard）：先发的关键词搜索被随后的语义搜索覆盖', async () => {
+    api.searchImages.mockResolvedValue({ success: true, images: [{ id: 1 }], total: 1 })
+    api.semanticSearchImages.mockResolvedValue({ success: true, images: [{ id: 9, similarity: 90 }] })
+    const p1 = useSearchStore.getState().search(1)
+    const p2 = useSearchStore.getState().searchSemantic(1, 'cat')
+    await Promise.all([p1, p2])
+    const st = useSearchStore.getState()
+    expect(st.mode).toBe('semantic')
+    expect(st.results.map((r) => r.id)).toEqual([9])
+  })
+
+  it('searchSemantic 异常：捕获后清空结果', async () => {
+    api.semanticSearchImages.mockRejectedValue(new Error('ipc down'))
+    await useSearchStore.getState().searchSemantic(1, 'cat')
+    expect(useSearchStore.getState().results).toEqual([])
+    expect(useSearchStore.getState().searching).toBe(false)
+  })
+
+  it('loadMore 语义模式下门控：不触发分页 IPC', async () => {
+    api.semanticSearchImages.mockResolvedValue({ success: true, images: Array.from({ length: 200 }, (_, i) => ({ id: i })) })
+    await useSearchStore.getState().searchSemantic(1, 'cat')
+    api.searchImages.mockClear()
+    await useSearchStore.getState().loadMore(1)
+    expect(api.searchImages).not.toHaveBeenCalled()
   })
 })
 

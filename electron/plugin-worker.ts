@@ -21,6 +21,18 @@ import type {
   RpcResponse,
   RpcError,
 } from '../src/types/plugin'
+import {
+  executePluginOp,
+  loadPluginEntry,
+  registerBuiltinPlugin,
+  unloadPluginEntry,
+} from '../src/main/plugins/plugin-registry'
+import { activate as activateJevDecision } from '../src/main/plugins/builtins/jev-decision'
+import { activate as activateRuleEngineAdapter } from '../src/main/plugins/builtins/rule-engine-adapter'
+import { activate as activateBiliWeb } from '../src/main/plugins/builtins/bili-web'
+import { activate as activateXhsWeb } from '../src/main/plugins/builtins/xhs-web'
+import { activate as activateTgExportImport } from '../src/main/plugins/builtins/tg-export-import'
+import { activate as activateTgMtproto } from '../src/main/plugins/builtins/tg-mtproto'
 
 const require = createRequire(import.meta.url)
 
@@ -153,8 +165,37 @@ registerHandler('memory.evict', async () => {
   return { evicted: true }
 })
 
+// ── 插件装载：双契约分派 ──
+// master 的 decision/crawler 类插件用新契约 activate(): OpRegistry（无 SDK），
+// 随宿主打包、无独立 .js 产物，故走静态注册表 plugin-registry；
+// phase8 的 AI 变换类插件（autotone/matting/upscale）用 SDK 契约
+// activate(sdk): PluginInstance（依赖 createPluginSdk + InferencePool 反向 RPC），
+// 走 require + loadedPlugins 路径。二者按插件 id 归属分派，互不干扰。
+
+// 新契约（OpRegistry）内置插件 id 集合：命中即走 registry 装载
+const registryPluginIds = new Set<string>([
+  'builtin.jev-decision',
+  'builtin.rule-engine-adapter',
+  'builtin.bili-web',
+  'builtin.xhs-web',
+  'builtin.tg-export-import',
+  'builtin.tg-mtproto',
+])
+registerBuiltinPlugin('builtin.jev-decision', activateJevDecision)
+registerBuiltinPlugin('builtin.rule-engine-adapter', activateRuleEngineAdapter)
+registerBuiltinPlugin('builtin.bili-web', activateBiliWeb)
+registerBuiltinPlugin('builtin.xhs-web', activateXhsWeb)
+registerBuiltinPlugin('builtin.tg-export-import', activateTgExportImport)
+registerBuiltinPlugin('builtin.tg-mtproto', activateTgMtproto)
+
 registerHandler('plugin.load', async (params) => {
   const { pluginId, entryPath } = params as { pluginId: string; entryPath: string }
+  // 新契约：命中静态注册表 → registry 装载
+  if (registryPluginIds.has(pluginId)) {
+    const ops = await loadPluginEntry(pluginId, entryPath)
+    return { pluginId, entryPath, loaded: true, opIds: Object.keys(ops) }
+  }
+  // SDK 契约（autotone/matting/upscale + 第三方）：require 编译入口 + 逐插件闭包 SDK
   const sdk = createPluginSdk(pluginId, callMain, inferencePool)
   const mod = require(entryPath)
   const instance: PluginInstance =
@@ -165,6 +206,10 @@ registerHandler('plugin.load', async (params) => {
 
 registerHandler('plugin.unload', async (params) => {
   const { pluginId } = params as { pluginId: string }
+  if (registryPluginIds.has(pluginId)) {
+    return { pluginId, unloaded: unloadPluginEntry(pluginId) }
+  }
+  // SDK 契约
   const entry = loadedPlugins.get(pluginId)
   try {
     await entry?.instance.deactivate?.()
@@ -183,6 +228,11 @@ registerHandler('plugin.execute', async (params) => {
     opId: string
     input: unknown
   }
+  // 新契约：直接调用 op handler
+  if (registryPluginIds.has(pluginId)) {
+    return executePluginOp(pluginId, opId, input)
+  }
+  // SDK 契约
   const entry = loadedPlugins.get(pluginId)
   if (!entry) throw new Error(`插件未加载: ${pluginId}`)
   if (typeof entry.instance.executeOp !== 'function') {

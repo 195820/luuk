@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions, Tag, Job, JobItem, JobState, JobItemState, Edit } from '../../types';
+import type { PreferenceProfile } from '../../types/agent';
 import { logger } from '../../utils/logger';
 
 const ALLOWED_ORDER_BY = ['relative_path', 'created_time', 'modified_time', 'indexed_time'] as const;
@@ -48,13 +49,31 @@ export interface Image {
   phash?: string | null;
 }
 
+/** SQLite CURRENT_TIMESTAMP 默认值（'YYYY-MM-DD HH:MM:SS' UTC）归一化为 ISO8601，保证与 JS toISOString 可比 */
+function normalizeSqlTs(ts: string): string {
+  // 带时区偏移的串（如 '2026-01-01T08:00:00+08:00'）统一经 Date 转 UTC，避免盲拼 Z 产生非法串
+  if (/[+-]\d{2}:?\d{2}$/.test(ts)) {
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? ts : d.toISOString();
+  }
+  const iso = ts.replace(' ', 'T');
+  return iso.endsWith('Z') ? iso : iso + '.000Z';
+}
+
+/** 画像构建的原始数据源（T3）：MasterDB 只做取数，加权逻辑在 PreferenceProfiler */
+export interface ProfilerSourceData {
+  favorites: Array<{ imagePath: string; tags: string[]; rating: number }>;
+  tagEntries: Array<{ tag: string; imagePath: string; rating: number }>;
+  historyPaths: Array<{ imagePath: string }>;
+}
+
 /**
  * 数据库迁移定义
  * - 每个迁移包含版本号、描述、SQL 语句
  * - SQL 必须幂等（使用 IF NOT EXISTS 等）
  * - 按顺序执行，事务包裹
  */
-const MIGRATIONS: Array<{ version: number; description: string; sql: string }> = [
+const MIGRATIONS: Array<{ version: number; description: string; sql: string; tolerant?: string[] }> = [
   {
     version: 1,
     description: '添加文件夹封面支持',
@@ -117,6 +136,94 @@ const MIGRATIONS: Array<{ version: number; description: string; sql: string }> =
       CREATE INDEX IF NOT EXISTS idx_edits_image ON edits(library_id, image_id);
     `,
   },
+  {
+    version: 3,
+    description: 'Phase 9 — Agent 体系与智能采集（画像/提案/反馈/信息源/采集溯源）',
+    sql: `
+      -- 用户偏好画像（library_id 为 NULL 表示全局画像）
+      CREATE TABLE IF NOT EXISTS preference_profile (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id    INTEGER,
+        keywords      TEXT NOT NULL,           -- JSON: WeightedKeyword[]
+        learned_deltas TEXT,                   -- JSON: 反馈学习量净累计（重建时叠加不覆盖）
+        visual_traits TEXT,                    -- JSON: 视觉特征（M5 后由 embedding 填充）
+        source_affinity TEXT,                  -- JSON: { sourceId: trustScore }
+        exclusions    TEXT,                    -- JSON: 排除词/排除来源
+        updated_at    TEXT NOT NULL,
+        source_watermark TEXT                   -- 已消费的行为数据水位线（脏检查用，S14）
+      );
+
+      -- Agent 提案（人在回路的核心表，D8）
+      CREATE TABLE IF NOT EXISTS proposals (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_kind    TEXT NOT NULL,           -- 'crawler' | 'organize' | ...（D7 占位）
+        library_id    INTEGER,
+        payload       TEXT NOT NULL,           -- JSON: 提案内容（候选项元数据）
+        score         REAL,                    -- 匹配度评分
+        decision_src  TEXT,                    -- 'local' | 'jev' | 'human'
+        confidence    REAL,                    -- 决策置信度
+        state         TEXT NOT NULL DEFAULT 'pending',  -- pending|accepted|skipped|rejected
+        created_at    TEXT NOT NULL,
+        resolved_at   TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_proposals_state ON proposals(state);
+      CREATE INDEX IF NOT EXISTS idx_proposals_agent ON proposals(agent_kind);
+
+      -- 反馈日志（强化学习数据源）
+      CREATE TABLE IF NOT EXISTS feedback_log (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        proposal_id   INTEGER NOT NULL,
+        action        TEXT NOT NULL,           -- 'accept' | 'skip' | 'reject'
+        delta         REAL,                    -- 本次反馈对画像权重的调整量
+        created_at    TEXT NOT NULL
+      );
+
+      -- 信息源（= crawler-adapter 插件实例配置）
+      CREATE TABLE IF NOT EXISTS crawl_sources (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        plugin_id     TEXT NOT NULL,           -- 对应的 crawler-adapter 插件
+        name          TEXT NOT NULL,
+        config        TEXT,                    -- JSON: 站点参数/规则包引用
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        health        TEXT DEFAULT 'ok',       -- ok|degraded（§12.10 健康度）
+        success_rate  REAL,
+        last_crawl_at TEXT,
+        created_at    TEXT NOT NULL
+      );
+
+      -- 采集条目溯源留档（§12.8；sidecar JSON 溯源写入在 M3 下载落地时预留接入）
+      CREATE TABLE IF NOT EXISTS crawl_items (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id     INTEGER NOT NULL,
+        source_url    TEXT NOT NULL,
+        page_title    TEXT,
+        author        TEXT,
+        url_hash      TEXT NOT NULL,           -- URL 去重（三级去重第一级）
+        file_hash     TEXT,                    -- SHA256（第二级），下载后填
+        phash         TEXT,                    -- 感知哈希（第三级），入库后填
+        image_path    TEXT,                    -- 落地路径，入库后填
+        error         TEXT,                    -- 反爬退让记录（§12.10）
+        crawled_at    TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_crawl_items_url_hash ON crawl_items(url_hash);
+    `,
+    // 已应用过旧版 v3 的开发库补列：duplicate column 错误容忍（重跑安全）
+    tolerant: [
+      'ALTER TABLE preference_profile ADD COLUMN learned_deltas TEXT',
+      'ALTER TABLE preference_profile ADD COLUMN source_watermark TEXT',
+      'ALTER TABLE favorites ADD COLUMN updated_at TEXT',
+    ],
+  },
+  {
+    version: 4,
+    description: 'Phase 9 M5 · T23 — AI 标签：tags.source（人工/AI 词表）+ image_tags.confidence（AI 采纳置信度）',
+    // 纯补列迁移：ALTER 一律走 tolerant（duplicate column 容忍），sql 留无害注释
+    sql: `SELECT 1;`,
+    tolerant: [
+      "ALTER TABLE tags ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+      'ALTER TABLE image_tags ADD COLUMN confidence REAL',
+    ],
+  },
 ]
 
 /**
@@ -143,6 +250,11 @@ export class MasterDB {
     this.db.pragma('foreign_keys = ON');
     this.createTables();
     this.ensureSchemaVersion();
+  }
+
+  /** 暴露底层连接供 Phase 9 Agent 子系统（ProposalStore 等）自管 SQL */
+  getRawDb(): DatabaseType | null {
+    return this.db;
   }
 
   /**
@@ -177,6 +289,13 @@ export class MasterDB {
         // 事务包裹
         const transaction = this.db.transaction(() => {
           this.db!.exec(migration.sql);
+          // 容忍语句（如补列 ALTER）：duplicate column 可忽略，其余错误仍触发事务回滚
+          for (const stmt of migration.tolerant ?? []) {
+            try { this.db!.prepare(stmt).run(); }
+            catch (err) {
+              if (!String((err as Error).message).includes('duplicate column name')) throw err;
+            }
+          }
           this.db!.prepare('INSERT INTO schema_version (version) VALUES (?)').run(migration.version);
         });
         transaction();
@@ -248,6 +367,7 @@ export class MasterDB {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL,
         color TEXT DEFAULT '#888888',
+        source TEXT NOT NULL DEFAULT 'manual',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -255,6 +375,7 @@ export class MasterDB {
         tag_id INTEGER NOT NULL,
         library_id INTEGER NOT NULL,
         image_path TEXT NOT NULL,
+        confidence REAL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (tag_id, library_id, image_path),
         FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
@@ -359,7 +480,7 @@ export class MasterDB {
 
   /**
    * 设置图片评分（评分隐含收藏：不存在收藏记录时自动创建）
-   * 已存在的收藏保留 tags，仅更新 rating
+   * 已存在的收藏保留 tags，仅更新 rating；同时刷 updated_at 以标脏画像（评分是画像信号源）
    */
   setFavoriteRating(libraryId: number, imagePath: string, rating: number): void {
     if (!this.db) return;
@@ -368,7 +489,7 @@ export class MasterDB {
     const existing = this.db.prepare('SELECT tags FROM favorites WHERE library_id = ? AND image_path = ?')
       .get(libraryId, normalized) as { tags: string } | undefined;
     if (existing) {
-      this.db.prepare('UPDATE favorites SET rating = ? WHERE library_id = ? AND image_path = ?')
+      this.db.prepare('UPDATE favorites SET rating = ?, updated_at = CURRENT_TIMESTAMP WHERE library_id = ? AND image_path = ?')
         .run(rating, libraryId, normalized);
     } else {
       this.addFavorite(libraryId, normalized, [], rating);
@@ -683,11 +804,35 @@ export class MasterDB {
 
   // ==================== 标签系统 ====================
 
-  createTag(name: string, color: string = '#888888'): Tag {
+  createTag(name: string, color: string = '#888888', source: 'manual' | 'ai' = 'manual'): Tag {
     if (!this.db) throw new Error('MasterDB 未初始化');
-    const stmt = this.db.prepare('INSERT INTO tags (name, color) VALUES (?, ?)');
-    const result = stmt.run(name, color);
-    return { id: result.lastInsertRowid as number, name, color };
+    const stmt = this.db.prepare('INSERT INTO tags (name, color, source) VALUES (?, ?, ?)');
+    const result = stmt.run(name, color, source);
+    return { id: result.lastInsertRowid as number, name, color, source };
+  }
+
+  /** 按名取标签，不存在则以指定来源创建（AI 采纳标签建议时 source='ai'） */
+  getOrCreateTagByName(name: string, source: 'manual' | 'ai' = 'manual'): Tag {
+    if (!this.db) throw new Error('MasterDB 未初始化');
+    const trimmed = name.trim();
+    const existing = this.db.prepare('SELECT id, name, color, source FROM tags WHERE name = ?').get(trimmed) as
+      { id: number; name: string; color: string; source: 'manual' | 'ai' } | undefined;
+    if (existing) return { id: existing.id, name: existing.name, color: existing.color, source: existing.source };
+    return this.createTag(trimmed, '#888888', source);
+  }
+
+  /** 全部标签名（AI 标签候选词表用，去重按名） */
+  listTagNames(): string[] {
+    if (!this.db) return [];
+    return (this.db.prepare('SELECT name FROM tags ORDER BY name').all() as Array<{ name: string }>).map(r => r.name);
+  }
+
+  /** 本库经 image_tags 实际使用过的标签名（D-2：AI 标签候选=本库已有标签，而非跨库全局词表） */
+  listTagNamesForLibrary(libraryId: number): string[] {
+    if (!this.db) return [];
+    return (this.db.prepare(
+      'SELECT DISTINCT t.name AS name FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.library_id = ? ORDER BY t.name'
+    ).all(libraryId) as Array<{ name: string }>).map(r => r.name);
   }
 
   deleteTag(id: number): void {
@@ -732,6 +877,123 @@ export class MasterDB {
       ).run(...tagIds, libraryId, ...normalizedPaths);
     });
     tx();
+  }
+
+  /** 带置信度打标（AI 采纳）：INSERT OR IGNORE，命中已有行不覆写人工 confidence */
+  tagImageWithConfidence(tagId: number, libraryId: number, imagePath: string, confidence: number): void {
+    if (!this.db) return;
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    this.db.prepare(
+      'INSERT OR IGNORE INTO image_tags (tag_id, library_id, image_path, confidence) VALUES (?, ?, ?, ?)'
+    ).run(tagId, libraryId, normalizedPath, confidence);
+  }
+
+  /** 撤销 AI 标签：仅删除 tags.source='ai' 命中的 image_tags 行（不动人工标注） */
+  removeAiTagFromImage(libraryId: number, imagePath: string, tagName: string): void {
+    if (!this.db) return;
+    const normalizedPath = imagePath.replace(/\\/g, '/');
+    this.db.prepare(
+      `DELETE FROM image_tags
+       WHERE library_id = ? AND image_path = ?
+         AND tag_id IN (SELECT id FROM tags WHERE name = ? AND source = 'ai')`
+    ).run(libraryId, normalizedPath, tagName.trim());
+  }
+
+  // ─── Phase 9 — Agent 偏好画像读写与数据源（T3） ───────────────────
+
+  /** 读取画像缓存；libraryId 为 null 读全局画像 */
+  getPreferenceProfile(libraryId: number | null): PreferenceProfile | null {
+    if (!this.db) return null;
+    const row = this.db.prepare(
+      'SELECT * FROM preference_profile WHERE library_id IS ? ORDER BY id DESC LIMIT 1'
+    ).get(libraryId) as any;
+    if (!row) return null;
+    const parseJson = (text: string | null, fallback: any) => {
+      if (text == null) return fallback;
+      try { return JSON.parse(text); } catch { return fallback; }
+    };
+    return {
+      libraryId: row.library_id ?? null,
+      keywords: parseJson(row.keywords, []),
+      learnedDeltas: parseJson(row.learned_deltas ?? null, {}),
+      visualTraits: row.visual_traits ? parseJson(row.visual_traits, undefined) : undefined,
+      sourceAffinity: parseJson(row.source_affinity, {}),
+      exclusions: parseJson(row.exclusions, { terms: [], sourceIds: [] }),
+      updatedAt: row.updated_at,
+      sourceWatermark: row.source_watermark ?? null,
+    };
+  }
+
+  /** 保存画像：同一 library_id 只保留最新一行（UPDATE 命中则覆盖，否则插入） */
+  savePreferenceProfile(profile: PreferenceProfile): void {
+    if (!this.db) return;
+    const fields = {
+      keywords: JSON.stringify(profile.keywords),
+      learned_deltas: JSON.stringify(profile.learnedDeltas ?? {}),
+      visual_traits: profile.visualTraits ? JSON.stringify(profile.visualTraits) : null,
+      source_affinity: JSON.stringify(profile.sourceAffinity),
+      exclusions: JSON.stringify(profile.exclusions),
+      updated_at: profile.updatedAt,
+      source_watermark: profile.sourceWatermark ?? null,
+    };
+    const updated = this.db.prepare(`
+      UPDATE preference_profile
+      SET keywords = @keywords, learned_deltas = @learned_deltas, visual_traits = @visual_traits,
+          source_affinity = @source_affinity, exclusions = @exclusions, updated_at = @updated_at,
+          source_watermark = @source_watermark
+      WHERE library_id IS @library_id
+    `).run({ library_id: profile.libraryId, ...fields });
+    if (updated.changes === 0) {
+      this.db.prepare(`
+        INSERT INTO preference_profile (library_id, keywords, learned_deltas, visual_traits, source_affinity, exclusions, updated_at, source_watermark)
+        VALUES (@library_id, @keywords, @learned_deltas, @visual_traits, @source_affinity, @exclusions, @updated_at, @source_watermark)
+      `).run({ library_id: profile.libraryId, ...fields });
+    }
+  }
+
+  /** 行为数据最后活动时间（收藏/打标/浏览），用于画像脏标记判断；无数据返回 null */
+  getPreferenceLastActivityAt(libraryId: number | null): string | null {
+    if (!this.db) return null;
+    const filter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const params = libraryId === null ? [] : [libraryId];
+    const row = this.db.prepare(`
+      SELECT MAX(ts) AS last FROM (
+        SELECT MAX(COALESCE(updated_at, created_at)) AS ts FROM favorites ${filter}
+        UNION ALL SELECT MAX(created_at) FROM image_tags ${filter}
+        UNION ALL SELECT MAX(viewed_at) FROM history ${filter}
+      )
+    `).get(...params, ...params, ...params) as { last: string | null };
+    return row?.last ? normalizeSqlTs(row.last) : null;
+  }
+
+  /** 画像构建的原始数据源：favorites / image_tags / history 三表拼接 */
+  getProfilerSourceData(libraryId: number | null): ProfilerSourceData {
+    if (!this.db) return { favorites: [], tagEntries: [], historyPaths: [] };
+    const favFilter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const favorites = (this.db.prepare(
+      `SELECT image_path, tags, rating, created_at FROM favorites ${favFilter}`
+    ).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => {
+      let tags: string[] = [];
+      try { tags = JSON.parse(row.tags || '[]'); } catch { /* 脏数据忽略 */ }
+      return { imagePath: row.image_path as string, tags: Array.isArray(tags) ? tags as string[] : [], rating: row.rating ?? 0 };
+    });
+    const tagJoin = libraryId === null ? '' : 'WHERE it.library_id = ?';
+    const tagEntries = (this.db.prepare(`
+      SELECT t.name AS tag, it.image_path, COALESCE(f.rating, 0) AS rating
+      FROM image_tags it
+      JOIN tags t ON t.id = it.tag_id
+      LEFT JOIN favorites f ON f.library_id = it.library_id AND f.image_path = it.image_path
+      ${tagJoin}
+    `).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => ({
+      tag: row.tag as string,
+      imagePath: row.image_path as string,
+      rating: row.rating as number,
+    }));
+    const hisFilter = libraryId === null ? '' : 'WHERE library_id = ?';
+    const historyPaths = (this.db.prepare(
+      `SELECT DISTINCT image_path FROM history ${hisFilter}`
+    ).all(...(libraryId === null ? [] : [libraryId])) as any[]).map(row => ({ imagePath: row.image_path as string }));
+    return { favorites, tagEntries, historyPaths };
   }
 
   getImageTags(libraryId: number, imagePath: string): Tag[] {
@@ -1181,6 +1443,18 @@ export class ThumbnailsDB {
         FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
       );
 
+      -- Phase 9 M5 · T23 IQA 质量分（非向量元数据，随 images 留 thumbs.db；对齐方向文档 §9.2）
+      CREATE TABLE IF NOT EXISTS quality_scores (
+        image_id    INTEGER PRIMARY KEY,
+        total       REAL,
+        sharpness   REAL,
+        exposure    REAL,
+        composition REAL,
+        model_id    TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
+      );
+
     `);
 
     // 迁移：为已存在的 images 表添加多媒体字段
@@ -1320,6 +1594,24 @@ export class ThumbnailsDB {
     return stmt.all('image', limit) as Array<{ id: number; relative_path: string }>;
   }
 
+  /** 列出可嵌入的图片（未删除、media_type=image）：返回 id + relative_path，供索引增量计划 */
+  listIndexableImages(): Array<{ id: number; relativePath: string }> {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      "SELECT id, relative_path FROM images WHERE is_deleted = 0 AND media_type = 'image' ORDER BY id"
+    ).all() as Array<{ id: number; relative_path: string }>;
+    return rows.map(r => ({ id: r.id, relativePath: r.relative_path }));
+  }
+
+  /** 按 id 取相对路径（未删除）；索引作业据此拼绝对路径喂引擎 */
+  getImageRelativePath(id: number): string | null {
+    if (!this.db) return null;
+    const row = this.db.prepare(
+      'SELECT relative_path FROM images WHERE id = ? AND is_deleted = 0'
+    ).get(id) as { relative_path: string } | undefined;
+    return row?.relative_path ?? null;
+  }
+
   /**
    * 统计无 phash 的图片数量
    */
@@ -1329,6 +1621,72 @@ export class ThumbnailsDB {
       'SELECT COUNT(*) as count FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = ?'
     );
     return (stmt.get('image') as { count: number }).count;
+  }
+
+  /** 列出全部待计 phash 的图片 id（T25 pHash 回填作业入队用；项级幂等可续跑）
+   *  含旧实现失败时写入的空串行（phash = ''），以便新回填修复存量污染 */
+  listImageIdsWithoutPhash(): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      "SELECT id FROM images WHERE (phash IS NULL OR phash = '') AND is_deleted = 0 AND media_type = 'image' ORDER BY id"
+    ).all() as Array<{ id: number }>;
+    return rows.map(r => r.id);
+  }
+
+  /** 写回单条 pHash（幂等 UPDATE，独立于 updateImage 的多字段语义） */
+  updatePhash(imageId: number, phash: string | null): void {
+    if (!this.db) return;
+    this.db.prepare('UPDATE images SET phash = ? WHERE id = ?').run(phash, imageId);
+  }
+
+  // ==================== Phase 9 M5 · T23 IQA 质量分 ====================
+
+  /** 幂等写入单条质量分（按 image_id upsert） */
+  upsertQualityScore(input: {
+    imageId: number;
+    total: number;
+    sharpness: number;
+    exposure: number;
+    composition: number;
+    modelId: string;
+  }): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO quality_scores (image_id, total, sharpness, exposure, composition, model_id, created_at)
+      VALUES (@imageId, @total, @sharpness, @exposure, @composition, @modelId, @createdAt)
+      ON CONFLICT(image_id) DO UPDATE SET
+        total=excluded.total, sharpness=excluded.sharpness, exposure=excluded.exposure,
+        composition=excluded.composition, model_id=excluded.model_id, created_at=excluded.created_at
+    `).run({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  /** 读单条质量分；无行返回 null */
+  getQualityScore(imageId: number): { total: number; sharpness: number; exposure: number; composition: number; modelId: string } | null {
+    if (!this.db) return null;
+    const r = this.db.prepare(
+      'SELECT total, sharpness, exposure, composition, model_id FROM quality_scores WHERE image_id = ?'
+    ).get(imageId) as
+      { total: number; sharpness: number; exposure: number; composition: number; model_id: string } | undefined;
+    if (!r) return null;
+    return { total: r.total, sharpness: r.sharpness, exposure: r.exposure, composition: r.composition, modelId: r.model_id };
+  }
+
+  /** 已打分总数（供作业进度/短路判定） */
+  countQualityScored(): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM quality_scores').get() as { c: number }).c;
+  }
+
+  /** 列出未打质量分的可嵌入图片 id（force=全量时忽略此过滤，由调用方决定） */
+  listImageIdsWithoutQuality(): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      `SELECT i.id FROM images i
+       WHERE i.is_deleted = 0 AND i.media_type = 'image'
+         AND NOT EXISTS (SELECT 1 FROM quality_scores q WHERE q.image_id = i.id)
+       ORDER BY i.id`
+    ).all() as Array<{ id: number }>;
+    return rows.map(r => r.id);
   }
 
   /**
@@ -1846,6 +2204,172 @@ export class ThumbnailsDB {
   }
 }
 
+/**
+ * 向量分库数据库服务 - 管理每库 .ivlib/vectors.db（Phase 9 M5，D14/§9.1 改道）
+ *
+ * 独立于 thumbs.db：向量全表/ANN 检索不抢缩略图页缓存（R5）。
+ * image_embeddings 以 int8 BLOB 存本库；HNSW/vec0 图索引另建（由 ai-index 作业维护，不在本类职责内）。
+ * 表结构与 §9.2 一致；quant 固定 int8 由调用方保证（R2：fp32 入内存红线）。
+ */
+export class VectorsDB {
+  private db: DatabaseType | null = null;
+  private dbPath: string = '';
+
+  initialize(libraryPath: string): void {
+    if (!fs.existsSync(libraryPath)) {
+      throw new Error(`库路径不存在：${libraryPath}`);
+    }
+    const libDir = path.join(libraryPath, '.ivlib');
+    if (!fs.existsSync(libDir)) {
+      fs.mkdirSync(libDir, { recursive: true });
+    }
+    this.dbPath = path.join(libDir, 'vectors.db');
+    this.db = new Database(this.dbPath, sqliteOptions());
+    this.createTables();
+  }
+
+  private createTables(): void {
+    if (!this.db) return;
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS image_embeddings (
+        image_id   INTEGER PRIMARY KEY,
+        model_id   TEXT NOT NULL,
+        dim        INTEGER NOT NULL,
+        quant      TEXT NOT NULL,
+        vector     BLOB NOT NULL,
+        created_at TEXT NOT NULL,
+        dirty      INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX IF NOT EXISTS idx_emb_model ON image_embeddings(model_id);
+      CREATE INDEX IF NOT EXISTS idx_emb_dirty ON image_embeddings(dirty);
+    `);
+  }
+
+  /** 幂等写入单条向量（写后清 dirty） */
+  upsertEmbedding(input: {
+    imageId: number;
+    modelId: string;
+    dim: number;
+    quant: string;
+    vector: Uint8Array;
+  }): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO image_embeddings (image_id, model_id, dim, quant, vector, created_at, dirty)
+      VALUES (@imageId, @modelId, @dim, @quant, @vector, @createdAt, 0)
+      ON CONFLICT(image_id) DO UPDATE SET
+        model_id=excluded.model_id, dim=excluded.dim, quant=excluded.quant,
+        vector=excluded.vector, created_at=excluded.created_at, dirty=0
+    `).run({ ...input, createdAt: new Date().toISOString() });
+  }
+
+  /** scanner 检测到文件变动时标脏（§9.5 增量失效，复用现有判定不新建机制） */
+  markDirty(imageId: number): void {
+    if (!this.db) return;
+    this.db.prepare('UPDATE image_embeddings SET dirty = 1 WHERE image_id = ?').run(imageId);
+  }
+
+  /** 索引作业取待处理（脏）条目；limit 分批，对齐 JobRunner 批处理通道（4.6） */
+  getDirtyImageIds(limit: number): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      'SELECT image_id FROM image_embeddings WHERE dirty = 1 ORDER BY image_id LIMIT ?'
+    ).all(limit) as Array<{ image_id: number }>;
+    return rows.map(r => r.image_id);
+  }
+
+  countDirty(): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 1').get() as { c: number }).c;
+  }
+
+  /** 按模型计数（§9.7 模型绑定：换 model_id 不互比，全量重建前用它判存在旧向量） */
+  countByModel(modelId: string): number {
+    if (!this.db) return 0;
+    return (this.db.prepare('SELECT COUNT(*) AS c FROM image_embeddings WHERE model_id = ?').get(modelId) as { c: number }).c;
+  }
+
+  getEmbedding(imageId: number): { model_id: string; dim: number; quant: string; vector: Uint8Array } | undefined {
+    if (!this.db) return undefined;
+    const r = this.db.prepare('SELECT model_id, dim, quant, vector FROM image_embeddings WHERE image_id = ?').get(imageId) as
+      { model_id: string; dim: number; quant: string; vector: Buffer } | undefined;
+    if (!r) return undefined;
+    return { model_id: r.model_id, dim: r.dim, quant: r.quant, vector: new Uint8Array(r.vector) };
+  }
+
+  /**
+   * 全量列出已干净嵌入的向量（供 HNSW sidecar 全量重建）。
+   * 只取 dirty=0（排除 markPending 零向量占位行，避免未索引图被当合法命中召回）；
+   * 传 modelId 则按模型过滤（§9.7 换 model_id 不互比，部分重嵌期不混入旧模型向量）。
+   */
+  listAllEmbeddings(modelId?: string): Array<{ imageId: number; vector: Uint8Array }> {
+    if (!this.db) return [];
+    const rows = (modelId
+      ? this.db.prepare('SELECT image_id, vector FROM image_embeddings WHERE dirty = 0 AND model_id = ?').all(modelId)
+      : this.db.prepare('SELECT image_id, vector FROM image_embeddings WHERE dirty = 0').all()
+    ) as Array<{ image_id: number; vector: Buffer }>;
+    return rows.map(r => ({ imageId: r.image_id, vector: new Uint8Array(r.vector) }));
+  }
+
+  /** 已干净嵌入（dirty=0）总行数 —— 供 sidecar 陈旧判定（ann.size() 与此不符则全量重建） */
+  countIndexed(modelId?: string): number {
+    if (!this.db) return 0;
+    const sql = modelId
+      ? 'SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 0 AND model_id = ?'
+      : 'SELECT COUNT(*) AS c FROM image_embeddings WHERE dirty = 0';
+    const row = (modelId
+      ? this.db.prepare(sql).get(modelId)
+      : this.db.prepare(sql).get()
+    ) as { c: number };
+    return row.c;
+  }
+
+  /**
+   * 入队待嵌入：无行则插占位脏行（零向量占位，稍后由索引作业覆写），有行则标脏。
+   * 解决「新图片没有 embedding 行 → markDirty 的 UPDATE 命不中 → 永远进不了待办」的空洞。
+   * 占位零向量仅存活于本会话内：会话先 embed 再 upsert 覆写，落盘 sidecar 已是真实向量。
+   */
+  markPending(imageId: number, modelId: string, dim: number): void {
+    if (!this.db) return;
+    this.db.prepare(`
+      INSERT INTO image_embeddings (image_id, model_id, dim, quant, vector, created_at, dirty)
+      VALUES (@imageId, @modelId, @dim, 'int8', @vector, @createdAt, 1)
+      ON CONFLICT(image_id) DO UPDATE SET dirty = 1
+    `).run({ imageId, modelId, dim, vector: new Uint8Array(dim), createdAt: new Date().toISOString() });
+  }
+
+  /** 已干净嵌入某模型的 image_id 集合（增量计划据此判定「谁还缺这个模型的向量」） */
+  listIndexedImageIds(modelId: string): number[] {
+    if (!this.db) return [];
+    const rows = this.db.prepare(
+      'SELECT image_id FROM image_embeddings WHERE model_id = ? AND dirty = 0'
+    ).all(modelId) as Array<{ image_id: number }>;
+    return rows.map(r => r.image_id);
+  }
+
+  /** 删除某图向量（文件删除 / 换模型全量重建时调用；§9.7） */
+  deleteEmbedding(imageId: number): void {
+    if (!this.db) return;
+    this.db.prepare('DELETE FROM image_embeddings WHERE image_id = ?').run(imageId);
+  }
+
+  close(): void {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+    }
+  }
+
+  getDbPath(): string {
+    return this.dbPath;
+  }
+
+  /** 暴露底层连接供上层调试；ANN 索引不在此类职责内（由 VectorIndexService 用 USearch HNSW 维护） */
+  getRawDb(): DatabaseType | null {
+    return this.db;
+  }
+}
+
 let masterDBInstance: MasterDB | null = null;
 const thumbnailsDBInstances = new Map<string, ThumbnailsDB>();
 
@@ -1877,6 +2401,26 @@ export function closeThumbnailsDB(libraryPath: string): void {
   }
 }
 
+const vectorsDBInstances = new Map<string, VectorsDB>();
+
+/** 按库懒开 vectors.db（与 thumbs.db 同生命周期，随 .ivlib 整体迁移/关闭） */
+export function getVectorsDB(libraryPath: string): VectorsDB {
+  if (!vectorsDBInstances.has(libraryPath)) {
+    const db = new VectorsDB();
+    db.initialize(libraryPath);
+    vectorsDBInstances.set(libraryPath, db);
+  }
+  return vectorsDBInstances.get(libraryPath)!;
+}
+
+export function closeVectorsDB(libraryPath: string): void {
+  const db = vectorsDBInstances.get(libraryPath);
+  if (db) {
+    db.close();
+    vectorsDBInstances.delete(libraryPath);
+  }
+}
+
 export function closeAllDatabases(): void {
   masterDBInstance?.close();
   masterDBInstance = null;
@@ -1884,4 +2428,8 @@ export function closeAllDatabases(): void {
     db.close();
   }
   thumbnailsDBInstances.clear();
+  for (const db of vectorsDBInstances.values()) {
+    db.close();
+  }
+  vectorsDBInstances.clear();
 }

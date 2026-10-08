@@ -2,6 +2,26 @@
 import type {
   PluginInfo, Job, JobItem, JobProgress, ModelInfo, MenuItemDefinition,
 } from './plugin'
+import type {
+  JevStatus, JevToggleResult,
+  Proposal, ProposalQuery, ProposalPage, ProposalState, AgentKind, FeedbackAction,
+  AgentStatus, CrawlSourceRecord, CreateCrawlSourceInput,
+  TagSuggestionItem,
+} from './agent'
+
+/**
+ * Phase 9 M5 · T21 — AI 向量索引层状态（ai.enabled 开关 + 在线库索引进度概览）。
+ * indexed/pending 针对当前在线库（多库时取首个 online），仅用于展示。
+ */
+export interface AiStatus {
+  /** ai.enabled 开关（默认关，关闭时零引擎零模型） */
+  enabled: boolean
+  /** 在线库已完成索引的图片数 */
+  indexed: number
+  /** 在线库待索引（dirty）图片数 */
+  pending: number
+}
+
 export interface ElectronAPI {
   getAppVersion: () => Promise<string>
   getUserDataPath: () => Promise<string>
@@ -82,7 +102,8 @@ export interface ElectronAPI {
   }>
   // 导出
   exportSingleImage: (libraryId: number, relativePath: string, options: ExportOptions, taskId: string) => Promise<{ success: boolean; outputPath?: string; error?: string }>
-  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; error?: string }>
+  // T25：批量导出收编 JobRunner，同步返回 jobId，进度/完成由 'export-progress' 事件驱动
+  exportBatchImages: (libraryId: number, relativePaths: string[], options: ExportOptions, taskId: string) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
   cancelExport: (taskId: string) => Promise<{ success: boolean }>
   onExportProgress: (callback: (progress: ExportProgress) => void) => () => void
   // 幻灯片
@@ -101,6 +122,35 @@ export interface ElectronAPI {
   // 设置（feature flag 等白名单）
   settingsGet: (key: string) => Promise<{ success: boolean; data?: unknown; error?: string }>
   settingsSet: (key: string, value: unknown) => Promise<{ success: boolean; error?: string }>
+  // Agent / Jev 决策（T10：Key 只写不读，响应内绝无明文）
+  getJevStatus: () => Promise<{ success: boolean; data?: JevStatus; error?: string }>
+  setJevEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: JevToggleResult; error?: string }>
+  setJevApiKey: (apiKey: string) => Promise<{ success: boolean; data?: JevToggleResult; error?: string }>
+  // 采集 Agent（T16：爬虫开关 + 手动发现 + 来源登录态）
+  setCrawlerEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: { enabled: boolean }; error?: string }>
+  triggerCrawlDiscovery: (sourceIds?: number[]) => Promise<{ success: boolean; data?: { jobIds: string[] }; error?: string }>
+  getSourceLoginStatus: (sourceId: number) => Promise<{
+    success: boolean
+    data?: { needsLogin: boolean; loggedIn: boolean; probeUrl?: string }
+    error?: string
+  }>
+  startSourceLogin: (sourceId: number) => Promise<{ success: boolean; data?: { loggedIn: boolean }; error?: string }>
+  // 采集 Agent M4 — 提案查询/反馈（T17/T18）
+  listProposals: (query?: ProposalQuery) => Promise<{ success: boolean; data?: ProposalPage; error?: string }>
+  countProposalsByState: (agentKind?: AgentKind) => Promise<{ success: boolean; data?: Record<ProposalState, number>; error?: string }>
+  resolveProposal: (id: number, action: FeedbackAction) => Promise<{ success: boolean; data?: Proposal; error?: string }>
+  // 采集 Agent M4 — 设置与状态（T20）
+  getAgentStatus: () => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  setAgentEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  setAgentIntervalMs: (intervalMs: number) => Promise<{ success: boolean; data?: AgentStatus; error?: string }>
+  // 采集 Agent M4 — 信息源 CRUD（T19）
+  listCrawlSources: () => Promise<{ success: boolean; data?: CrawlSourceRecord[]; error?: string }>
+  createCrawlSource: (input: CreateCrawlSourceInput) => Promise<{ success: boolean; data?: CrawlSourceRecord; error?: string }>
+  deleteCrawlSource: (id: number) => Promise<{ success: boolean; data?: boolean; error?: string }>
+  setCrawlSourceEnabled: (id: number, enabled: boolean) => Promise<{ success: boolean; data?: CrawlSourceRecord | null; error?: string }>
+  // Phase 9 M5 · T21 — AI 向量索引（开关 + 索引状态）
+  getAiStatus: () => Promise<{ success: boolean; data?: AiStatus; error?: string }>
+  setAiEnabled: (enabled: boolean) => Promise<{ success: boolean; data?: { enabled: boolean }; error?: string }>
   // JobRunner 作业管理
   jobsEnqueue: (kind: string, payload: unknown, options?: unknown) => Promise<{ success: boolean; data?: string; error?: string }>
   jobsList: () => Promise<{ success: boolean; data?: Job[]; error?: string }>
@@ -137,11 +187,21 @@ export interface ElectronAPI {
   getImageTags: (libraryId: number, imagePath: string) => Promise<{ success: boolean; data?: Tag[]; error?: string }>
   getAllTags: (libraryId: number) => Promise<{ success: boolean; data?: Array<Tag & { count: number }>; error?: string }>
   // pHash 回填
-  startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; error?: string }>
+  // T25：收编 JobRunner，成功时返回 jobId（同库重复调用复用活跃作业）
+  startPhashBackfill: (libraryId: number) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
   stopPhashBackfill: () => Promise<{ success: boolean; error?: string }>
   onPhashProgress: (callback: (progress: PhashProgress) => void) => () => void
   // 相似图片查找
   findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) => Promise<{ success: boolean; images?: any[]; error?: string }>
+  // Phase 9 M5 · T22 — 语义搜索（自然语言 → CLIP 文本塔 → HNSW）
+  semanticSearchImages: (libraryId: number, query: string, limit: number) => Promise<{ success: boolean; images?: SemanticImage[]; error?: string }>
+  // Phase 9 M5 · T23 — AI 标签提案（CLIP 零样本）+ 质量分作业
+  triggerAiTagging: (libraryId: number) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
+  triggerAiQuality: (libraryId: number, force?: boolean) => Promise<{ success: boolean; data?: { jobId: string }; error?: string }>
+  listTagSuggestions: (libraryId: number) => Promise<{ success: boolean; data?: TagSuggestionItem[]; error?: string }>
+  adoptTagSuggestion: (proposalId: number) => Promise<{ success: boolean; data?: { adopted: number }; error?: string }>
+  dismissTagSuggestion: (proposalId: number) => Promise<{ success: boolean; error?: string }>
+  removeAiTag: (libraryId: number, imageRelativePath: string, tagName: string) => Promise<{ success: boolean; error?: string }>
   // 事件监听
   onScanProgress: (callback: (progress: any) => void) => () => void
   onLibraryScanStarted: (callback: (data: any) => void) => () => void
@@ -386,6 +446,8 @@ export interface Tag {
   name: string
   color: string
   count?: number
+  /** 词表来源：manual 人工 / ai AI 触发创建（Phase 9 M5 · T23） */
+  source?: 'manual' | 'ai'
 }
 
 // ==================== 搜索类型 ====================
@@ -418,6 +480,11 @@ export interface SearchResult {
   images: Image[]
   total: number
   error?: string
+}
+
+/** 语义搜索命中：Image + 相似度百分比（0–100，对齐 SimilarImage.similarity 口径） */
+export interface SemanticImage extends Image {
+  similarity: number
 }
 
 export interface SearchOptions {
@@ -509,3 +576,19 @@ export type {
   ModelInfo, ModelDownloadState, InferenceSessionInfo,
   WorkerRpcRequest, WorkerRpcResponse,
 } from './plugin'
+
+// Phase 9 — Agent 体系类型（T2）
+export type {
+  JevStatsSnapshot, JevStatus, JevToggleResult,
+  AgentStatus, CreateCrawlSourceInput, ProposalQuery, ProposalPage,
+} from './agent'
+export type {
+  ConnectorType, RequestPlan, FetchedResponse, CandidateDraft, BuildRequestsResult,
+  BuildRequestsInput, ParseResponseInput, CrawlSourceConfig, CrawlSourceRecord,
+} from './agent'
+export type {
+  WeightedKeyword, PreferenceProfile, AgentKind, ProposalState, DecisionSource,
+  Proposal, FeedbackAction, DecisionQuestion, DecisionAnswer, DecisionContext,
+  DecisionProvider, CandidateItem, CrawlProvenance,
+  TagSuggestionEntry, TagSuggestionPayload, TagSuggestionItem,
+} from './agent'

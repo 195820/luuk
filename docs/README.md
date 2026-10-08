@@ -7,30 +7,24 @@
 ```
 docs/
 ├── README.md                    # 本文档 - 索引与管理规范
-├── roadmap.md                   # 开发路线图（唯一的任务规划来源，含现状/遗留项/进行中）
+├── roadmap.md                   # 开发路线图（唯一的任务规划来源）
 ├── guides/                      # 实操指南
 │   ├── 入门指南.md               # 用户快速上手
 │   ├── 部署指南.md               # 构建与发布
 │   └── 故障排除.md               # 常见问题与已知问题
 ├── reference/                   # 稳定参考（长期有效）
-│   └── 架构设计.md               # 系统架构 / AI 插件子系统 / 媒体链路 / 数据库 / IPC
+│   └── 架构设计.md               # 系统架构 / 数据库 / IPC / media://
 ├── plans/                       # 实施计划与方向性设计（阶段性，实施完成后归档）
-│   ├── ai-crawler-direction-2026-q4.md      # Phase 9-11 AI/爬虫方向设计（current）
-│   ├── Agent架构派生规划-2026-09-22.md       # 从现有模块派生 Agent 的三级形态与实施规划（draft，未开工）
-│   ├── 全面测试方案-2026-09-19.md            # 系统性全面测试方案（自动化七层 + 人工六类，current）
-│   ├── Phase8人工验收清单-2026-09-19.md      # Phase 8 人工验收（进行中）
-│   └── 回归测试计划-2026-09-13.md            # 全量回归（自动化部分已闭环，M0~M8 人工走查待完成）
+│   ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
+│   ├── implementation-plan-phase9-agent.md # Phase 9 Agent 体系与智能采集（M0-M3 已交付，M4+ 进行中）
+│   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
+│   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
+│   └── phase-5-completion.md               # Phase 5 完成记录
 └── archive/                     # 已完成的方案与测试记录（历史快照，不再更新）
-    ├── implementation-plan-2026-q3-q4.md    # Phase 5-7 实施计划（已交付）
-    ├── code-review-2026-q3-q4-phase5-7.md   # Phase 5-7 代码评审报告
-    ├── phase-5-completion.md                # Phase 5 完成报告
-    ├── defect-summary-2026-09-15.md         # 回归缺陷修复总结（7/10，余量已闭环）
-    ├── 媒体加载性能提升方案-2026-09.md        # 媒体改造方案（已实施已提交 `6df2c18`；唯一权威版）
-    ├── Phase8缺陷修复计划-2026-09-18.md       # M1-M5 整改计划（已实施，原 .qoder 过程稿）
-    ├── Phase8补全实现方案-2026-09.md          # Phase 8 骨架补全盘点（已实施，原 .qoder）
-    ├── 项目状态分析与规划-2026-09-18.md       # 09-18 项目快照（未执行项已入 roadmap，原 .qoder）
-    ├── 测试方案.md · 多媒体模块重构方案/测试计划 · 文件操作阶段测试执行记录
-    └── superpowers/             # 历史 plan/spec（含 phase4-and-beyond、Phase 8 实施计划）
+    ├── 测试方案.md               # Phase 1 MVP 测试方案
+    ├── 多媒体模块重构方案.md     # 多媒体重构方案（已实施）
+    ├── 多媒体模块重构测试计划.md # 重构测试执行记录（45/45 PASS）
+    └── superpowers/             # 前端重构 plan/spec（已执行）
 ```
 
 ## 🧭 每类文档怎么用
@@ -73,7 +67,6 @@ docs/
 | `H` / `V` | 水平 / 垂直翻转 | `I` | 显示图片信息 |
 | `F` | 收藏/取消收藏 | `Esc` | 关闭查看器 |
 | `Space` | 幻灯片播放 | `Ctrl+Space` | 音频播放/暂停 |
-| `Ctrl+R` | 幻灯片顺序/随机切换 | `Ctrl+F` | 搜索面板开合 |
 | `F5` | 切换视图模式 | `F6` | 切换文件夹侧边栏 |
 | `F11` | 全屏沉浸式模式 | | |
 
@@ -86,4 +79,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-09-22（新增 Agent 架构派生规划草案）｜2026-09-19 文档整合：阶段计划归档，根目录仅保留 README 与 roadmap
+**文档结构更新日期**: 2026-09-29

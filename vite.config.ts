@@ -17,7 +17,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['better-sqlite3', 'sharp', 'chokidar', 'electron-store', 'trash', 'wallpaper', 'onnxruntime-node'],
+              external: ['better-sqlite3', 'sharp', 'chokidar', 'electron-store', 'trash', 'wallpaper', 'usearch', 'onnxruntime-node'],
             },
           },
         },

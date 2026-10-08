@@ -150,8 +150,8 @@ export function ImageGridItemComponent({
     onToggleFavorite?.(image)
   }, [onToggleFavorite, image])
 
-  // 搜索高亮关键词
-  const searchCriteria = useSearchStore(s => s.hasSearched ? s.criteria : null)
+  // 搜索高亮关键词（#11：仅关键词模式下生效，语义结果不挂过期文件名高亮）
+  const searchCriteria = useSearchStore(s => (s.hasSearched && s.mode === 'keyword') ? s.criteria : null)
   const highlightKeyword = useMemo(
     () => searchCriteria ? getHighlightKeyword(searchCriteria) : '',
     [searchCriteria]

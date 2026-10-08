@@ -196,3 +196,148 @@ describe('MasterDB migration v2 — Phase 8', () => {
     expect(edits[0].op).toBe('upscale.x4')
   })
 })
+
+describe('MasterDB migration v3 — Phase 9 Agent 体系', () => {
+  let db: MasterDB
+  let tempDir: string
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ivmig-v3-'))
+    db = new MasterDB()
+    db.initialize(tempDir)
+  })
+
+  afterEach(() => {
+    db.close()
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const hasTable = (name: string) =>
+    !!(db as any).db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).get(name)
+
+  it('创建 Agent 五张表', () => {
+    expect(hasTable('preference_profile')).toBe(true)
+    expect(hasTable('proposals')).toBe(true)
+    expect(hasTable('feedback_log')).toBe(true)
+    expect(hasTable('crawl_sources')).toBe(true)
+    expect(hasTable('crawl_items')).toBe(true)
+  })
+
+  it('审查补列落地：learned_deltas / source_watermark / favorites.updated_at 存在', () => {
+    const cols = (table: string) => (db as any).db.prepare(`PRAGMA table_info(${table})`)
+      .all().map((r: { name: string }) => r.name)
+    expect(cols('preference_profile')).toEqual(expect.arrayContaining(['learned_deltas', 'source_watermark']))
+    expect(cols('favorites')).toContain('updated_at')
+  })
+
+  it('tolerant 补列重跑安全：已应用过旧版 v3（列已存在）的开发库升级不阻断', () => {
+    const raw = (db as any).db
+    // 模拟旧开发库：先去掉新列再单独补回（v3 记录已存在但主 SQL 未含该列的状态）
+    raw.exec('ALTER TABLE favorites DROP COLUMN updated_at')
+    raw.exec(`
+      DROP TABLE IF EXISTS preference_profile;
+      DROP TABLE IF EXISTS proposals;
+      DROP TABLE IF EXISTS feedback_log;
+      DROP TABLE IF EXISTS crawl_sources;
+      DROP TABLE IF EXISTS crawl_items;
+      DELETE FROM schema_version WHERE version >= 3; -- T23 后需一并回退 v4，否则 MAX(version) 短路重跑
+      ALTER TABLE favorites ADD COLUMN updated_at TEXT;
+    `)
+    expect(() => (db as any).ensureSchemaVersion()).not.toThrow()
+    expect(hasTable('proposals')).toBe(true)
+    expect(raw.prepare('SELECT version as v FROM schema_version WHERE version = 3').get()).toBeTruthy()
+  })
+
+  it('创建提案与溯源索引', () => {
+    const indexes = (db as any).db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='index' AND name IN ('idx_proposals_state','idx_proposals_agent','idx_crawl_items_url_hash')"
+    ).all().map((r: { name: string }) => r.name)
+    expect(indexes).toHaveLength(3)
+  })
+
+  it('schema_version 写入 v3', () => {
+    const max = (db as any).db.prepare(
+      'SELECT MAX(version) as version FROM schema_version'
+    ).get() as { version: number }
+    expect(max.version).toBeGreaterThanOrEqual(3)
+    const applied = (db as any).db.prepare(
+      'SELECT version FROM schema_version WHERE version = 3'
+    ).get()
+    expect(applied).toBeTruthy()
+  })
+
+  it('迁移幂等：同目录重复初始化不报错、数据保留', () => {
+    const now = new Date().toISOString()
+    ;(db as any).db.prepare(`
+      INSERT INTO proposals (agent_kind, library_id, payload, score, decision_src, confidence, state, created_at)
+      VALUES ('crawler', NULL, '{}', 0.8, 'local', 0.9, 'pending', ?)
+    `).run(now)
+    db.close()
+
+    const db2 = new MasterDB()
+    expect(() => db2.initialize(tempDir)).not.toThrow()
+    const row = (db2 as any).db.prepare('SELECT COUNT(*) as n FROM proposals').get() as { n: number }
+    expect(row.n).toBe(1)
+    // v3 不重复写入 schema_version
+    const versions = (db2 as any).db.prepare(
+      'SELECT COUNT(*) as n FROM schema_version WHERE version = 3'
+    ).get() as { n: number }
+    expect(versions.n).toBe(1)
+    db = db2 // 交给 afterEach 关闭
+  })
+
+  it('老库 v2 无感升级到最新（v4）：jobs 数据保留且新表可用', () => {
+    // 模拟 v2 老库：删掉 v3+ 记录与表再重新初始化触发升级（T23 后 v4 为纯补列，重跑 duplicate 容忍）
+    ;(db as any).db.exec(`
+      DROP TABLE IF EXISTS preference_profile;
+      DROP TABLE IF EXISTS proposals;
+      DROP TABLE IF EXISTS feedback_log;
+      DROP TABLE IF EXISTS crawl_sources;
+      DROP TABLE IF EXISTS crawl_items;
+      DELETE FROM schema_version WHERE version >= 3;
+    `)
+    db.createJob('legacy-job', 'test.kind', 0, 1, '{}')
+    db.close()
+
+    const db2 = new MasterDB()
+    expect(() => db2.initialize(tempDir)).not.toThrow()
+    expect(hasTableIn(db2, 'proposals')).toBe(true)
+    const job = db2.getJob('legacy-job')
+    expect(job).toBeTruthy()
+    const max = (db2 as any).db.prepare(
+      'SELECT MAX(version) as version FROM schema_version'
+    ).get() as { version: number }
+    expect(max.version).toBe(4)
+    db = db2 // 交给 afterEach 关闭
+  })
+
+  function hasTableIn(target: MasterDB, name: string) {
+    return !!(target as any).db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?"
+    ).get(name)
+  }
+
+  it('url_hash 唯一索引生效：重复插入报冲突', () => {
+    const now = new Date().toISOString()
+    const stmt = (db as any).db.prepare(`
+      INSERT INTO crawl_items (source_id, source_url, url_hash, crawled_at)
+      VALUES (1, 'https://a.com/1', 'hash-1', ?)
+    `)
+    stmt.run(now)
+    expect(() => stmt.run(now)).toThrow()
+  })
+
+  it('proposals 默认 state 为 pending', () => {
+    const now = new Date().toISOString()
+    ;(db as any).db.prepare(`
+      INSERT INTO proposals (agent_kind, payload, created_at)
+      VALUES ('crawler', '{}', ?)
+    `).run(now)
+    const row = (db as any).db.prepare(
+      'SELECT state FROM proposals ORDER BY id DESC LIMIT 1'
+    ).get() as { state: string }
+    expect(row.state).toBe('pending')
+  })
+})

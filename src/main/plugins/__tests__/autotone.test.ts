@@ -125,7 +125,8 @@ describe('autotone 插件', () => {
     expect(manifest.version).toBe('1.0.0')
     expect(manifest.apiVersion).toBe('^1.0.0')
     expect(manifest.kind).toBe('ai-transform')
-    expect(manifest.entry).toBe('index.js')
+    // M2 契约：entry 必须写磁盘真实存在的文件名（内置插件为 .ts 源码，经 worker 静态登记）
+    expect(manifest.entry).toBe('index.ts')
 
     // 能力声明
     expect(manifest.capabilities).toContain('image.autotone')

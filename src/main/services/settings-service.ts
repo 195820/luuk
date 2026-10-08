@@ -27,6 +27,12 @@ interface SettingsSchema {
   'memory.yellowMB': number;
   'memory.redMB': number;
   'memory.workerRedMB': number;
+  // Phase 9 — Agent 体系
+  'agent.enabled': boolean;
+  'agent.intervalMs': number;
+  // Phase 9 M2 — Jev 云端决策（可选增强，默认关闭；Key 仅主进程读取，不下发渲染进程）
+  'jev.enabled': boolean;
+  'jev.apiKey': string;
 }
 
 const DEFAULTS: SettingsSchema = {
@@ -48,6 +54,12 @@ const DEFAULTS: SettingsSchema = {
   'memory.yellowMB': 1500,
   'memory.redMB': 2500,
   'memory.workerRedMB': 500,
+  // Phase 9 — Agent 体系（默认关闭；定时间隔 6 小时）
+  'agent.enabled': false,
+  'agent.intervalMs': 6 * 60 * 60 * 1000,
+  // Phase 9 M2 — Jev（默认关闭 + 无 Key：全链路零网络请求）
+  'jev.enabled': false,
+  'jev.apiKey': '',
 };
 
 let instance: Store<SettingsSchema> | null = null;

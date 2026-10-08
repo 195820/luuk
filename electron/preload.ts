@@ -149,6 +149,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   findSimilarImages: (libraryId: number, imagePath: string, threshold: number, limit: number) =>
     ipcRenderer.invoke('findSimilarImages', libraryId, imagePath, threshold, limit),
 
+  // Phase 9 M5 · T22 — 语义搜索（自然语言 → CLIP 文本塔 → HNSW）
+  semanticSearchImages: (libraryId: number, query: string, limit: number) =>
+    ipcRenderer.invoke('semanticSearchImages', libraryId, query, limit),
+
+  // Phase 9 M5 · T23 — AI 标签提案（CLIP 零样本）+ 质量分作业
+  triggerAiTagging: (libraryId: number) =>
+    ipcRenderer.invoke('triggerAiTagging', libraryId),
+  triggerAiQuality: (libraryId: number, force?: boolean) =>
+    ipcRenderer.invoke('triggerAiQuality', libraryId, force),
+  listTagSuggestions: (libraryId: number) =>
+    ipcRenderer.invoke('listTagSuggestions', libraryId),
+  adoptTagSuggestion: (proposalId: number) =>
+    ipcRenderer.invoke('adoptTagSuggestion', proposalId),
+  dismissTagSuggestion: (proposalId: number) =>
+    ipcRenderer.invoke('dismissTagSuggestion', proposalId),
+  removeAiTag: (libraryId: number, imageRelativePath: string, tagName: string) =>
+    ipcRenderer.invoke('removeAiTag', libraryId, imageRelativePath, tagName),
+
   // 初始化服务
   initImageService: () => ipcRenderer.invoke('initImageService'),
 
@@ -211,6 +229,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设置（feature flag 等白名单）
   settingsGet: (key: string) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key: string, value: unknown) => ipcRenderer.invoke('settings:set', key, value),
+
+  // Agent / Jev 决策（T10：Key 只写不读）
+  getJevStatus: () => ipcRenderer.invoke('getJevStatus'),
+  setJevEnabled: (enabled: boolean) => ipcRenderer.invoke('setJevEnabled', enabled),
+  setJevApiKey: (apiKey: string) => ipcRenderer.invoke('setJevApiKey', apiKey),
+
+  // 采集 Agent（T16：爬虫开关 + 手动发现 + 来源登录态）
+  setCrawlerEnabled: (enabled: boolean) => ipcRenderer.invoke('setCrawlerEnabled', enabled),
+  triggerCrawlDiscovery: (sourceIds?: number[]) => ipcRenderer.invoke('triggerCrawlDiscovery', sourceIds),
+  getSourceLoginStatus: (sourceId: number) => ipcRenderer.invoke('getSourceLoginStatus', sourceId),
+  startSourceLogin: (sourceId: number) => ipcRenderer.invoke('startSourceLogin', sourceId),
+
+  // 采集 Agent M4 — 提案（T17/T18）/ Agent 设置（T20）/ 信息源 CRUD（T19）
+  listProposals: (query?: any) => ipcRenderer.invoke('listProposals', query),
+  countProposalsByState: (agentKind?: string) => ipcRenderer.invoke('countProposalsByState', agentKind),
+  resolveProposal: (id: number, action: string) => ipcRenderer.invoke('resolveProposal', id, action),
+  getAgentStatus: () => ipcRenderer.invoke('getAgentStatus'),
+  setAgentEnabled: (enabled: boolean) => ipcRenderer.invoke('setAgentEnabled', enabled),
+  setAgentIntervalMs: (intervalMs: number) => ipcRenderer.invoke('setAgentIntervalMs', intervalMs),
+  listCrawlSources: () => ipcRenderer.invoke('listCrawlSources'),
+  createCrawlSource: (input: any) => ipcRenderer.invoke('createCrawlSource', input),
+  deleteCrawlSource: (id: number) => ipcRenderer.invoke('deleteCrawlSource', id),
+  setCrawlSourceEnabled: (id: number, enabled: boolean) => ipcRenderer.invoke('setCrawlSourceEnabled', id, enabled),
+
+  // Phase 9 M5 · T21 — AI 向量索引（开关 + 索引状态）
+  getAiStatus: () => ipcRenderer.invoke('getAiStatus'),
+  setAiEnabled: (enabled: boolean) => ipcRenderer.invoke('setAiEnabled', enabled),
 
   // JobRunner 作业管理
   jobsEnqueue: (kind: string, payload: unknown, options?: unknown) =>

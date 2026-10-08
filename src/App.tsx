@@ -22,6 +22,10 @@ import { StatsPanel } from './components/StatsPanel'
 import { CachePanel } from './components/CachePanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SimilarImagesPanel } from './components/SimilarImagesPanel'
+import { DiscoverPanel } from './components/agent/DiscoverPanel'
+import { CrawlSourceManager } from './components/agent/CrawlSourceManager'
+import { AgentSettings } from './components/agent/AgentSettings'
+import { useAgentStore } from './stores/agentStore'
 import { AudioPlayer } from './components/AudioPlayer'
 import { AudioCard } from './components/AudioCard'
 import { MediaFilter, type MediaFilterType } from './components/MediaFilter'
@@ -119,6 +123,17 @@ function App() {
   const [showStatsPanel, setShowStatsPanel] = useState(false)
   const [showCachePanel, setShowCachePanel] = useState(false)
   const [showSettingsPanel, setShowSettingsPanel] = useState(false)
+  // Phase 9 M4 — 采集 Agent 面板（入口受 feature flag 门控；AgentSettings 常驻作为开关页）
+  const [showDiscoverPanel, setShowDiscoverPanel] = useState(false)
+  const [showSourceManager, setShowSourceManager] = useState(false)
+  const [showAgentSettings, setShowAgentSettings] = useState(false)
+  const agentEntryVisible = useAgentStore(s => s.entryVisible)
+  const agentPending = useAgentStore(s => s.status?.pendingProposals ?? 0)
+
+  // 启动时探测采集 Agent 状态（getAgentStatus 为本地 IPC，零网络）以决定入口是否渲染
+  useEffect(() => {
+    void useAgentStore.getState().bootstrap()
+  }, [])
   const [favoriteImageIndex, setFavoriteImageIndex] = useState(0)
   const [showAudio, setShowAudio] = useState(false)
   const [mediaFilter, setMediaFilter] = useState<MediaFilterType>('all')
@@ -1012,6 +1027,38 @@ function App() {
           >
             🎨
           </button>
+
+          {/* 采集 Agent 入口：AgentSettings 常驻（开关页），发现/信息源受 flag 门控 */}
+          <button
+            onClick={() => setShowAgentSettings(true)}
+            className="btn-text shrink-0 [-webkit-app-region:no-drag]"
+            title="采集 Agent 设置"
+          >
+            🤖
+          </button>
+          {agentEntryVisible && (
+            <>
+              <button
+                onClick={() => setShowDiscoverPanel(true)}
+                className="btn-text shrink-0 [-webkit-app-region:no-drag] relative"
+                title="发现 · 待确认提案"
+              >
+                ✨
+                {agentPending > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-white text-[10px] leading-4 text-center">
+                    {agentPending > 99 ? '99+' : agentPending}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setShowSourceManager(true)}
+                className="btn-text shrink-0 [-webkit-app-region:no-drag]"
+                title="信息源管理"
+              >
+                📡
+              </button>
+            </>
+          )}
         </div>
 
           {/* 右：计数 + 视图控制 + 操作，分组排列 */}
@@ -1567,6 +1614,17 @@ function App() {
       {/* 外观设置面板 */}
       {showSettingsPanel && (
         <SettingsPanel onClose={() => setShowSettingsPanel(false)} />
+      )}
+
+      {/* 采集 Agent M4 面板（关闭时刷新状态，使开关/待确认计数即时反映到入口） */}
+      {showAgentSettings && (
+        <AgentSettings onClose={() => { setShowAgentSettings(false); void useAgentStore.getState().bootstrap() }} />
+      )}
+      {showDiscoverPanel && (
+        <DiscoverPanel onClose={() => setShowDiscoverPanel(false)} />
+      )}
+      {showSourceManager && (
+        <CrawlSourceManager onClose={() => setShowSourceManager(false)} />
       )}
 
       {/* 对比模式覆盖层 */}

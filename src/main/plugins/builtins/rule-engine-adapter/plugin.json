@@ -1,0 +1,29 @@
+{
+  "id": "builtin.rule-engine-adapter",
+  "name": "通用规则引擎采集适配器",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "crawler-adapter",
+  "entry": "index.ts",
+  "capabilities": ["crawler.rules"],
+  "requires": {
+    "runtime": "none",
+    "gpu": false,
+    "models": []
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "rules.buildRequests",
+        "capability": "crawler.rules",
+        "label": "按规则包生成请求计划"
+      },
+      {
+        "id": "rules.parseResponse",
+        "capability": "crawler.rules",
+        "label": "按规则包抽取候选（linkedom 纯解析）"
+      }
+    ]
+  },
+  "permissions": ["crawler.fetch"]
+}

@@ -155,6 +155,7 @@ describe('M3 · PluginManager.setEnabled 顺序/回滚（P1-11/C3）+ Worker 崩
     expect(rpc).toHaveBeenCalledWith(
       'plugin.load',
       expect.objectContaining({ pluginId: 'x.plugin' }),
+      expect.any(Number),
     )
     expect(m.loadedInWorker.has('x.plugin')).toBe(true)
   })

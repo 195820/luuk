@@ -7,7 +7,26 @@
 ## [未发布]
 
 ### 新增
-- **媒体加载性能提升（2026-09-19，已提交至 `fix/phase8-defects`（`6df2c18`），未发版）**：缩略图/preview 出口由 base64 data URL 改稳定 `media://` URL（HMAC-SHA1 确定性 token + 进程级随机密钥）；协议层流式响应（`stream:true`）+ ETag/304 + Range（含 suffix）+ Cache-Control；`loadFullImage` 下线；sharp/ffmpeg 限流与临时文件泄漏治理；扫描批量事务化；Lightbox preview→原图双图层渐进；Masonry 视口窗口化；方向感知预取。CDP 真机验证 29/29（`scripts/cdp-verify-media.mjs`）；方案与基线见 `docs/archive/媒体加载性能提升方案-2026-09.md`
+- **媒体加载性能提升（2026-09-19，`fix/phase8-defects` `6df2c18`，未发版）**：缩略图/preview 出口由 base64 data URL 改稳定 `media://` URL（HMAC-SHA1 确定性 token + 进程级随机密钥）；协议层流式响应（`stream:true`）+ ETag/304 + Range（含 suffix）+ Cache-Control；`loadFullImage` 下线；sharp/ffmpeg 限流与临时文件泄漏治理；扫描批量事务化；Lightbox preview→原图双图层渐进；Masonry 视口窗口化；方向感知预取。CDP 真机验证 29/29（`scripts/cdp-verify-media.mjs`）；方案与基线见 `docs/archive/媒体加载性能提升方案-2026-09.md`
+- **Agent 体系与智能采集**（Phase 9 M0-M3，2026-09-26）：
+  - Agent 统一基座：数据库迁移 v3（preference_profile/proposals/feedback_log/crawl_sources/crawl_items）、偏好画像（冷启动加权 + 水位线增量重算 + learnedDeltas 学习叠加）、决策层（DecisionProvider + 置信度门控升级链 + 本地规则 LocalRulesProvider）、提案状态机与反馈强化（+0.1/-0.02/-0.2，累计拒绝晋级排除项）、调度循环 AgentScheduler（复用 JobRunner，定时/手动/新来源三触发）
+  - Jev 决策插件（M2）：`decision-provider` 插件形态 + 隐私护栏（出站文本元数据白名单过滤，API Key 明文不下渲染进程），默认关闭可回落本地规则
+  - 采集 Agent 三端接入（M3）：CrawlerService 宿主编排 + per-host 闸门频控退让 + 隐藏窗口浏览器层 + 流式下载（.part 原子落盘/Range 续传）+ url_hash→file_hash→pHash 三级去重入库 + sidecar 溯源；内置适配器 bili-web / xhs-web / tg-mtproto / tg-export-import；RecommendScorer 打分→提案闭环（人在回路，UI 属 M4）
+  - 新增 IPC：`triggerCrawlDiscovery` / `getSourceLoginStatus` / `startSourceLogin` 等（preload 已暴露）；Feature Flags `agent.enabled` / `jev.enabled` 默认关闭
+- **CLIP 索引与语义搜索**（Phase 9 M5，T21 2026-10-07 / T22 2026-10-07）：
+  - T21：`vectors.db` 独立分库（`image_embeddings`，quant 固定 int8）+ usearch HNSW 图索引；真实 `OnnxClipEngine`（sharp 预处理 + onnxruntime 图像塔 + int8 量化）经 `ModelManager` SHA256 校验；扫描后自动增量索引（`ai.clip-index` 作业，R2 会话分时 load/unload + 引擎引用计数）
+  - T22 语义搜索：自实现纯 JS CLIP 分词器 `clip-tokenizer.ts`（byte-level BPE + SOT/EOT + pad 77，逐位对齐 transformers.js 黄金 fixture）+ `text-encoder.ts`（`OnnxClipTextEncoder` 文本塔，int8 默认 / fp32 兜底，C2 串行化 load）+ `semantic-search.ts`（DI 编排）+ `ai-wiring.runSemanticQuery`（文本引用计数 + idle TTL 60s + 与索引会话互斥）；`SearchPanel` 新增独立「语义搜索」模式（与关键词互斥）
+  - 新增 IPC：`semanticSearchImages`（camelCase、动态 import 保持 C1 零原生加载）；需已索引且 `ai.enabled` 开启方可用。`VectorIndexService.search()` 获得首个生产调用方（W13 技术债清偿）
+  - 代码审查修复（2026-10-07）：修出 2 Critical（语义框回车与关键词搜索竞态双触发→`stopPropagation` + 请求序号丢弃过期响应；`ai.enabled` 未门控 + 失败静默→按 `getAiStatus` 隐入口 + `semanticError` 上屏）与 7 Warning（`textInflight` 变负致常驻→防负 + 拆链代际；旧文本编码器未 unload 泄漏→换链卸旧；索引可在查询 await 期卸载共享 ANN→收敛同步临界区；只读检索误落盘 sidecar→`countIndexed` 守卫；§9.7 跨模型拒绝比较未强制→`getModelId` 断言；分词 golden 门控脱离 gitignore cache 入库 fixture；语义结果被过期关键词高亮）；硬红线（C1 零原生 / verifyModel 只读 / 文本塔指纹 / 相似度口径 / HF 截断）经三视角核查无问题（其中“词表 miss 回落 EOT”经核查为误报，保留 EOT）
+- **AI 标签 / IQA / 视觉匹配 / JobRunner 收编**（Phase 9 M5-M6，T23-T25，2026-10-08）：
+  - T23 AI 标签 + 质量分：数据库迁移 v4（`tags.source` manual/ai 词表 + `image_tags.confidence`）；零模型启发式 IQA `quality-scorer.ts`（`heuristic-v1`，分数落库不接筛选）；CLIP 零样本 `tag-suggester.ts`（本库已有标签 ∪ 内置约 40 英文类，阈值 0.15）；标签走提案「人在回路」（采纳才落库），新建 `AiLabelPanel` 管理 UI（预览/采纳/忽略/移除 AI 标签，首次启用作业进度事件流订阅）；新增 IPC：`triggerAiTagging` / `triggerAiQuality` / `listTagSuggestions` / `adoptTagSuggestion` / `dismissTagSuggestion` / `removeAiTag`
+  - T24 视觉匹配升级：`RecommendScorer` 可选 `getVisualSimilarity` provider（权重 0.25，缺省与 T16 完全等价）；`runVisualSimilarity` 图像-图像 int8 余弦（仅本地媒体出信号、纯远端 URL 不打分期拉网络，只读 vectors.db 含 §9.7 跨模型拦截，异常静默回退纯规则分）；`ai.enabled` 条下 `agent-handlers` 动态注入
+  - T25 JobRunner 收编（D-3：仅 phash+export，scanner 不动）：pHash 回填删全局单槽改库级作业（项级持久化可断点续跑，失败不再写空串污染 phash，保留 `phashProgress` 兼容事件名）；批量导出改 `export.batch` 复合作业（入队即返不阻塞 IPC，台账可观察/可取消，内存参数表重启不承诺续跑；单张导出保持交互式直连，`export-progress` 与 ExportDialog 零改动）
+  - 门禁：tsc 0 错，全量 807 passed / 2 skipped（新增 T23/T24/T25 单测 56 例，旧测不改即绿）
+- **插件系统**（Phase 8）：插件宿主（utilityProcess + MessagePort RPC，崩溃隔离）、PluginLoader 生命周期与 kind 白名单、内置插件静态登记双路径契约、JobRunner 后台作业调度（持久化/断点续跑/优先级）、三级内存水位线监控、模型管理器（SHA256 完整性校验）、编辑版本链（非破坏性编辑输出）、内置插件 autotone、Feature Flags（`plugins.enabled`/`ai.enabled`/`crawler.enabled`）
+- **搜索增强与离线库检测**（Phase 5）：离线库自动探测置灰、搜索历史与预设、高亮匹配
+- **主题皮肤与直方图**（Phase 6）：themeStore + SettingsPanel 主题/强调色/密度、图片 RGB/亮度直方图、文件夹封面设置
+- **导出与幻灯片增强**（Phase 7）：archiver 流式 ZIP 导出 + 进度反馈 + ExportDialog；幻灯片过渡动画/随机播放/自定义播放列表/背景音乐
 - **图片对比模式**（Phase 4 Task 1-2）：网格多选 2 张图片后右键「对比」，打开并排/滑块双模式对比视图，共享变换同步缩放平移，自研 `compare-transform.ts` 纯函数变换计算
 - **全屏沉浸式模式**（Phase 4 Task 3）：F11 切换系统全屏，全屏时隐藏头部/底部/文件夹侧边栏，主进程转发原生全屏事件保持渲染端同步
 - **相邻图预加载**（Phase 4 Task 4）：`useAdjacentPreload` hook，150ms 防抖 + ±1/±2 优先级，快速翻页自动跳过中间图，令牌缓存避免重复注册
@@ -24,13 +43,6 @@
 - **IPC 接口**：`loadFullImage`（图片 data URL）、`getMediaUrl`（媒体流式 URL）
 - **媒体类型判断**：`getMediaTypeFromPath()` 基于文件扩展名，比数据库 `media_type` 更可靠
 - **多媒体模块重构方案**：竞品调研（Immich/Hydrus/ImageGlass/nomacs）、开源库选型（YARL/wavesurfer.js）、4 阶段实施计划（docs/archive/多媒体模块重构方案.md）
-- **Phase 8 AI 插件系统补全**（2026-09-18）：`luuk.*` SDK 全链路 + 双向 RPC（`channel` 分域、requestId 命名空间隔离）、`InferencePool`（并发=1 / 交互式插队 / EP 回退 CPU / 关闭 CPU mem-arena）、模型下载（流式 SHA256 校验 + 断点续传 + url→mirrorUrls 回退）、内存水位线统一 300/400MB + 三进程 RSS 聚合、崩溃熔断（MAX_CRASHES=3）、builtins esbuild 编译管线、三个内置插件（autotone / matting(u2netp) / upscale(RealESRGAN-x4plus 分块)）、前端接线（pluginStore / SettingsPanel 三 Tab / 动态右键菜单 / JobProgressBar）、五类插件测试（SDK 契约 / 权限拒绝 / autotone 契约 / RPC 集成 / op 可见性）。全量 323 测试通过、tsc 无错、vite build 四入口成功
-
-### 遗留项（Phase 8，2026-09-18 交付时未闭环）
-- **批处理主链路交付时未真正闭合（P0-1）**：`registerOpHandlers` 当时仅透传 `{ libraryId, imageId, item }`（不含 `paths`），内置插件收到空 `paths` 返回 `skipped:true` 却仍被记为 done（假成功）；`jobsEnqueue` 仅有 preload/类型声明，渲染层无调用方；JobProgressBar 仅具备展示能力但未接入真实入队。→ **已于 P0-1 修复**（handler 解析绝对路径 + `skipped` 抛错落 failed + 多选 >20 走 `jobsEnqueue` + 入队 toast）。
-- **`npm run build:dir` 完整 electron-builder 打包未验证**：R1 的「打包通道」子项仍 pending（dev 模式模块加载 + CPU EP createSession 已实测通过；win-unpacked `.node` 随包 + asarUnpack 待跑 `build:dir` 确认）
-- **设计文档 PoC 数据未回填**：`ai-crawler-direction-2026-q4.md` 附录 A 中 R2（4650U CLIP 吞吐）/ R4 / R5 / R6 / R8 / R9 仍「待回填」（属其它 Phase 的 PoC，本次范围内未涉及）；R1 / R3 / R7 已回填实测值
-- **matting 端到端验证仅覆盖合成图库**：test-library 图为无显著主体的生成图，抠图前景占比 ~0.5%（已确认非代码缺陷，量纲对比验证），真实含主体照片的抠图质量待人工抽检
 
 ### 已知问题（2026-06-22 深度审查发现）
 - **P0**: 视频 seek bar 不更新（`defaultValue` 未绑定 `currentTime`）
@@ -45,12 +57,6 @@
 - **P3**: 媒体类型检测逻辑重复 5 处、`any` 类型泛滥
 
 ### 修复
-- **Phase 8 AI 插件系统缺陷修复（M1–M5，2026-09-19，分支 `fix/phase8-defects`）**：
-  - **M1 批处理与资源上限**：P0-1 批处理主链闭合（handler 解析绝对 `paths`、`skipped` 归 failed、多选 >20 走 `jobsEnqueue`、入队 toast）；P0-2 upscale 输出像素预算守卫（>40M 抛业务错 + dst 分配兼底）；P0-3 内存水位线阈值口径/阈值统一。
-  - **M2 权限**：P1-4 `edit.write` 绕过路径守卫；P1-5 移除 `activePluginId` 改为逐调用传自身 pluginId（防并发串位）；P2-12 `createSession` 忽略外部 modelPath + 模型所有权校验。
-  - **M3 生命周期**：P1-6 Worker 崩溃后清 `loadedInWorker` + 自愈重载；P1-8 `verifyModel` 空 sha256 不删文件/大小写修正/成功回写 + manifest 格式断言 + 启动回填；P1-9 `JobRunner` 自泵；P1-11 exit 监听跨实例守卫 + `setEnabled` 成功标志后置。
-  - **M4 并发与资源**：P1-7 SDK 反向调用分级/动态超时 + 迟到响应幂等丢弃（`plugin.cancel` 降级后续项）；P1-10 `InferencePool` 创建锁/LRU 驱逐/按插件销毁 + 内存压力驱逐接线。
-  - **M5 算法质量与测试补盲**：P2-13 upscale 量纲改全局 min/max（跳过非有限、全非有限报错）+ `realScale===scale` 断言 + 解码强制 sRGB；P2-14 matting 改绝对量纲 alpha；P2-15 张量视图 byteOffset + int64 + 尺寸校验；P2-16 删 `WorkerRpcRequest` 已移除 `inference.*` 示例；P2-17 右键菜单按 op 可用性过滤/置灰；P2-18 builtins 产物断言 + `models.directory` 运行期读取；后处理抽纯函数并补 29 例单测。全量 43 文件 393 用例绿、tsc 无错。
 - **删除库失败**：`MasterDB.removeLibrary` 先清理 favorites/favorite_folders/history 依赖行再删库，避免 FOREIGN KEY 约束拒绝删除
 - **浏览历史无缩略图/打不开**：乐观插入补齐 id 等元数据；历史跳转在未命中预览窗口时按 relative_path 兜底
 

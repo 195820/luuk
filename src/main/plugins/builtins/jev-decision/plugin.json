@@ -1,0 +1,24 @@
+{
+  "id": "builtin.jev-decision",
+  "name": "Jev 决策",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "kind": "decision-provider",
+  "entry": "index.ts",
+  "capabilities": ["decision.jev"],
+  "requires": {
+    "runtime": "none",
+    "gpu": false,
+    "models": []
+  },
+  "contributes": {
+    "ops": [
+      {
+        "id": "jev.judge",
+        "capability": "decision.jev",
+        "label": "Jev 决策判断"
+      }
+    ]
+  },
+  "permissions": ["fetch"]
+}

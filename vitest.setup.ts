@@ -1,8 +1,9 @@
 /**
  * vitest 全局 setup
- * Node 26 引入了实验性 `localStorage` 全局，未带 --localstorage-file 时访问返回 undefined，
- * 会遮蔽 jestdom 的同名实现，导致 zustand persist 默认存储取到 undefined 直接崩溃。
- * 这里在不可用时注入内存版 Storage，让 persist 类测试稳定运行（仅测试侧，不影响生产）。
+ * Node 25/26 引入了实验性 `localStorage` 全局：未带 --localstorage-file 时该全局“存在但残缺”
+ * （typeof !== 'undefined' 却访问不到可用的 getItem），会遮蔽 jsdom 的同名实现，
+ * 导致 zustand persist 类测试直接 `localStorage.getItem is not a function` 崩溃。
+ * 这里以“功能可用”为准：残缺时注入内存版 Storage，让 persist 类测试跨 Node 版本稳定运行（仅测试侧，不影响生产）。
  */
 class MemoryStorage {
   private store = new Map<string, string>()
@@ -33,13 +34,17 @@ class MemoryStorage {
 }
 
 function ensureStorage(name: 'localStorage' | 'sessionStorage'): void {
-  let available = false
+  // 不能只看“是否存在”：Node 25/26 的内建 localStorage 可能已定义但不可用（无 getItem）
+  let usable = false
   try {
-    available = typeof (globalThis as Record<string, unknown>)[name] !== 'undefined'
+    const existing = (globalThis as Record<string, unknown>)[name] as
+      | { getItem?: unknown }
+      | undefined
+    usable = !!existing && typeof existing.getItem === 'function'
   } catch {
-    available = false
+    usable = false
   }
-  if (available) return
+  if (usable) return
   try {
     Object.defineProperty(globalThis, name, {
       configurable: true,
