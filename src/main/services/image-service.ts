@@ -17,6 +17,8 @@ import { LibraryScanner, ScanResult, ScanProgressCallback } from './scanner';
 import { getLRUCache, LRUCache } from './cache';
 import { computePhash, hammingDistance } from '../utils/phash';
 import { getSetting, setSetting } from './settings-service';
+import { getJobRunner } from './job-runner';
+import type { JobRunner } from './job-runner';
 import type { Library, ThumbnailSize, SearchCriteria, SearchOptions } from '../../types';
 
 /**
@@ -56,7 +58,9 @@ export class ImageService {
     this.scanCompleteListener = fn;
   }
   private scanningLibraries: Set<number> = new Set();
-  private backfillRunning: { libraryId: number; stopped: boolean } | null = null;
+  /** T25：库级 pHash 回填活跃作业守卫（libraryId → jobId），取代旧单槽 backfillRunning；重启后由 jobs 表续跑 */
+  private phashJobs: Map<number, string> = new Map();
+  private phashHandlerRegistered = false;
 
   constructor() {
     this.masterDB = getMasterDB();
@@ -343,97 +347,88 @@ export class ImageService {
   }
 
   /**
-   * 启动 pHash 回填任务（为存量图片计算 pHash）
+   * 启动 pHash 回填任务（T25：收编 JobRunner，项级持久化可续跑，库级并发而非全局单槽）
+   * 进度保持兼容事件名 'phashProgress'（D-3），由 JobRunner 进度映射而来
    */
-  async startPhashBackfill(libraryId: number): Promise<{ success: boolean; error?: string }> {
-    if (this.backfillRunning) {
-      return { success: false, error: '已有回填任务进行中' };
-    }
-
+  async startPhashBackfill(libraryId: number): Promise<{ success: boolean; data?: { jobId: string }; error?: string }> {
     const library = this.masterDB.getLibrary(libraryId);
     if (!library) {
       return { success: false, error: `库不存在：${libraryId}` };
     }
 
+    // 库级守卫：同库已有活跃回填作业则复用（旧实现全局单槽会误拦其他库）
+    const existing = this.phashJobs.get(libraryId);
+    if (existing) {
+      return { success: true, data: { jobId: existing } };
+    }
+
     const db = this.connectLibrary(libraryId);
-    this.backfillRunning = { libraryId, stopped: false };
+    const imageIds = db.listImageIdsWithoutPhash();
+    if (imageIds.length === 0) {
+      // 无待处理项：直接广播完成事件（保持旧 UI 语义），不建作业
+      sendToRenderer('phashProgress', { libraryId, done: 0, remaining: 0, percent: 100, finished: true });
+      return { success: true };
+    }
 
-    // 异步执行回填
-    (async () => {
-      try {
-        let done = 0;
-        const BATCH_SIZE = 100;
+    const runner = getJobRunner();
+    this.registerPhashHandler(runner);
 
-        while (true) {
-          if (this.backfillRunning?.stopped) {
-            logger.info('ImageService', 'pHash 回填已停止');
-            break;
-          }
+    const jobId = await runner.enqueue(
+      'image.phash-backfill',
+      { libraryId },
+      { items: imageIds.map(id => ({ libraryId, imageId: id })) }
+    );
+    this.phashJobs.set(libraryId, jobId);
 
-          // 查询无 phash 的图片
-          const imagesWithoutPhash = db.getImagesWithoutPhash(BATCH_SIZE);
-          if (imagesWithoutPhash.length === 0) {
-            // 回填完成
-            sendToRenderer('phashProgress', {
-              libraryId,
-              done,
-              remaining: 0,
-              percent: 100,
-              finished: true,
-            });
-            break;
-          }
-
-          // 逐个计算 pHash
-          for (const img of imagesWithoutPhash) {
-            if (this.backfillRunning?.stopped) break;
-
-            const absPath = path.join(library.rootPath, img.relative_path);
-            try {
-              const phash = await computePhash(absPath);
-              db.updateImagePhash(img.id, phash);
-              done++;
-            } catch (err) {
-              logger.warn('ImageService', `pHash 计算失败: ${absPath}`, err);
-              // 标记为已处理（设为空字符串避免重复处理）
-              db.updateImagePhash(img.id, '');
-              done++;
-            }
-
-            // 每处理 10 张发送进度
-            if (done % 10 === 0) {
-              const remaining = db.countImagesWithoutPhash();
-              const total = done + remaining;
-              const percent = total > 0 ? Math.round((done / total) * 100) : 0;
-              sendToRenderer('phashProgress', {
-                libraryId,
-                done,
-                remaining,
-                percent,
-                finished: false,
-              });
-            }
-
-            // 让出执行权，避免阻塞其他 IPC
-            await new Promise(resolve => setImmediate(resolve));
-          }
-        }
-      } catch (err) {
-        logger.error('ImageService', 'pHash 回填失败', err);
-      } finally {
-        this.backfillRunning = null;
+    // 进度兼容映射：JobRunner 进度 → 旧 'phashProgress' 事件，终态退订并清守卫
+    let unsub: (() => void) | null = null;
+    unsub = runner.subscribeProgress((progress) => {
+      if (progress.jobId !== jobId) return;
+      const finished =
+        progress.state === 'done' || progress.state === 'cancelled' || progress.state === 'failed';
+      sendToRenderer('phashProgress', {
+        libraryId,
+        done: progress.done,
+        remaining: Math.max(0, progress.total - progress.done - progress.failed),
+        percent: progress.total > 0 ? Math.round(((progress.done + progress.failed) / progress.total) * 100) : 0,
+        finished,
+      });
+      if (finished) {
+        if (unsub) unsub();
+        if (this.phashJobs.get(libraryId) === jobId) this.phashJobs.delete(libraryId);
       }
-    })();
+    });
 
-    return { success: true };
+    await runner.start(jobId);
+    return { success: true, data: { jobId } };
+  }
+
+  /** 注册 pHash 回填处理器（幂等覆盖；失败 throw 记 failed 项，可 resume 续跑，不再写空串污染 phash） */
+  private registerPhashHandler(runner: JobRunner): void {
+    if (this.phashHandlerRegistered) return;
+    runner.registerHandler('image.phash-backfill', async (item) => {
+      if (item.imageId === null) return;
+      const db = this.connectLibrary(item.libraryId);
+      const img = db.getImageRelativePath(item.imageId);
+      if (!img) return; // 图片已删除：跳过视为成功
+      const library = this.masterDB.getLibrary(item.libraryId);
+      if (!library) throw new Error(`库不存在：${item.libraryId}`);
+      const absPath = path.join(library.rootPath, img);
+      const phash = await computePhash(absPath);
+      db.updatePhash(item.imageId, phash);
+    });
+    this.phashHandlerRegistered = true;
   }
 
   /**
-   * 停止 pHash 回填任务
+   * 停止 pHash 回填任务（T25：逐库取消活跃作业，取代旧全局单槽 stopped 标志）
    */
   stopPhashBackfill(): void {
-    if (this.backfillRunning) {
-      this.backfillRunning.stopped = true;
+    const runner = getJobRunner();
+    for (const [libraryId, jobId] of this.phashJobs) {
+      void runner.cancel(jobId).catch(err =>
+        logger.warn('ImageService', `pHash 回填取消失败: library=${libraryId}`, err)
+      );
     }
   }
 
