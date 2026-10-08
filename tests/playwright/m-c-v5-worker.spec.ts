@@ -342,3 +342,97 @@ test.describe('A1 Worker 崩溃自愈', () => {
     expect((r.data?.results || []).length).toBe(1)
   })
 })
+
+// ═════════════════════════════════════════════════════════════
+// A1 双契约合并验证：SDK 契约（matting/upscale）+ OpRegistry 契约（6 新内置）
+// 真实 utilityProcess Worker 的两条分派路径都被真跑：
+//   - SDK 契约：require(entryPath) + activate(sdk) → PluginInstance（autotone 由上方 A1 组覆盖执行，此处覆盖 matting/upscale 装载）
+//   - OpRegistry 契约：静态 activator → loadPluginEntry 返回 op 注册表（jev-decision 等 6 个）
+// 目的：确认合并后 Worker 无崩溃，且分派逻辑在运行期真实生效（vitest 单元层不覆盖 require/activate 落地）。
+// ═════════════════════════════════════════════════════════════
+test.describe('A1 双契约合并验证（SDK + OpRegistry）', () => {
+  test.setTimeout(120000)
+
+  /** 开插件 flag + initialize（discover 全部内置） */
+  async function initPlugins(page: any) {
+    await openApp(page)
+    await enablePluginFlag(page)
+    await page.evaluate(async () => {
+      const api = (window as any).electronAPI
+      await api.pluginsList() // 触发 PluginManager.initialize → discover builtins
+    })
+  }
+
+  test('SDK 契约：matting / upscale 真实 Worker require+activate → activated（仅装载，不加载模型）', async ({ page }) => {
+    await initPlugins(page)
+    for (const id of ['builtin.matting', 'builtin.upscale']) {
+      const en = await page.evaluate(
+        (pidArg: string) => (window as any).electronAPI.pluginsSetEnabled(pidArg, true),
+        id,
+      )
+      console.log(`  [dual] SDK 契约启用 ${id}: success=${en?.success} err=${en?.error ?? ''}`)
+      expect(en?.success, `${id} 启用应成功（入口存在且非 invalid）`).toBe(true)
+      const row = await waitPluginState(page, id, 'activated', 20000)
+      expect(row?.state, `${id} 应经 require+activate 达 activated`).toBe('activated')
+    }
+    // Worker 存活：再列一次不报错且内置 ≥ 9（SDK require 大图模型不应在装载期触发）
+    const list = await page.evaluate(async () => (window as any).electronAPI.pluginsList())
+    expect((list.data || []).length).toBeGreaterThanOrEqual(9)
+  })
+
+  test('OpRegistry 契约：6 个新内置静态 activator 装载 → 全部 activated 且 Worker 不崩', async ({ page }) => {
+    await initPlugins(page)
+    const registryIds = [
+      'builtin.jev-decision',
+      'builtin.rule-engine-adapter',
+      'builtin.bili-web',
+      'builtin.xhs-web',
+      'builtin.tg-export-import',
+      'builtin.tg-mtproto',
+    ]
+    for (const id of registryIds) {
+      const en = await page.evaluate(
+        (pidArg: string) => (window as any).electronAPI.pluginsSetEnabled(pidArg, true),
+        id,
+      )
+      console.log(`  [dual] OpRegistry 启用 ${id}: success=${en?.success} err=${en?.error ?? ''}`)
+      expect(en?.success, `${id} 启用应成功`).toBe(true)
+      const row = await waitPluginState(page, id, 'activated', 20000)
+      expect(row?.state, `${id} 应经静态 activator 达 activated`).toBe('activated')
+    }
+    // 6 个全部 activated 且 Worker 仍存活（崩溃会使后续 pluginsList 状态异常/报错）
+    const list = await page.evaluate(async () => (window as any).electronAPI.pluginsList())
+    const activatedCount = (list.data || []).filter((p: any) => p.state === 'activated').length
+    console.log(`  [dual] activated 计数=${activatedCount}`)
+    expect(activatedCount).toBe(6)
+  })
+
+  test('OpRegistry 执行：rule-engine-adapter.rules.buildRequests 纯函数经真实 Worker 分派 → 确定性请求计划', async ({ page }) => {
+    await initPlugins(page)
+    const en = await page.evaluate(() => (window as any).electronAPI.pluginsSetEnabled('builtin.rule-engine-adapter', true))
+    expect(en?.success).toBe(true)
+    // 零网络纯函数：两页翻页规则 → 2 条 list 计划，水位推进到 '2'
+    const input = {
+      sourceConfig: {
+        params: {
+          rules: {
+            listSelector: '.card',
+            pagination: { baseUrl: 'https://example.com/list', urlTemplate: 'https://example.com/list?p={page}', maxPages: 2 },
+          },
+        },
+      },
+      watermark: '',
+    }
+    const r = await page.evaluate(async (inp: unknown) => {
+      const api = (window as any).electronAPI
+      return await api.pluginsExecute('builtin.rule-engine-adapter', 'rules.buildRequests', inp)
+    }, input)
+    console.log(`  [dual] buildRequests: success=${r.success} data=${JSON.stringify(r.data)} err=${r.error ?? ''}`)
+    expect(r.success).toBe(true)
+    const plans = (r.data as { plans: Array<{ url: string; context: { phase: string; page: number } }> }).plans
+    expect(plans.length).toBe(2)
+    expect(plans[0].url).toBe('https://example.com/list?p=1')
+    expect(plans[0].context.phase).toBe('list')
+    expect((r.data as { nextWatermark?: string }).nextWatermark).toBe('2')
+  })
+})

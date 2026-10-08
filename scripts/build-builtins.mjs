@@ -39,7 +39,15 @@ function copyManifests() {
     const dstManifest = path.join(OUT_DIR, name, 'plugin.json')
     if (fs.existsSync(srcManifest)) {
       fs.mkdirSync(path.dirname(dstManifest), { recursive: true })
-      fs.copyFileSync(srcManifest, dstManifest)
+      // esbuild 始终产出 <name>/index.js，而源码清单 entry 可能声明 index.ts（TS 源文件名）。
+      // PluginLoader 用 manifest.entry 校验入口存在 + Worker require 该路径，产物只有 index.js，
+      // 故复制清单时把 entry 归一为 'index.js'，否则被判「入口文件不存在」→ invalid。
+      // 仅改写产物副本，源码清单保持 index.ts（单测据此校验源目录入口存在）。
+      const manifest = JSON.parse(fs.readFileSync(srcManifest, 'utf-8'))
+      if (typeof manifest.entry === 'string' && manifest.entry.endsWith('.ts')) {
+        manifest.entry = manifest.entry.replace(/\.ts$/, '.js')
+      }
+      fs.writeFileSync(dstManifest, JSON.stringify(manifest, null, 2) + '\n')
     }
   }
 }
