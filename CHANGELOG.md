@@ -17,6 +17,11 @@
   - T22 语义搜索：自实现纯 JS CLIP 分词器 `clip-tokenizer.ts`（byte-level BPE + SOT/EOT + pad 77，逐位对齐 transformers.js 黄金 fixture）+ `text-encoder.ts`（`OnnxClipTextEncoder` 文本塔，int8 默认 / fp32 兜底，C2 串行化 load）+ `semantic-search.ts`（DI 编排）+ `ai-wiring.runSemanticQuery`（文本引用计数 + idle TTL 60s + 与索引会话互斥）；`SearchPanel` 新增独立「语义搜索」模式（与关键词互斥）
   - 新增 IPC：`semanticSearchImages`（camelCase、动态 import 保持 C1 零原生加载）；需已索引且 `ai.enabled` 开启方可用。`VectorIndexService.search()` 获得首个生产调用方（W13 技术债清偿）
   - 代码审查修复（2026-10-07）：修出 2 Critical（语义框回车与关键词搜索竞态双触发→`stopPropagation` + 请求序号丢弃过期响应；`ai.enabled` 未门控 + 失败静默→按 `getAiStatus` 隐入口 + `semanticError` 上屏）与 7 Warning（`textInflight` 变负致常驻→防负 + 拆链代际；旧文本编码器未 unload 泄漏→换链卸旧；索引可在查询 await 期卸载共享 ANN→收敛同步临界区；只读检索误落盘 sidecar→`countIndexed` 守卫；§9.7 跨模型拒绝比较未强制→`getModelId` 断言；分词 golden 门控脱离 gitignore cache 入库 fixture；语义结果被过期关键词高亮）；硬红线（C1 零原生 / verifyModel 只读 / 文本塔指纹 / 相似度口径 / HF 截断）经三视角核查无问题（其中“词表 miss 回落 EOT”经核查为误报，保留 EOT）
+- **AI 标签 / IQA / 视觉匹配 / JobRunner 收编**（Phase 9 M5-M6，T23-T25，2026-10-08）：
+  - T23 AI 标签 + 质量分：数据库迁移 v4（`tags.source` manual/ai 词表 + `image_tags.confidence`）；零模型启发式 IQA `quality-scorer.ts`（`heuristic-v1`，分数落库不接筛选）；CLIP 零样本 `tag-suggester.ts`（本库已有标签 ∪ 内置约 40 英文类，阈值 0.15）；标签走提案「人在回路」（采纳才落库），新建 `AiLabelPanel` 管理 UI（预览/采纳/忽略/移除 AI 标签，首次启用作业进度事件流订阅）；新增 IPC：`triggerAiTagging` / `triggerAiQuality` / `listTagSuggestions` / `adoptTagSuggestion` / `dismissTagSuggestion` / `removeAiTag`
+  - T24 视觉匹配升级：`RecommendScorer` 可选 `getVisualSimilarity` provider（权重 0.25，缺省与 T16 完全等价）；`runVisualSimilarity` 图像-图像 int8 余弦（仅本地媒体出信号、纯远端 URL 不打分期拉网络，只读 vectors.db 含 §9.7 跨模型拦截，异常静默回退纯规则分）；`ai.enabled` 条下 `agent-handlers` 动态注入
+  - T25 JobRunner 收编（D-3：仅 phash+export，scanner 不动）：pHash 回填删全局单槽改库级作业（项级持久化可断点续跑，失败不再写空串污染 phash，保留 `phashProgress` 兼容事件名）；批量导出改 `export.batch` 复合作业（入队即返不阻塞 IPC，台账可观察/可取消，内存参数表重启不承诺续跑；单张导出保持交互式直连，`export-progress` 与 ExportDialog 零改动）
+  - 门禁：tsc 0 错，全量 807 passed / 2 skipped（新增 T23/T24/T25 单测 56 例，旧测不改即绿）
 - **插件系统**（Phase 8）：插件宿主（utilityProcess + MessagePort RPC，崩溃隔离）、PluginLoader 生命周期与 kind 白名单、内置插件静态登记双路径契约、JobRunner 后台作业调度（持久化/断点续跑/优先级）、三级内存水位线监控、模型管理器（SHA256 完整性校验）、编辑版本链（非破坏性编辑输出）、内置插件 autotone、Feature Flags（`plugins.enabled`/`ai.enabled`/`crawler.enabled`）
 - **搜索增强与离线库检测**（Phase 5）：离线库自动探测置灰、搜索历史与预设、高亮匹配
 - **主题皮肤与直方图**（Phase 6）：themeStore + SettingsPanel 主题/强调色/密度、图片 RGB/亮度直方图、文件夹封面设置
