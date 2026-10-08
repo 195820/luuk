@@ -17,7 +17,7 @@ npm run build          # 构建前端 + Electron 打包
 npm run build:dir      # 仅构建前端（不打包）
 npm run preview        # 预览构建结果
 npm run test           # vitest watch 模式
-npm run test:run       # vitest 全量单次运行（当前基线 49 files / 552 tests）
+npm run test:run       # vitest 全量单次运行（当前基线 ~73 files / 807 passed · 2 skipped，须在 imageviewer conda/Node25 环境跑）
 npm run test:coverage  # 覆盖率报告
 npx tsc --noEmit       # 类型检查（交付门禁：0 错误）
 ```
@@ -41,13 +41,20 @@ npx tsc --noEmit       # 类型检查（交付门禁：0 错误）
 │  imageStore (核心) | audioStore | historyStore   │
 │  searchStore | tagStore | themeStore |           │
 │  selectionStore | viewStore | slideshowStore |   │
-│  similarStore                                    │
+│  similarStore | agentStore                       │
 ├─────────────────────────────────────────────────┤
 │         Agent 层 (Phase 9)                       │
 │  PreferenceProfiler | DecisionRegistry           │
 │  LocalRulesProvider | ProposalStore              │
 │  FeedbackAggregator | AgentScheduler             │
-│  RecommendScorer（采集 Agent 打分→提案闭环）     │
+│  RecommendScorer（打分→提案闭环，可叠加视觉相似度）│
+├─────────────────────────────────────────────────┤
+│         AI 索引/推理层 (Phase 9 M5)              │
+│  OnnxClipEngine(int8) | TextEncoder(fp32) |      │
+│  clip-tokenizer | semantic-search |              │
+│  vectors/（USearch HNSW + vectors.usearch）      │
+│  quality-scorer(IQA 零模型) | tag-suggester      │
+│  ai-wiring（会话分时/引擎引用计数/卸载所有权）   │
 ├─────────────────────────────────────────────────┤
 │    插件宿主 (utilityProcess + MessagePort RPC)   │
 │  PluginManager | PluginLoader | JobRunner        │
@@ -70,9 +77,12 @@ npx tsc --noEmit       # 类型检查（交付门禁：0 错误）
 │           数据层                                  │
 │  MasterDB (master.db) - 库/收藏/标签/历史        │
 │  ThumbnailsDB (thumbs.db) - 图片元数据/缩略图    │
+│             + quality_scores（IQA 质量分 T23）   │
+│  VectorsDB (vectors.db) - int8 向量全表（T21）   │
 │  迁移 v2: jobs/job_items/edits                   │
 │  迁移 v3: preference_profile/proposals/          │
 │           feedback_log/crawl_sources/crawl_items │
+│  迁移 v4: tags.source / image_tags.confidence    │
 │  位置：%APPDATA%\luuk\master.db + {库}\.ivlib\  │
 └─────────────────────────────────────────────────┘
 ```
@@ -88,8 +98,8 @@ e:\luuk\
 ├── src/
 │   ├── main/                   # 后端服务（注意：主进程入口在 electron/，此处是被 import 的服务层）
 │   │   ├── services/
-│   │   │   ├── database.ts      # MasterDB + ThumbnailsDB + 迁移 v1-v3
-│   │   │   ├── image-service.ts # 统一服务接口（单例）
+│   │   │   ├── database.ts      # MasterDB + ThumbnailsDB + VectorsDB(vectors.db) + 迁移 v1-v4
+│   │   │   ├── image-service.ts # 统一服务接口（单例）+ pHash 回填库级作业（T25 收编 JobRunner）
 │   │   │   ├── scanner.ts       # 库扫描 + 增量更新（排除 _downloads/_edits）
 │   │   │   ├── thumbnailer.ts   # 缩略图生成 (Sharp)
 │   │   │   ├── media-registry.ts # media:// 协议令牌注册表
@@ -125,6 +135,21 @@ e:\luuk\
 │   │   │       ├── intake.ts               # 三级去重 + 落地入库 + sidecar
 │   │   │       ├── source-store.ts         # 信息源 CRUD
 │   │   │       └── crawl-item-store.ts     # 采集团条目存储
+│   │   ├── ai/                # Phase 9 M5 AI 索引/推理（ai.enabled 门禁，零原生静态加载）
+│   │   │   ├── embedding-engine.ts   # EmbeddingEngine 接口（宿主无关）
+│   │   │   ├── onnx-clip-engine.ts   # 图像塔 int8 ONNX 推理（ort 全在方法内 await import）
+│   │   │   ├── text-encoder.ts       # 文本塔 fp32 + encodeBatch（非对称精度：文本 fp32/图像 int8）
+│   │   │   ├── clip-tokenizer.ts     # 纯 JS byte-level BPE（与 transformers.js 黄金 fixture 逐位对齐）
+│   │   │   ├── semantic-search.ts    # HNSW 语义检索
+│   │   │   ├── index-session.ts / index-planner.ts  # 索引会话分时 / 计划
+│   │   │   ├── quality-scorer.ts     # IQA 零模型启发式（histogram + sharp，model_id='heuristic-v1'）
+│   │   │   ├── tag-suggester.ts      # CLIP 零样本标签（本库已有标签 ∪ 内置通用类）
+│   │   │   ├── label-quality-session.ts # 标签/质量作业会话（R2 分时复用）
+│   │   │   ├── ai-bootstrap.ts       # 纯 DI 装配（可单测）
+│   │   │   └── ai-wiring.ts          # 引擎/会话/作业装配（引用计数 + 卸载所有权规则）
+│   │   ├── vectors/           # Phase 9 M5 向量检索
+│   │   │   ├── vector-index-service.ts # ANN 索引读写编排
+│   │   │   └── ann-index.ts            # USearch HNSW 封装（vectors.usearch sidecar）
 │   │   ├── plugins/
 │   │   │   ├── plugin-loader.ts    # 插件清单解析 + 生命周期（kind 白名单校验）
 │   │   │   ├── plugin-registry.ts  # Worker 侧双路径登记（内置静态/第三方动态 import）
@@ -137,7 +162,8 @@ e:\luuk\
 │   │       ├── tag-handlers.ts     # 标签/统计/EXIF
 │   │       ├── job-handlers.ts     # 后台作业
 │   │       ├── plugin-handlers.ts  # 插件管理
-│   │       └── agent-handlers.ts   # Agent/爬虫/Jev 开关（生产接线层）
+│   │       ├── agent-handlers.ts   # Agent/爬虫/Jev 开关（生产接线层）
+│   │       └── ai-handlers.ts      # AI 索引/语义搜索/标签/IQA（六通道，C1 零原生门禁）
 │   ├── components/             # React 组件
 │   │   ├── ImageViewer.tsx / ImageLightbox.tsx  # 查看器（图片/GIF/视频）
 │   │   ├── ImageGrid.tsx / ImageGridItem.tsx / MasonryGrid.tsx  # 网格/瀑布流
@@ -147,12 +173,13 @@ e:\luuk\
 │   │   ├── PlaylistEditor.tsx / SlideshowAudio.tsx / RatingStars.tsx
 │   │   ├── FolderTree.tsx / SortControl.tsx / RecentHistory.tsx / ScanProgress.tsx
 │   │   ├── file-ops/           # 回收站/批量重命名等文件操作对话框
+│   │   ├── agent/              # Phase 9 M4/M5 UI：DiscoverPanel/CrawlSourceManager/AgentSettings/AiLabelPanel
 │   │   ├── ui/ + layout/ + library/ + hooks/  # shadcn 基础件/布局/逻辑 hook
 │   ├── stores/                 # Zustand 状态管理
 │   │   ├── imageStore.ts       # 核心 store（库/图片/收藏/文件夹树）
 │   │   ├── audioStore.ts / historyStore.ts / searchStore.ts / tagStore.ts
 │   │   ├── themeStore.ts / selectionStore.ts / viewStore.ts
-│   │   ├── slideshowStore.ts / similarStore.ts
+│   │   ├── slideshowStore.ts / similarStore.ts / agentStore.ts
 │   │   └── index.ts            # 统一导出
 │   ├── types/
 │   │   ├── index.ts            # 类型定义 + electronAPI 接口声明
@@ -189,7 +216,9 @@ e:\luuk\
 
 ### 数据库架构
 - **master.db**: 主数据库，存储所有库信息、收藏、标签、浏览历史、作业（jobs/job_items/edits）、Agent 体系（preference_profile/proposals/feedback_log/crawl_sources/crawl_items）
-- **thumbs.db**: 每个库独立的分库，存储图片元数据、缩略图缓存（WebP 格式）
+- **thumbs.db**: 每个库独立的分库，存储图片元数据、缩略图缓存（WebP 格式）、`quality_scores`（IQA 质量分，非向量元数据随 images 留 thumbs.db）
+- **vectors.db**: 每库独立向量分库（Phase 9 M5，D14/§9.1 改道），存 int8 向量全表；ANN 检索不抢缩略图页缓存；USearch HNSW 落 `.usearch` sidecar
+- **master.db 迁移 v4**（T23）：`tags.source`（'manual'/'ai'，默认 manual 兼容存量）+ `image_tags.confidence`（AI 采纳时写入，人工 NULL）——纯补列走 `tolerant`
 - 库路径使用 `.ivlib` 隐藏目录存储数据库文件
 - 迁移只增不改：已发布迁移的主 SQL 禁止修改，补列一律用 `tolerant`（duplicate column 容忍）机制
 
@@ -199,6 +228,7 @@ e:\luuk\
 - **内置插件装载契约（M2 确立）**：内置插件由 `plugin-worker.ts` 启动时 `registerBuiltinPlugin(id, activate)` 静态登记（随宿主打包，运行时无独立可 import 产物）；第三方插件按清单 entry 动态 import；约定入口导出 `activate(): Record<opId, handler>`
 - **内置插件清单 `entry` 必须写磁盘真实存在的文件名**（如 `index.ts`），否则 PluginLoader 存在性校验判 invalid
 - **JobRunner**：持久化作业（jobs/job_items 表）+ 断点续跑 + 优先级；Agent 发现作业复用其调度（`job_items.imageId` 约定=sourceId）
+- **作业收编（Phase 9 M6 · T25）**：pHash 回填改为库级 `image.phash-backfill` 作业（项级 items、失败可续跑、不再写空串污染 phash）；批量导出 `export.batch` 收为单复合作业（取消观察点 + 台账映射 + 节流进度）；**scanner 目录遍历仍不入队**（D-3：核心路径风险高、收益低，登记后续）
 - **Feature Flags**：`plugins.enabled` / `ai.enabled` / `crawler.enabled` / `agent.enabled` / `jev.enabled` 默认全部关闭；关闭时零对象构造零网络
 
 ### Agent 体系（Phase 9）
@@ -215,13 +245,15 @@ e:\luuk\
 - **合规红线**：per-host 闸门 + 频控退让 + robots 检查；禁止 App 抓包/解签名（小红书走网页版 `inPageFetch` 零逆向）
 - **默认全关双闸**：调度侧看 `agent.enabled`，执行侧看 `crawler.enabled`，任一关闭都不出流；`@mtcute/node` 未安装，TgClient 接口注入 + 工厂位，未注入时 discover 明确拒跑
 
-### 索引与语义搜索（Phase 9 M5）
+### 索引·语义搜索·AI 标签·作业（Phase 9 M5/M6）
 - **C1 零原生加载**：`ai-handlers.ts` 被 `main.ts` 静态引入，**绝不同态** import `ai-wiring`/`usearch`/`onnxruntime-node`；仅 `ai.enabled` 时经 `loadAiModules()` 动态载入。关闭态启动零 usearch/零 ort/零模型/零网络
 - **R2 会话分时**：索引与查询各自 `load→工作→unload`；`OnnxClipEngine`/`OnnxClipTextEncoder` 顶层零原生依赖（ort 全在方法内 `await import()`），C2 用 in-flight Promise 去重并发 `load()`
 - **查询/索引互斥铁律**：`runSemanticQuery` 对目标库 ANN **只 load 不夺卸载所有权**——空闲 TTL(60s)/自加载卸载前必判 `!librarySessions.has(libId)`，绝不把正在写入的共享单例挤出；文本编码会话独立引用计数归零才 unload
 - **模型绑定（§9.7）**：文本塔与图像塔同 checkpoint（Xenova/clip-vit-base-patch32）→ 同 512 维投影空间；检索空间键始终是图像 `model_id`（`clip-vit-b32-int8`），文本塔 id 仅资产标识
 - **分词器**：`clip-tokenizer.ts` 纯 JS byte-level BPE，正确性以 transformers.js 黄金 fixture 逐位对齐为准（HF 截断=后处理后按 77 保头截断，超长尾 EOT 被切）；此 CLIP 变体 `pre_tokenizer` invert 丢弃空白 → 词无空格前缀、无 `Ġ` token
 - **开发期资产口径**：模型/tokenizer 直连 `cache/poc-r2`（gitignore），`verifyModel(..., {deleteOnMismatch:false})` 只读校验避免误删唯一本地副本；生产打包/下载不在 M5 范围
+- **AI 标签 + IQA（T23）**：IQA 走 **零模型启发式**（复用 `histogram.ts` + `sharp`，`quality_scores.model_id='heuristic-v1'`，本轮不接筛选 UI）；AI 标签走 **CLIP 零样本**（`tag-suggester`，候选 = 本库已有标签 ∪ 内置通用英文类，MIN_CONFIDENCE=0.15），**不自动写 `image_tags`**——经 `ai_tag_suggestion` 提案人在回路采纳才写 `confidence`；文本塔 prompt embed 走非对称精度（文本 fp32/图像 int8）；UI：`AiLabelPanel` 挂 `AgentSettings`（`ai.enabled` 门禁整块隐藏）
+- **视觉匹配升级（T24）**：`RecommendScorer` 新增**可选** `getVisualSimilarity` provider（`VISUAL_WEIGHT=0.25`，`0.75*base+0.25*sim`），provider 缺省与 T16 完全等价（旧测不改即绿）；`runVisualSimilarity` 只读 vectors.db 行（含 §9.7 模型校验，图像-图像 int8 余弦 top-k 均值），仅本地媒体出信号（`firstLocalMedia`），全程静默回退 null 不打分期拉网络
 
 ### 缩略图缓存链路
 ```
@@ -263,7 +295,7 @@ e:\luuk\
 11. **ESM-only 依赖**: `trash` / `wallpaper` / `electron-store` 等为 ESM-only，需命名导入并加入 Vite 构建 externals（`vite.config.ts`）
 12. **排序白名单**: 排序字段在三处联合类型须同步修改（types、store、后端校验）
 13. **vitest 动态 import 限制**: jsdom/vm runner 无法对绝对路径文件执行原生 dynamic import，插件类单测需用项目根目录内的 fixtures
-14. **交付门禁**: `npx tsc --noEmit` 零错误 + 全量 vitest 通过（当前基线 552 用例）；涉及网络的模块（crawler/jev）单测必须零真实网络
+14. **交付门禁**: `npx tsc --noEmit` 零错误 + 全量 vitest 通过（当前基线 807 passed / 2 skipped）；涉及网络的模块（crawler/jev）单测必须零真实网络；全量测试须在 imageviewer conda（Node25/ABI141）环境跑，PATH 上的系统 Node 会因 ABI 错配使 better-sqlite3/sharp 加载失败大量报错
 
 ## ⌨️ 快捷键
 
