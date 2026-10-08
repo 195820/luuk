@@ -63,6 +63,7 @@ const thumbsMock = {
 const masterMock = {
   getLibrary: vi.fn((id: number) => ({ id, rootPath: '/tmp/ivlib-root', status: 'online' })),
   listTagNames: vi.fn(() => [] as string[]),
+  listTagNamesForLibrary: vi.fn(() => [] as string[]),
   getFavorites: vi.fn(() => [] as Array<{ library_id: number; image_path: string; tags: string[]; rating: number }>),
 }
 // T23 提案存储替身（处理器落提案/防重查询不经真 MasterDB）
@@ -139,6 +140,7 @@ beforeEach(() => {
   thumbsMock.listImageIdsWithoutQuality.mockReturnValue([])
   thumbsMock.getImageByRelativePath.mockReturnValue(null)
   masterMock.listTagNames.mockReturnValue([])
+  masterMock.listTagNamesForLibrary.mockReturnValue([])
   masterMock.getFavorites.mockReturnValue([])
   masterMock.getLibrary.mockImplementation((id: number) => ({ id, rootPath: '/tmp/ivlib-root', status: 'online' }))
   storeMock.hasPendingForQualityImage.mockReturnValue(false)
@@ -447,6 +449,27 @@ describe('ai-wiring T23 标签作业（enqueueLabelForLibrary）', () => {
     cap.emit!({ jobId: 'job-1', state: 'done' })
     expect(cap.unsubscribed).toBe(1)
     expect(await enqueueLabelForLibrary(1, makeRunner().runner)).toBe('job-1')
+  })
+
+  it('候选取本库标签（D-2）且标签集变化触发 prompt 重建', async () => {
+    const tenc = setupLabelEncoder()
+    await tenc.load()
+    // 'cat' 非内置类，仅当候选来自本库标签才会命中（验证口径为本库而非全局 listTagNames）
+    const vec = await tenc.encode('a photo of a cat')
+    vectorsMock.getEmbedding.mockReturnValue({ model_id: MODEL, vector: vec })
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+    masterMock.listTagNamesForLibrary.mockReturnValue(['Cat'])
+    const { runner, cap } = makeRunner()
+    await enqueueLabelForLibrary(1, runner)
+    await cap.handler!({ libraryId: 1, imageId: 1 })
+    expect(masterMock.listTagNames).not.toHaveBeenCalled()
+    expect(masterMock.listTagNamesForLibrary).toHaveBeenCalledWith(1)
+    expect(storeMock.create.mock.calls[0][0].payload.suggestions[0].tagName).toBe('Cat')
+    // 标签集变化 → signature 变 → 重建 prompt 向量（同编码器实例下仍重编）
+    const callsAfterFirst = tenc.encodeCalls
+    masterMock.listTagNamesForLibrary.mockReturnValue(['Cat', 'Dog'])
+    await cap.handler!({ libraryId: 1, imageId: 1 })
+    expect(tenc.encodeCalls).toBeGreaterThan(callsAfterFirst)
   })
 
   it('handler 幂等：同图已有 pending 提案 → done 不重复产提案', async () => {

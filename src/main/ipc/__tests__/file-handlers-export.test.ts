@@ -36,7 +36,7 @@ const state = vi.hoisted(() => ({
   exportBatchCalls: [] as Array<{ files: any[]; taskId: string }>,
   exportCancelTaskIds: [] as string[],
   sendToRenderer: vi.fn(),
-  runnerCancel: vi.fn(async (jobId: string) => {}),
+  runnerCancel: vi.fn(async (_jobId: string) => {}),
   registered: null as null | ((item: any) => Promise<void>),
   enqueued: [] as Array<{ kind: string; payload: unknown; items?: any[] }>,
   started: [] as string[],
@@ -209,11 +209,10 @@ describe('export.batch 复合处理器 — onProgress 三职责', () => {
     ;(state as any).progressFinish()
     await done
 
-    // ② 台账映射 + 成功收口
+    // ② 台账映射：仅 onProgress 回调写入（成功收口不再覆写台账，只复查 getJob 终态）
     const writes = state.jobStateWrites.filter(w => w.jobId === 'job-x')
     expect(writes).toEqual([
       { jobId: 'job-x', state: 'running', done: 1, failed: 0 },
-      { jobId: 'job-x', state: 'running', done: 2, failed: 0 },
       { jobId: 'job-x', state: 'running', done: 2, failed: 0 },
     ])
     // ③ UI 兼容事件：最后一必为收口补发的 finished（中间 tick 受 100ms 节流影响不断言数量）

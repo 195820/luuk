@@ -50,9 +50,12 @@ function registerExportHandler(runner: ReturnType<typeof getJobRunner>): void {
           sendToRenderer('export-progress', { taskId: params.taskId, done, total, finished: done === total });
         }
       });
-      // 成功收口：台账 full done；补发 finished 事件（与旧实现一致）
-      getMasterDB().updateJobState(jobId, 'running', params.files.length, 0);
-      sendToRenderer('export-progress', { taskId: params.taskId, done: params.files.length, total: params.files.length, finished: true });
+      // 成功收口：先复查台账终态——取消观察点未命中但 exportBatch 已自然 resolve 时（尾段无回调），
+      // 不能把 cancelled 覆写回 running，也不能对已取消操作误发 finished:true
+      const finalJob = getMasterDB().getJob(jobId);
+      if (finalJob?.state !== 'cancelled') {
+        sendToRenderer('export-progress', { taskId: params.taskId, done: params.files.length, total: params.files.length, finished: true });
+      }
     } finally {
       // 收口清理内存参数表，避免 jobId/taskId 映射泄漏（取消后旧 taskId 重试会建新作业新映射）
       exportJobParams.delete(jobId);

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Download, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import type { ExportOptions, ExportProgress } from '../../types'
 
@@ -17,6 +17,8 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [completed, setCompleted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** 当前导出任务 ID（批量分支入队后立即返回、进度靠事件异步到达，取消时需凭此 ID 而非尚未收到的 progress） */
+  const activeTaskIdRef = useRef<string | null>(null)
 
   // 监听导出进度
   useEffect(() => {
@@ -27,6 +29,7 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
       if (prog.finished) {
         setIsExporting(false)
         setCompleted(true)
+        activeTaskIdRef.current = null
       }
     })
 
@@ -62,6 +65,7 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
 
     // 生成任务 ID
     const taskId = `export-${Date.now()}`
+    activeTaskIdRef.current = taskId
 
     try {
       // 选择输出目录
@@ -100,7 +104,7 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
         }
         setIsExporting(false)
       } else {
-        // 批量导出为 ZIP
+        // 批量导出为 ZIP（T25：exportBatchImages 入队即返，进度/完成由 'export-progress' 事件驱动收口）
         const zipPath = `${outputPath}/export-${Date.now()}.zip`
         const options: ExportOptions = {
           format,
@@ -115,9 +119,12 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
           taskId
         )
         if (!result?.success) {
+          // 入队失败：立即复位导出态（不会有后续进度事件）
           setError(result?.error || '导出失败')
+          setIsExporting(false)
+          activeTaskIdRef.current = null
         }
-        setIsExporting(false)
+        // 入队成功：保持 isExporting=true，由 onExportProgress 的 finished 事件置 completed + 复位
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -126,11 +133,13 @@ export function ExportDialog({ isOpen, onClose, libraryId, selectedPaths }: Expo
   }
 
   const handleCancel = async () => {
-    if (isExporting && progress) {
-      await window.electronAPI?.cancelExport(progress.taskId)
+    const taskId = activeTaskIdRef.current
+    if (isExporting && taskId) {
+      await window.electronAPI?.cancelExport(taskId)
     }
     setIsExporting(false)
     setProgress(null)
+    activeTaskIdRef.current = null
   }
 
   const progressPercent = progress ? Math.round((progress.done / progress.total) * 100) : 0

@@ -399,7 +399,14 @@ export class ImageService {
       }
     });
 
-    await runner.start(jobId);
+    try {
+      await runner.start(jobId);
+    } catch (err) {
+      // 启动失败：该作业永不到达终态 → 退订防泄漏 + 清守卫，否则本库后续回填会被卡死守卫误拦
+      if (unsub) unsub();
+      if (this.phashJobs.get(libraryId) === jobId) this.phashJobs.delete(libraryId);
+      throw err;
+    }
     return { success: true, data: { jobId } };
   }
 

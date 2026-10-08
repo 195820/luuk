@@ -161,8 +161,14 @@ let queryEpoch = 0
 let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** 每库并发查询引用计数：仅「自加载 + 最后离开 + 索引未接管」才卸载该库 ANN */
 const queryRefCounts = new Map<number, number>()
-// —— T23 标签会话模块态：prompt 向量缓存（会话级构建一次，编码器引用变更即失效重建）——
-let labelPromptCache: { encoder: TextEncoder; candidates: ReturnType<typeof buildTagCandidates>; promptVecs: Uint8Array[] } | null = null
+// —— T23 标签会话模块态：prompt 向量缓存（按库缓存，多库作业交错不互相失效）——
+// signature = 本库已有标签拼接；采纳/撤销新标签后标签集变化 → signature 变 → 下一项重建（编码链仍复用）
+let labelPromptCache: Map<number, {
+  encoder: TextEncoder
+  signature: string
+  candidates: ReturnType<typeof buildTagCandidates>
+  promptVecs: Uint8Array[]
+}> = new Map()
 
 /**
  * 供 boot/测试注入查询文本编码器（null → 语义搜索退回空结果）。
@@ -202,7 +208,7 @@ function teardownQuerySession(): void {
   const enc = queryTextEncoder
   queryTextEncoder = null
   imageResolver = null
-  labelPromptCache = null   // T23：prompt 向量属于旧编码器会话，作废以防新链复用旧向量
+  labelPromptCache = new Map()   // T23：prompt 向量属于旧编码器会话，作废以防新链复用旧向量
   if (enc?.isLoaded()) void enc.unload().catch(() => { /* 不致命 */ })
 }
 
@@ -370,12 +376,17 @@ function registerLibraryAwareLabelHandler(runner: JobRunner): void {
     if (!layer || !enc) throw new Error('ai-label: AI 层/文本编码器不可用')
     const lib = getMasterDB().getLibrary(item.libraryId)
     if (!lib) throw new Error(`ai-label: 库不存在 ${item.libraryId}`)
-    if (!labelPromptCache || labelPromptCache.encoder !== enc) {
+    // 候选词表取本库实际用过的标签（D-2），以标签集 signature 为指纹：编码器变更或标签集变化→重建 prompt 向量
+    const tagNames = getMasterDB().listTagNamesForLibrary(item.libraryId)
+    const signature = tagNames.join('|')
+    const cached = labelPromptCache.get(item.libraryId)
+    if (!cached || cached.encoder !== enc || cached.signature !== signature) {
       await enc.load()
-      const candidates = buildTagCandidates(getMasterDB().listTagNames())
+      const candidates = buildTagCandidates(tagNames)
       const promptVecs = await enc.encodeBatch(candidates.map(c => c.prompt))
-      labelPromptCache = { encoder: enc, candidates, promptVecs }
+      labelPromptCache.set(item.libraryId, { encoder: enc, signature, candidates, promptVecs })
     }
+    const cache = labelPromptCache.get(item.libraryId)!
     const vectorsDB = getVectorsDB(lib.rootPath)
     const thumbs = getThumbnailsDB(lib.rootPath)
     const store = getProposalStore(getMasterDB())
@@ -383,8 +394,8 @@ function registerLibraryAwareLabelHandler(runner: JobRunner): void {
       modelId: layer.modelId,
       getEmbedding: (id) => vectorsDB.getEmbedding(id),
       resolvePath: (id) => thumbs.getImageRelativePath(id),
-      candidates: labelPromptCache.candidates,
-      promptVecs: labelPromptCache.promptVecs,
+      candidates: cache.candidates,
+      promptVecs: cache.promptVecs,
       createProposal: (input) => {
         const maxConf = input.suggestions[0]?.confidence ?? 0
         store.create({ agentKind: 'quality', libraryId: input.libraryId, payload: input, score: maxConf, confidence: maxConf })

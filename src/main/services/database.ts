@@ -803,6 +803,14 @@ export class MasterDB {
     return (this.db.prepare('SELECT name FROM tags ORDER BY name').all() as Array<{ name: string }>).map(r => r.name);
   }
 
+  /** 本库经 image_tags 实际使用过的标签名（D-2：AI 标签候选=本库已有标签，而非跨库全局词表） */
+  listTagNamesForLibrary(libraryId: number): string[] {
+    if (!this.db) return [];
+    return (this.db.prepare(
+      'SELECT DISTINCT t.name AS name FROM image_tags it JOIN tags t ON t.id = it.tag_id WHERE it.library_id = ? ORDER BY t.name'
+    ).all(libraryId) as Array<{ name: string }>).map(r => r.name);
+  }
+
   deleteTag(id: number): void {
     if (!this.db) return;
     // ON DELETE CASCADE 会自动清理 image_tags
@@ -1579,11 +1587,12 @@ export class ThumbnailsDB {
     return (stmt.get('image') as { count: number }).count;
   }
 
-  /** 列出全部无 phash 的图片 id（T25 pHash 回填作业入队用；项级幂等可续跑） */
+  /** 列出全部待计 phash 的图片 id（T25 pHash 回填作业入队用；项级幂等可续跑）
+   *  含旧实现失败时写入的空串行（phash = ''），以便新回填修复存量污染 */
   listImageIdsWithoutPhash(): number[] {
     if (!this.db) return [];
     const rows = this.db.prepare(
-      "SELECT id FROM images WHERE phash IS NULL AND is_deleted = 0 AND media_type = 'image' ORDER BY id"
+      "SELECT id FROM images WHERE (phash IS NULL OR phash = '') AND is_deleted = 0 AND media_type = 'image' ORDER BY id"
     ).all() as Array<{ id: number }>;
     return rows.map(r => r.id);
   }
