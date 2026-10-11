@@ -178,4 +178,56 @@ describe('AgentScheduler（T7 调度循环）', () => {
     await waitFor(() => Object.keys(scheduler.activeJobSources()).length === 0)
     expect(db.getJob(jobId!)!.state).toBe('done')
   })
+
+  it('A-8（回归守卫）：stop 时作业已在飞 → 不退订，终态事件仍能回收 activeJobs（不饥饿）', async () => {
+    let release!: () => void
+    const gate = new Promise<void>((r) => { release = r })
+    runner.registerHandler(AGENT_DISCOVERY_KIND, () => gate)
+    const [jobId] = await scheduler.triggerNow(1, [91])
+    expect(scheduler.activeJobSources()[jobId!]).toEqual([91])
+    scheduler.stop()                 // stop 时刻作业仍在飞（不退订）
+    release()                         // 作业随后完成 → 终态事件
+    await waitFor(() => db.getJob(jobId!)!.state === 'done')
+    // 订阅存活 → activeJobs 被回收 → 同来源可再次调度（若 stop 退订则会永久残留 [91]）
+    await waitFor(() => Object.keys(scheduler.activeJobSources()).length === 0)
+    expect((await scheduler.triggerNow(1, [91])).length).toBe(1)
+  })
+})
+
+// ── A-4 dedup 竞态（受控 mock runner，不依赖真 JobRunner）──
+describe('AgentScheduler A-4（dedup 临界区）', () => {
+  function makeFakeRunner(enqueueImpl: () => Promise<string>) {
+    const state = { enqueueCalls: 0, subscribeCalls: 0, unsubscribeCalls: 0 }
+    const runner = {
+      enqueue: vi.fn(async () => { state.enqueueCalls++; return enqueueImpl() }),
+      start: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+      subscribeProgress: vi.fn((_cb: unknown) => { state.subscribeCalls++; return () => { state.unsubscribeCalls++ } }),
+    }
+    return { runner: runner as unknown as JobRunner, state }
+  }
+
+  it('A-4 dedup 竞态：两个并发 triggerNow 同来源 → enqueue 只跑 1 次，第二个拿到 []', async () => {
+    let resolveEnqueue!: (id: string) => void
+    const { runner, state } = makeFakeRunner(() => new Promise<string>((r) => { resolveEnqueue = r }))
+    const sched = new AgentScheduler({ getRunner: () => runner, isEnabled: () => true })
+    const p1 = sched.triggerNow(1, [31])   // 同步占位 pendingSources.add(31) 后挂起在 await enqueue
+    const p2 = sched.triggerNow(1, [31])   // filterActive 见 pendingSources 含 31 → targets 空 → []
+    resolveEnqueue('job-31')
+    const [r1, r2] = await Promise.all([p1, p2])
+    expect(state.enqueueCalls).toBe(1)     // 修复前：2 次（各自入队一个 job）
+    expect(r1).toEqual(['job-31'])
+    expect(r2).toEqual([])
+    expect(Object.keys(sched.activeJobSources())).toEqual(['job-31'])
+  })
+
+  it('A-4 enqueue 失败回滚：占位在 finally 撤销 → 同来源可重试', async () => {
+    let shouldReject = true
+    const { runner, state } = makeFakeRunner(() => (shouldReject ? Promise.reject(new Error('boom')) : Promise.resolve('job-ok')))
+    const sched = new AgentScheduler({ getRunner: () => runner, isEnabled: () => true })
+    expect(await sched.triggerNow(1, [41])).toEqual([]) // reject → 返回 []
+    shouldReject = false
+    expect(await sched.triggerNow(1, [41])).toEqual(['job-ok']) // pendingSources 已回滚 → 可重试
+    expect(state.enqueueCalls).toBe(2)
+  })
 })

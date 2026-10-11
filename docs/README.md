@@ -17,6 +17,8 @@ docs/
 ├── plans/                       # 实施计划与方向性设计（阶段性，实施完成后归档）
 │   ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
 │   ├── implementation-plan-phase9-agent.md # Phase 9 Agent 体系与智能采集（M0-M3 已交付，M4+ 进行中）
+│   ├── implementation-plan-phase10.md      # Phase 10 蒙版/SAM2/LaMa/人脸/图集补全 实施计划（draft，未开工）
+│   ├── tier1-ai-wiring-hnsw-phase10-plan.md # Tier 1 深度分析：ai-wiring 并发修复 / HNSW 规模化验证 / Phase 10 规划
 │   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
 │   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
 │   └── phase-5-completion.md               # Phase 5 完成记录
@@ -79,4 +81,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-09-29
+**文档结构更新日期**: 2026-10-11

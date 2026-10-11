@@ -6,6 +6,15 @@
 
 ## [未发布]
 
+### 修复
+- **AI 接线并发正确性（Tier1-A，2026-10-11，`fix/phase8-defects`）**：修复 6 项经三路只读审计 + 源码逐行复核确认的竞态/泄漏（A-1~A-6），另经代码评审加固 5 处（A-7/A-8 按实测口径登记不单独修）；共 +14 例确定性测试，五 suite 全绿：
+  - A-1（P0 内存泄漏）`OnnxClipEngine`/`OnnxClipTextEncoder` 补 `disposedDuringLoad` 三件套：load 在飞期 unload → 新会话建成即释放；评审加固：`load()` 在无会话态显式抛错（不静默 resolve 骗过并发等待者）
+  - A-2（P1 查询静默失败）`runSemanticQuery` 与标签 handler 在 `await enc.load()` 与 `encode` 之间加换链守卫 `if (enc !== queryTextEncoder)`：旧链在飞被拆则查询作废（标签项抛错可重跑）；评审加固：早退补 `logger.warn` 留痕
+  - A-3（P1 磁盘竞态）`getVectorIndexService` 换模型时删除旧 dim/modelId 的 stale sidecar + `VectorIndexService` 落 `{dim,modelId}` 元数据并在 load 前校验（评审加固：覆盖进程重启换模型绕过工厂 rm 的 §9.7 跨模型污染），新会话从 vectors.db 全量重建
+  - A-4（P1 重复作业）`AgentScheduler.triggerNow` 引入 `pendingSources` 同步占位临界区：消灭「快照→await enqueue→登记」间隙的 dedup 竞态，同来源并发只入队一次；enqueue 失败 finally 回滚
+  - A-5/A-6（P2/P3）`RequestExecutor.HostGate` 删除 `hostWaiters` 泄漏字段（递增后无读取/递减/删除路径）；`perHost` 标注为保留字段（`@deprecated`，当前实现恒串行）——采计划回退方案 (b)，因 tail 链与 first-visit-skip-delay 频控退让深度耦合，信号量改造留独立任务
+  - A-7（P3）`enqueueIndexForLibrary` 的 `engine.load()` 纳入 try、异常回滚 `librarySessions` 占位（评审加固），引用计数“只对成功 load 计数”由结构保证；A-8（P3）评审发现 stop() 退订会使“stop 时刻在飞”作业终态事件永久丢失→来源饥饿，故不撤订阅（单例内良性），仅停定时器
+
 ### 新增
 - **媒体加载性能提升（2026-09-19，`fix/phase8-defects` `6df2c18`，未发版）**：缩略图/preview 出口由 base64 data URL 改稳定 `media://` URL（HMAC-SHA1 确定性 token + 进程级随机密钥）；协议层流式响应（`stream:true`）+ ETag/304 + Range（含 suffix）+ Cache-Control；`loadFullImage` 下线；sharp/ffmpeg 限流与临时文件泄漏治理；扫描批量事务化；Lightbox preview→原图双图层渐进；Masonry 视口窗口化；方向感知预取。CDP 真机验证 29/29（`scripts/cdp-verify-media.mjs`）；方案与基线见 `docs/archive/媒体加载性能提升方案-2026-09.md`
 - **Agent 体系与智能采集**（Phase 9 M0-M3，2026-09-26）：

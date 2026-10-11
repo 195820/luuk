@@ -17,6 +17,9 @@ import { AnnIndex, type AnnHit } from './ann-index'
  */
 
 const SIDECAR_FILE = 'vectors.usearch'
+// A-3/Warn#4：USearch 文件头不含 modelId/dim 之外的标识，进程重启后换模型会绕过工厂 rm 直接载入旧模型图（§9.7）。
+// 额外落一份 {dim, modelId} 元数据，load 先校验，不符即视为陈旧丢弃重建。
+const META_FILE = 'vectors.usearch.meta.json'
 
 export class VectorIndexService {
   private ann: AnnIndex | null = null
@@ -29,6 +32,20 @@ export class VectorIndexService {
 
   private sidecarPath(): string {
     return path.join(this.libraryPath, '.ivlib', SIDECAR_FILE)
+  }
+
+  private metaPath(): string {
+    return path.join(this.libraryPath, '.ivlib', META_FILE)
+  }
+
+  /** Warn#4：读元数据判当前 sidecar 是否属本服务（dim+modelId 一致）；缺失/损坏 → false（不可信→陈旧） */
+  private metaMatches(): boolean {
+    try {
+      const m = JSON.parse(fs.readFileSync(this.metaPath(), 'utf8')) as { dim: number; modelId?: string | null }
+      return m.dim === this.dim && (m.modelId ?? undefined) === (this.modelId ?? undefined)
+    } catch {
+      return false
+    }
   }
 
   isOpen(): boolean {
@@ -53,6 +70,11 @@ export class VectorIndexService {
   load(db: VectorsDB): void {
     if (this.ann) return
     const p = this.sidecarPath()
+    // A-3/Warn#4：sidecar 命中前先校验元数据（dim+modelId）。进程重启后换模型会绕过工厂 rm 直接
+    // AnnIndex.load 旧模型图 → §9.7 跨模型污染；元数据不符（或缺失/损坏）即删陈旧 sidecar 走重建
+    if (fs.existsSync(p) && !this.metaMatches()) {
+      try { fs.rmSync(p, { force: true }); fs.rmSync(this.metaPath(), { force: true }) } catch { /* 删除失败不致命：countIndexed 校验仍会兜底 */ }
+    }
     if (fs.existsSync(p)) {
       const ann = AnnIndex.load(p, this.dim)
       // 陈旧校验：sidecar 只信 vectors.db（源真相）。size 与干净行数不符（退出未落盘/崩溃/脏写）→ 丢弃重建
@@ -71,6 +93,11 @@ export class VectorIndexService {
   unload(): void {
     if (!this.ann) return
     this.ann.save(this.sidecarPath())
+    // A-3/Warn#4：同步落元数据 {dim, modelId}，供下次 load（含进程重启）校验 sidecar 归属
+    try {
+      fs.mkdirSync(path.dirname(this.metaPath()), { recursive: true })
+      fs.writeFileSync(this.metaPath(), JSON.stringify({ dim: this.dim, modelId: this.modelId ?? null }))
+    } catch { /* 元数据写失败不致命：下次 load metaMatches 返回 false → 保守重建 */ }
     this.ann = null
   }
 
@@ -121,6 +148,13 @@ export function getVectorIndexService(libraryPath: string, dim: number, modelId?
     // dim 或 modelId 不一致（换模型/换维度）→ sidecar 与之不匹配不可复用：丢弃重建
     if (s.getDim() !== dim || s.getModelId() !== modelId) {
       s.close()
+      // A-3：换模型 = 旧 sidecar 语义失效。旧图内嵌旧模型空间（USearch 文件头不含 modelId，
+      // load 仅按 dim 校验 → 数量碰巧相等时会把旧模型图当新模型用，§9.7 跨模型污染）。
+      // sidecar 本就是可丢弃加速层（源真相 vectors.db），直接删最稳——新会话从 vectors.db 全量重建。
+      const stale = path.join(libraryPath, '.ivlib', SIDECAR_FILE)
+      try { fs.rmSync(stale, { force: true }) } catch { /* 删除失败不致命：load 侧 countIndexed 校验兜底 */ }
+      // Warn#4：一并删元数据，避免新会话首装载（若未走本工厂）误读旧元数据
+      try { fs.rmSync(path.join(libraryPath, '.ivlib', META_FILE), { force: true }) } catch { /* 忽略 */ }
       const next = new VectorIndexService(libraryPath, dim, modelId)
       instances.set(libraryPath, next)
       return next

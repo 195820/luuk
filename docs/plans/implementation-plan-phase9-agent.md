@@ -177,6 +177,7 @@ T1-T7 交付后经 Ultra Review 发现 **2 Critical / 6 Warning / 6 Suggestion**
 | **理由** | PoC 实测（2026-09-29，附录 A）：R5 暴力扫描 P95 4.6s 超 §9.4 目标且 EQP 全表 SCAN；R2 fp32 478MB 入内存红线、int8 235MB 且无 VNNI 不提速；R7 naive 4K+ OOM |
 | **被否决** | ① 维持「一期暴力扫描、二期再 HNSW」（被 R5 实测直接否）② 向量内联 thumbs.db（被 R5 全表 SCAN + 拖累缩略图链路否）③ fp32 常驻（违反 C3） |
 | **失效条件** | 若目标机普遍带 VNNI/独显，int8-only 的内存妥协可重估；若 HNSW 召回不达标回退 sqlite-vec 精确扫描 |
+| **R11 实测注记（2026-10-11）** | 已跑 `scripts/bench-poc-r11.mjs`（见方向文档附录 A R11）：纯随机 512 维 int8 下 HNSW 1-recall@10 不达 0.95（10K 穷举上限 0.875，200K 崩塌至 ~0）但延迟全程 P95≪1s。**脚本正确性已由 f32 对照坐实（同语料 f32 ef=rows 上限 recall=1.0，i8 仅 0.875 → 差距为 int8 度量损失，非脚本 bug）**。**判读：该判据因对抗性随机数据而不可信，不得据此触发 sqlite-vec 回退**；开工回退前须用真实库 CLIP embedding `--from-db` 复测。数据：`scripts/poc-r11/result-r11-{10000,200000}.json` |
 
 ---
 

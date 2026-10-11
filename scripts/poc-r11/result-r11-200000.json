@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "rows": 200000,
+    "dim": 512,
+    "queries": 15,
+    "k": 10,
+    "quant": "int8",
+    "metric": "cos",
+    "grid": "full(27)",
+    "configs": 27,
+    "usearch": "unknown",
+    "recallCaliber": "hit-rate: |ANN∩GT|/K",
+    "gtCaliber": "float-exact cosine top-K over int8 vectors（= 生产暴力扫描/sqlite-vec 精确参照）",
+    "note": "随机向量=HNSW 最坏情况下界；真实 CLIP 向量有簇结构通常更好。可加 --from-db 复测真实向量（待实现）",
+    "startAt": "2026-10-11T10:03:30.473Z"
+  },
+  "perConfig": [
+    {
+      "M": 8,
+      "efC": 64,
+      "efS": 16,
+      "buildSec": 639,
+      "buildMs": 63870,
+      "buildRssDeltaMB": 136,
+      "peakRssMB": 287,
+      "recallAt10": 0,
+      "queryP50Ms": 0.13,
+      "queryP95Ms": 0.62,
+      "qps": 5981,
+      "pass": false
+    },
+    {
+      "M": 8,
+      "efC": 64,
+      "efS": 64,
+      "buildSec": 747,
+      "buildMs": 74728,
+      "buildRssDeltaMB": 143,
+      "peakRssMB": 430,
+      "recallAt10": 0,
+      "queryP50Ms": 0.42,
+      "queryP95Ms": 0.62,
+      "qps": 2220,
+      "pass": false
+    },
+    {
+      "M": 8,
+      "efC": 64,
+      "efS": 128,
+      "buildSec": 805,
+      "buildMs": 80531,
+      "buildRssDeltaMB": 128,
+      "peakRssMB": 559,
+      "recallAt10": 0.02,
+      "queryP50Ms": 0.92,
+      "queryP95Ms": 1.32,
+      "qps": 1065,
+      "pass": false
+    },
+    {
+      "M": 8,
+      "efC": 128,
+      "efS": 16,
+      "buildSec": 1548,
+      "buildMs": 154843,
+      "buildRssDeltaMB": 133,
+      "peakRssMB": 692,
+      "recallAt10": 0.0067,
+      "queryP50Ms": 0.1,
+      "queryP95Ms": 0.18,
+      "qps": 8932,
+      "pass": false
+    },
+    {
+      "M": 8,
+      "efC": 128,
+      "efS": 64,
+      "buildSec": 1476,
+      "buildMs": 147593,
+      "buildRssDeltaMB": 137,
+      "peakRssMB": 829,
+      "recallAt10": 0.0067,
+      "queryP50Ms": 0.39,
+      "queryP95Ms": 0.5,
+      "qps": 2591,
+      "pass": false
+    }
+  ]
+}

@@ -1,5 +1,32 @@
-import { describe, it, expect } from 'vitest'
-import { quantizeEmbedToInt8, dequantInt8ToIntFloat } from '../onnx-clip-engine'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { quantizeEmbedToInt8, dequantInt8ToIntFloat, OnnxClipEngine } from '../onnx-clip-engine'
+
+// A-1 测试专用：mock onnxruntime-node，InferenceSession.create 可受控挂起（手动 resolve）以制造在飞窗口。
+// 纯函数用例（quantize/dequant）不触碰本 mock；load/unload 用例仅用到 InferenceSession.create。
+const ortMock = vi.hoisted(() => {
+  const state = {
+    createCalls: 0,
+    releaseCalls: 0,
+    blockCreate: true,
+    resolveCreate: null as null | (() => void),
+  }
+  return {
+    state,
+    InferenceSession: {
+      create: async (_p: string) => {
+        state.createCalls++
+        const release = async () => { state.releaseCalls++ }
+        if (state.blockCreate) {
+          return await new Promise<{ release: typeof release }>((resolve) => {
+            state.resolveCreate = () => resolve({ release })
+          })
+        }
+        return { release }
+      },
+    },
+  }
+})
+vi.mock('onnxruntime-node', () => ortMock as never)
 
 function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
   let dot = 0, na = 0, nb = 0
@@ -62,5 +89,51 @@ describe('quantizeEmbedToInt8（Phase 9 M5 · T21 R5 int8-only 输出量化）',
     const c3 = cosine(q, dq(v3))
     expect(c1).toBeGreaterThan(c2)
     expect(c2).toBeGreaterThan(c3)
+  })
+})
+
+describe('OnnxClipEngine.load/unload（A-1：unload-during-load 防护）', () => {
+  const { state } = ortMock
+  beforeEach(() => {
+    state.createCalls = 0
+    state.releaseCalls = 0
+    state.blockCreate = true
+    state.resolveCreate = null
+  })
+
+  it('泄漏复现：load 在飞时 unload → 新会话建成后立即释放（不遗留无主会话）', async () => {
+    const engine = new OnnxClipEngine({ modelPath: 'fake.onnx' })
+    const p = engine.load()        // 不 await：create 挂在受控 Promise 上
+    // 等到 create() 真正被调用并挂起（resolveCreate 就位）：动态 import 需多个微任务
+    for (let i = 0; i < 50 && !state.resolveCreate; i++) await new Promise((r) => setTimeout(r, 0))
+    expect(state.resolveCreate).toBeTruthy()
+    await engine.unload()          // session 为 null + loading 在飞 → 置 disposedDuringLoad
+    state.resolveCreate!()         // 受控放行 create
+    // Warn#2：load 在飞期被 unload → 新会话建成即释放，且 load() 显式 reject（不静默 resolve 骗过调用方）
+    await expect(p).rejects.toThrow(/加载期被卸载/)
+    expect(state.createCalls).toBe(1)
+    expect(state.releaseCalls).toBe(1) // 修复前此处为 0（会话泄漏）
+    expect(engine.isLoaded()).toBe(false)
+  })
+
+  it('并发 load 去重：Promise.all 两次 load 只建一次会话（C2 不变量）', async () => {
+    state.blockCreate = false
+    const engine = new OnnxClipEngine({ modelPath: 'fake.onnx' })
+    await Promise.all([engine.load(), engine.load()])
+    expect(state.createCalls).toBe(1)
+    expect(engine.isLoaded()).toBe(true)
+  })
+
+  it('正常路径零回归：load → unload → load，防护标志不粘连（第二次再建会话）', async () => {
+    state.blockCreate = false
+    const engine = new OnnxClipEngine({ modelPath: 'fake.onnx' })
+    await engine.load()
+    expect(state.createCalls).toBe(1)
+    await engine.unload()
+    expect(engine.isLoaded()).toBe(false)
+    await engine.load()
+    expect(state.createCalls).toBe(2)  // disposedDuringLoad 不粘连，第二次正常建会话
+    expect(state.releaseCalls).toBe(1) // 仅第一次 unload 释放
+    expect(engine.isLoaded()).toBe(true)
   })
 })

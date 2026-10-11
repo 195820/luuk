@@ -44,6 +44,8 @@ export class AgentScheduler {
   private planner: AgentPlanner | null = null
   /** 在途作业：jobId → 未完成的 sourceId 集合，同来源并发去重 */
   private activeJobs = new Map<string, Set<number>>()
+  /** A-4：enqueue 在飞期间的来源占位——消灭「快照 → await enqueue → 登记」间隙的 dedup 竞态 */
+  private pendingSources = new Set<number>()
 
   constructor(private deps: AgentSchedulerDeps) {
     this.ensureSubscription()
@@ -91,7 +93,9 @@ export class AgentScheduler {
 
   /**
    * 停止定时调度（不取消在途作业，JobRunner 持久化进度可续跑）
-   * 进度订阅保留：stop 后仍可能经 triggerNow/onSourceAdded 手动入队，需终态出账（W4）
+   * 进度订阅保留：JobRunner.subscribeProgress 无事件重放，stop 若退订会使「stop 时刻在飞」的
+   * 作业终态事件永久丢失 → activeJobs 残留 → 该来源被 filterActive 永久屏蔽至进程重启（饥饿）。
+   * 故 A-8 不撤订阅（订阅泄漏在单例生命周期内良性）；stop 语义 = 仅停定时器。
    */
   stop(): void {
     if (this.timer) {
@@ -129,6 +133,8 @@ export class AgentScheduler {
     if (!this.deps.isEnabled()) return []
     const targets = this.filterActive(sourceIds ?? [])
     if (sourceIds && targets.length === 0) return []
+    // A-4：同步占位（在任何 await 之前完成）；并发进来的 triggerNow 会在 filterActive 被 pendingSources 拦下
+    for (const sid of targets) this.pendingSources.add(sid)
     try {
       const runner = this.deps.getRunner()
       const jobId = await runner.enqueue(
@@ -155,6 +161,9 @@ export class AgentScheduler {
     } catch (err) {
       logger.error(LOG_KEY, `发现作业入队失败: ${err}`)
       return []
+    } finally {
+      // A-4：登记完成或回滚，统一撤销占位（不依赖 W3 回滚）
+      for (const sid of targets) this.pendingSources.delete(sid)
     }
   }
 
@@ -164,13 +173,13 @@ export class AgentScheduler {
     return this.triggerNow(libraryId, [sourceId])
   }
 
-  /** 过滤掉已有在途作业覆盖的来源 */
+  /** 过滤掉已有在途作业覆盖或正在登记（pendingSources）的来源 */
   private filterActive(sourceIds: number[]): number[] {
     const inFlight = new Set<number>()
     for (const active of this.activeJobs.values()) {
       for (const sid of active) inFlight.add(sid)
     }
-    return sourceIds.filter(sid => !inFlight.has(sid))
+    return sourceIds.filter(sid => !inFlight.has(sid) && !this.pendingSources.has(sid))
   }
 
   /** 在途作业快照（UI 展示/测试用） */

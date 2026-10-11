@@ -153,3 +153,23 @@ describe('RequestExecutor', () => {
     expect(exec.isDegraded('example.com')).toBeNull()
   })
 })
+
+describe('RequestExecutor A-5/A-6（perHost 保留字段 + hostWaiters 删除）', () => {
+  it('A-6：HostGate 不再有 hostWaiters 字段（无读取/递减/删除路径的泄漏字段已移除）', () => {
+    const { exec } = buildExecutor(async () => res(200))
+    const gate = (exec as unknown as { gate: Record<string, unknown> }).gate
+    expect(gate.hostWaiters).toBeUndefined()
+  })
+
+  it('A-5：perHost 为保留字段——并发同主机请求全部完成且保序（行为回归，不断言并发上限）', async () => {
+    const { exec } = buildExecutor(async () => res(200, 'x'))
+    const plans = [1, 2, 3].map((i) => plan(`https://example.com/${i}`))
+    const outs = await exec.executePlans(plans)
+    expect(outs).toHaveLength(3)
+    expect(outs.every((o) => o.ok)).toBe(true)
+    // 保序：results[i] 对应 plans[i]
+    expect(outs.map((o) => o.plan.url)).toEqual(plans.map((p) => p.url))
+    // perHost 保留字段不影响执行：当前实现不限并发于该值（回退 b 承认现状）
+    expect(exec.isDegraded('example.com')).toBeNull()
+  })
+})

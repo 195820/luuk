@@ -2,6 +2,17 @@
 
 > 本文件是决策完备的执行规格：陌生工程师可自顶向下执行，无需再做设计决策。含未决策项 = 失败，因此每个分叉都已写死结论与理由。所有行号、参数默认值、API 签名均来自当前工作树（HEAD `09137b3`）实测阅读，非估算。
 
+## 交付状态（2026-10-11，分支 `fix/phase8-defects`，已实施 + 代码评审 + 加固修复）
+
+| 项 | 状态 | 实测结果与偏离 |
+|---|---|---|
+| **A. ai-wiring 并发修复** | ✅ 已交付 | A-1~A-6 代码修复（A-1 引擎+文本塔、A-2 语义查询+标签、A-3 含元数据守卫、A-4、A-5/A-6）；**偏离**：A-5 采计划写死的回退方案 (b)（tail 链与频控退让耦合，`perHost` 标 `@deprecated`）；A-7 引用计数由 `engine.load()` try 回滚 `librarySessions` 结构性保证、A-8 经评审发现退订会致在飞作业饥饿故**不撤订阅**——两项登记不单独修。新增确定性测试 +14 例 |
+| **B. HNSW 规模化验证** | ✅ 脚本交付 + 裁决 | `scripts/bench-poc-r11.mjs` 落盘；groundtruth 修正为浮点精确余弦（等同生产精确参照）。**裁决=不达标但不可据此触发 D14**：随机 512 维 int8 是维度灾难对抗样本，f32 对照 ef=rows 上限 recall=1.0（证脚本无 bug），i8 上限 0.875、200K 崩塌至 ~0，延迟全程达标。**偏离**：1M 单组构建 >18min 本机不可行，已终止；回退开工前须 `--from-db` 真实向量复测（脚本预留 `--dtype` 对照，`--from-db` 待实现）。回填方向文档 §15/附录 A(R11) + Phase9 D14 |
+| **C. Phase 10 实施计划** | ✅ 已交付 | `docs/plans/implementation-plan-phase10.md` 落盘，`docs/README.md` 索引已收录 |
+
+**门禁**：`npx tsc --noEmit` 0 错；全量 vitest **1015 passed / 0 真实失败 / 2 skipped**（本机系统 Node + `.test-native` 原生方案即可，无需 conda env）。代码评审另加固 5 处（Critical A-8 饥饿、Warn load 显式抛错 / librarySessions 回滚 / A-3 重启污染守卫 / A-2 早退留痕 / CHANGELOG 口径）。
+
+
 ## 0. 范围与结论总览
 
 | 项 | 结论（一句话） | 证据锚点 |

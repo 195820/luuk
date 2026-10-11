@@ -81,6 +81,8 @@ export class OnnxClipTextEncoder implements TextEncoder {
       })().finally(() => { this.loading = null })
     }
     await this.loading
+    // A-1 同步：disposedDuringLoad 分支提前 return 后会话为 null → 显式抛错，不静默 resolve（与图像塔口径一致）
+    if (!this.session) throw new Error('OnnxClipTextEncoder：会话在加载期被卸载（unload-during-load），请重试 load()')
   }
 
   async unload(): Promise<void> {

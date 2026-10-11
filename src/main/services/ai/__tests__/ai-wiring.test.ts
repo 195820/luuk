@@ -661,3 +661,70 @@ describe('T24 runVisualSimilarity（图像-图像相似度，零 ANN 零文本�
     expect(engine.unloads).toBe(1)
   })
 })
+
+// ── A-2 换链竞态：runSemanticQuery / 标签作业在 await enc.load() 期间旧链被拆 ──
+describe('ai-wiring A-2 换链竞态（陈旧 enc 引用守卫）', () => {
+  /** 受控挂起编码器：load() 停在 gate 上，外部 resolveLoad() 放行；记录 encode 次数 */
+  function makeSuspendableEncoder(modelId = 'clip-text') {
+    let resolveLoad!: () => void
+    const gate = new Promise<void>((r) => { resolveLoad = r })
+    return {
+      modelId,
+      dim: DIM,
+      loads: 0,
+      unloads: 0,
+      encodeCalls: 0,
+      loaded: false,
+      resolveLoad,
+      async load() { this.loads++; this.loaded = true; await gate },
+      async unload() { this.unloads++; this.loaded = false },
+      isLoaded() { return this.loaded },
+      async encode(_t: string) { this.encodeCalls++; return new Uint8Array(DIM) },
+      async encodeBatch(ts: string[]) { ts.forEach(() => this.encodeCalls++); return ts.map(() => new Uint8Array(DIM)) },
+    }
+  }
+
+  it('语义查询：load 在飞时换链 → 早退 []，不用旧链 encode（修复前旧 enc.encode 被调用抛错）', async () => {
+    buildLayer(new FakeEmbeddingEngine(MODEL, DIM))
+    const encX = makeSuspendableEncoder('clip-text-X')
+    const encY = makeSuspendableEncoder('clip-text-Y')
+    setQueryTextEncoder(encX as never)
+    setQueryImageResolver((_l, id) => ({ id }))
+    annMock.isOpen.mockReturnValue(true)
+
+    const q = runSemanticQuery(1, 'cat', 3)     // 捕获 enc=encX，进入 await encX.load() 挂起
+    await Promise.resolve()
+    setQueryTextEncoder(encY as never)           // 换链：旧链 encX 被卸载
+    encX.resolveLoad()                            // 放行 encX.load
+    const res = await q
+    expect(res).toEqual([])
+    expect(encX.encodeCalls).toBe(0)             // 守卫在 encode 之前早退
+    expect(encY.encodeCalls).toBe(0)             // 未误用新链
+    expect(encY.loads).toBe(0)
+  })
+
+  it('标签作业：handler 在飞时换链 → 该项抛错（记 failed 可重跑），不产提案', async () => {
+    ensureAiLayer({
+      isEnabled: () => true,
+      engineFactory: () => new FakeEmbeddingEngine(MODEL, DIM),
+      getVectorsDB: () => vectorsMock as never,
+      getAnn: () => annMock as never,
+      resolvePath: (_l, id) => `/tmp/ivlib-root/${id}.jpg`,
+      modelId: MODEL,
+      dim: DIM,
+    })
+    const encX = makeSuspendableEncoder('clip-text-X')
+    setQueryTextEncoder(encX as never)
+    vectorsMock.listIndexedImageIds.mockReturnValue([1])
+    const { runner, cap } = makeRunner()
+    await enqueueLabelForLibrary(1, runner)      // 注册 handler
+
+    const h = cap.handler!({ libraryId: 1, imageId: 1 })  // 进入 await encX.load() 挂起
+    await Promise.resolve()
+    setQueryTextEncoder(makeSuspendableEncoder('clip-text-Y') as never) // 换链
+    encX.resolveLoad()                                         // 放行 load → 守卫抛错
+    await expect(h).rejects.toThrow(/换链/)
+    expect(storeMock.create).not.toHaveBeenCalled()
+    expect(encX.encodeCalls).toBe(0)              // 未用陈旧 enc 编码 prompt
+  })
+})

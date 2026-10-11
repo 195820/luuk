@@ -1,7 +1,7 @@
 /**
  * T11 — RequestExecutor（宿主统一 HTTP 出口，D10）
  * crawler-adapter 插件不发网络：只交 RequestPlan，由本执行器集中出流。
- * 治理点：per-host 并发闸 + 随机延时 + 反爬识别即停（§12.10 只识别与退让、不绕过）
+ * 治理点：同主机串行闸门（per-host 频控退让）+ 随机延时 + 反爬识别即停（§12.10 只识别与退让、不绕过）
  *        + robots.txt（可配置）+ 明确 UA（§12.9）。
  * 纯依赖注入（fetchImpl/sleepImpl/random），单测零真实网络。
  */
@@ -46,6 +46,11 @@ function matchAntiBotJsonCode(response: FetchedResponse): number | null {
 }
 
 export interface ExecutorLimits {
+  /**
+   * A-5（回退方案 b）：保留字段，当前 HostGate 实现恒串行（tail 链同时承担 first-visit skip-delay，
+   * 与频控退让逻辑深度耦合，改造风险大于收益）。真实同主机并发 = 1。计数信号量改造待独立任务。
+   * @deprecated 当前实现不使用该值判定并发（见 HostGate.acquire）
+   */
   perHost: number
   global: number
   delayMinMs: number
@@ -55,6 +60,7 @@ export interface ExecutorLimits {
 }
 
 const DEFAULT_LIMITS: ExecutorLimits = {
+  // A-5（回退 b）：perHost 为保留字段，当前实现恒串行；保留值仅作文档/未来信号量改造占位
   perHost: 2,
   global: 4,
   delayMinMs: 4000,
@@ -106,7 +112,9 @@ const defaultSleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 /**
  * per-host 串行队列 + 全局并发上限的简易闸门。
- * 不追求公平调度，只保证：同主机并发 ≤ perHost、两次同主机请求间隔 ≥ 随机延时。
+ * 不追求公平调度，只保证：同主机请求串行且间隔 ≥ 随机延时、全局并发 ≤ limits.global。
+ * 注（A-5 回退 b）：limits.perHost 为保留字段（当前恒串行，tail 链同时承担 first-visit skip-delay）；
+ * 按 host 累积的结构（tail/visited、executor.robotsCache）为设计内保留，上限=去重主机数。
  */
 class HostGate {
   private active = new Map<string, number>()
@@ -131,7 +139,6 @@ class HostGate {
     if (this.active.get(host) === undefined) this.active.set(host, 0)
     this.active.set(host, (this.active.get(host) ?? 0) + 1)
     this.globalActive++
-    this.hostWaiters.set(host, (this.hostWaiters.get(host) ?? 0) + 1)
     // 首个进入该 host 的排队者无需延时；后来者付随机延时
     const delay = this.random() * (this.limits.delayMaxMs - this.limits.delayMinMs) + this.limits.delayMinMs
     if ((this.active.get(host) ?? 0) > 0 || this.visited.has(host)) {
@@ -147,7 +154,7 @@ class HostGate {
     this.globalActive = Math.max(0, this.globalActive - 1)
   }
 
-  private hostWaiters = new Map<string, number>()
+  // A-6：删除 hostWaiters（递增后无任何读取/递减/删除路径的内存泄漏字段）
   private visited = new Set<string>()
 }
 

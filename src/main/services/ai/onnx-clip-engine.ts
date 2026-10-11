@@ -68,6 +68,8 @@ export class OnnxClipEngine implements EmbeddingEngine {
   private session: OrtSession | null = null
   /** 串行化 in-flight load：多库并发 load() 复用同一 Promise，避免创建多个 88MB 会话致先建者泄漏 */
   private loading: Promise<void> | null = null
+  /** A-1：load 在飞期间收到 unload → 新会话建成后立即释放，不留无主孤立会话 */
+  private disposedDuringLoad = false
 
   constructor(private readonly opts: OnnxClipEngineOptions) {
     this.modelId = opts.modelId ?? 'clip-vit-b32-int8'
@@ -84,19 +86,31 @@ export class OnnxClipEngine implements EmbeddingEngine {
   async load(): Promise<void> {
     if (this.session) return
     if (!this.loading) {
+      this.disposedDuringLoad = false
       this.loading = (async () => {
         const ort = await import('onnxruntime-node')
-        const s = await ort.InferenceSession.create(this.opts.modelPath)
-        this.session = s
+        const created = await ort.InferenceSession.create(this.opts.modelPath)
+        // A-1：建会话期间收到过 unload 请求 → 立即释放刚建好的会话，不外泄孤立引用（照抄 text 塔同款）
+        if (this.disposedDuringLoad) {
+          this.disposedDuringLoad = false
+          try { await created.release() } catch { /* 释放失败不致命 */ }
+          return
+        }
+        this.session = created
       })().finally(() => { this.loading = null })
     }
     await this.loading
+    // A-1 修复：若本次 load 在飞期被 unload 拆掉（disposedDuringLoad 分支提前 return），
+    // 会话为 null —— 显式抛错而非静默 resolve，避免并发等待者（C2）误判已 load 后续 embed 才失败
+    if (!this.session) throw new Error('OnnxClipEngine：会话在加载期被卸载（unload-during-load），请重试 load()')
   }
 
   /** R2：会话结束释放 ort 会话内存 */
   async unload(): Promise<void> {
     const s = this.session
     this.session = null
+    // A-1：会话尚在建立（loading 在飞且尚未赋值）→ 标记让 load 完成后自行释放
+    if (!s && this.loading) { this.disposedDuringLoad = true; return }
     if (s) {
       try {
         await s.release()

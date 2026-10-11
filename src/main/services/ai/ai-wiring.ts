@@ -244,6 +244,10 @@ export async function runSemanticQuery(libraryId: number, query: string, limit: 
   let selfLoaded = false
   try {
     await enc.load()
+    if (enc !== queryTextEncoder) {   // A-2 换链竞态：旧链在飞时被拆，本查询作废（新链的查询会正常服务）；finally 仍递减 textInflight/归零 queryRefCounts
+      logger.warn(LOG_KEY, `语义查询作废（文本编码器已换链）库=${libraryId}`)   // Warn#5：留痕，避免“搜索突然变空”完全静默
+      return []
+    }
     // 收敛临界区（#5）：所有 await（load + encode）置于触碰 ANN 之前；此后同步完成 load→search→组装，
     // 不再让出事件循环，杜绝索引会话在查询 await 期收尾并 unload 掉共享 ANN（致查询静默返回空）
     const vec = await enc.encode(query)
@@ -315,7 +319,14 @@ export async function enqueueIndexForLibrary(libraryId: number, runner: JobRunne
   librarySessions.set(libraryId, '')
 
   // R2：会话开始加载引擎 + 本库内存 ANN
-  await engine.load()
+  // Warn#3：engine.load() 纳入 try——若 load 抛（含 A-1 unload-during-load）→ 回滚 librarySessions 占位再外抛，
+  // 否则占位残留（仅 dispose 清）→ 该库后续索引/标签 has() 守卫永久返回 null
+  try {
+    await engine.load()
+  } catch (err) {
+    librarySessions.delete(libraryId)
+    throw err
+  }
   acquireEngine()
 
   let ann: AnnService
@@ -339,6 +350,8 @@ export async function enqueueIndexForLibrary(libraryId: number, runner: JobRunne
     if (unsub) { try { unsub() } catch { /* ignore */ } }
     try { ann.unload() } catch (err) { logger.warn(LOG_KEY, 'ANN 卸载异常', err) } // 落盘 sidecar
     if (librarySessions.get(libraryId) === jobId) librarySessions.delete(libraryId)
+    // A-7：releaseEngine 仅在 engineSessions 归零时 unload，且 A-1 后 OnnxClipEngine.unload() 对未加载态幂等 no-op；
+    // 不加 isLoaded 守卫（那会跳过引用计数递减、破坏口径）。finish 必在 load+acquire 成功后注册，计数恒平衡。
     releaseEngine(engine)
   }
   activeFinishes.add(finish)
@@ -382,6 +395,9 @@ function registerLibraryAwareLabelHandler(runner: JobRunner): void {
     const cached = labelPromptCache.get(item.libraryId)
     if (!cached || cached.encoder !== enc || cached.signature !== signature) {
       await enc.load()
+      // A-2（S3 同根因）：load 在飞期间换链（ai.enabled 关→开 / boot 重入）→ 旧 enc 已被卸载，
+      // 抛错让该项记 failed 重跑（JobRunner 项级失败可 resume），避免用陈旧 enc 编码出错误 prompt 向量
+      if (enc !== queryTextEncoder) throw new Error('ai-label: 文本编码器已换链，标签作业项重跑')
       const candidates = buildTagCandidates(tagNames)
       const promptVecs = await enc.encodeBatch(candidates.map(c => c.prompt))
       labelPromptCache.set(item.libraryId, { encoder: enc, signature, candidates, promptVecs })

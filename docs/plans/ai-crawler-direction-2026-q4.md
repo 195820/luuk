@@ -1061,6 +1061,7 @@ provider isAvailable() 探测结果
 评审通过后优先执行。脚本约定放 `scripts/`（沿用 `bench-scan.mjs` / `bench-hash-window.mjs` 命名风格），实测数据回填附录 A，**禁止填估算值**（沿用 [implementation-plan](./implementation-plan-2026-q3-q4.md) 附录 A 的纪律）。
 
 > **状态（2026-09-29）**：R1/R2/R3/R5/R7/R10 已实测，数据见附录 A；R4/R6/R8/R9 未完。其中 **R2/R5/R7 触发 M5 方案改道**（详见下表「已实测触发」列与 §9.1/§9.4）。
+> **状态（2026-10-11）**：新增 **R11**（HNSW 1M×512 int8 召回/延迟）已跑——**随机协议下 recall 不达标但属对抗下界，不可触发 D14 回退；开工回退前需真实 CLIP 向量 `--from-db` 复测**（详见附录 A R11）。
 
 | # | 风险 | 测量协议 | 失败时的改道方案 |
 |---|---|---|---|
@@ -1073,6 +1074,7 @@ provider isAvailable() 探测结果
 | **R7** | **大图内存峰值**：4K 抠图与超分分块推理的峰值内存与耗时 | 逐级分辨率测 RSS 峰值，对照 7.4 水位线（外部参考值 510MB 已超红线） | **已实测 2026-09-29：naive 4K+ OOM → 改道生效：强制 128px 分块 + 逐带流式合成 + 单次分辨率上限 ≤4K + 用完 unload（详见 §7.4/§7.5，Phase 10 大图与 M5 T21 预处理均须遵循）** |
 | **R8** | **目标用户独显占比**（产品调研，**非技术验证**） | 用户问卷 / 社区投票 | 无数据则 D2 只能先做 comfyui + cloud，**Phase 11 不得开工** |
 | **R9** | **插件 API 冻结风险**：API 过早发布导致长期兼容负担 | Phase 8 结束时列出「必须已验证的 API 面清单」，逐项核对是否被 3 个内置插件真实使用 | 由 3 个内置插件驱动、Phase 8 内允许破坏性变更、Phase 9 起才进入兼容承诺 |
+| **R11** | **HNSW 默认参数在 1M×512 int8 下的召回/延迟未实测**（D14 失效判据：召回不达标→回退 sqlite-vec） | `scripts/bench-poc-r11.mjs`：随机 int8 向量网格扫描 M×efC×efS，groundtruth=浮点暴力余弦 top-K（同生产精确参照），度量 1-recall@10(hit-rate) + P50/P95，判据 recall≥0.95 且 P95≤1s | 见附录 A R11：随机协议判据不可信，需真实 CLIP 向量 `--from-db` 复测后再定回退 |
 
 **两个决定性指标**：
 - **R2** 决定索引方向是否成立（数十小时 vs 数天的差别）
@@ -1138,6 +1140,7 @@ provider isAvailable() 探测结果
 | R8 | 用户独显占比 | 产品调研项，未做 | — | 待问卷；**Phase 11 门禁不变** |
 | R9 | API 面验证清单 | Phase 8 结束才到期，未到验证窗口 | — | — |
 | R10 | @mtcute/node（计划增补项） | 双通道（Node 24 / Electron utilityProcess）均通过：ESM 装载 ~0.9s、webcrypto.subtle AES 可用、TCP 收发可用（loopback 3-4ms）、`TelegramClient` 类可用；**真实 TG DC（149.154.167.51:443）TCP 超时不可达** | 2026-09-29 | **运行时部分通过**（utilityProcess 无阻塞项）；端到端补图链路受阻于网络+凭据，`configureTgClientFactory` 生产工厂仍不能开工，需代理/专网环境复验 |
+| R11 | 1M×512 int8 HNSW 召回/延迟（`scripts/bench-poc-r11.mjs`，usearch 2.26.2 cos/i8；groundtruth=浮点暴力余弦 top-K 同生产精确参照；recall=hit-rate |∩|/K） | **10K 全网格(27)**：最佳 M=32/efC=128/efS=128 recall@10=**0.82** P95 0.65ms；**ef=10000 穷举上限 recall=0.875**（P95 18.6ms）。**200K 全网格前 5 组（M=8）**：recall 崩塌至 **0–0.02**，构建 64–155s/组，RSS 峰 829MB。**1M**：单组构建 >18min（~1ms/add）本机不可行，已终止。**对照实验（证脚本无 bug）**：同 10K 语料 `--dtype=f32` 的 ef=rows 穷举上限 **recall=1.0**（P95 16ms），而 i8 穷举上限仅 0.875 → ①脚本/GT 管线正确（f32 达 1.0）；②**int8 量化本身在近正交随机向量上损失约 12.5% top-10 召回**（生产 int8-only 直接相关）；③efS=128 下 f32/i8 均 ~0.76 → 小 ef 对随机数据导航不足，需大 ef 才趋近 1.0 | 2026-10-11 | **不可据此触发 D14 回退**：recall 不达标但延迟全程达标（P95≪1s）。脚本正确已由 f32 对照（ef=rows recall=1.0）证实；低召回根因是 **512 维纯随机均匀 int8 = 维度灾难对抗样本**（向量近正交、top-10 由噪声决定）+ int8 度量舍入，随 N 增大崩塌，**不代表聚类的真实 CLIP 向量**。随机协议不足以评估生产召回 → **开工 sqlite-vec 回退前必须先加 `--from-db` 用真实库 embedding 导出复测**（本脚本预留 --dtype 对照入参，--from-db 待实现）。数据文件：`scripts/poc-r11/result-r11-{10000,10000-f32,200000}.json` |
 
 ### 附录 B：外部实测参考值来源清单
 
