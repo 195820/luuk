@@ -19,7 +19,8 @@ docs/
 │   ├── implementation-plan-phase9-agent.md # Phase 9 Agent 体系与智能采集（M0-M3 已交付，M4+ 进行中）
 │   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
 │   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
-│   └── phase-5-completion.md               # Phase 5 完成记录
+│   ├── tier1-ai-wiring-hnsw-phase10-plan.md  # Tier 1 AI 基础设施修复计划（ai-wiring 会话所有权/HNSW 基准/Phase 10 蒙版）
+│   └── tier1-followup-audits-2026-10.md     # Tier 1 后续六路深度审计（JobRunner/采集/EditsCache/推理宿主/量化误差/media:// 安全）
 └── archive/                     # 已完成的方案与测试记录（历史快照，不再更新）
     ├── 测试方案.md               # Phase 1 MVP 测试方案
     ├── 多媒体模块重构方案.md     # 多媒体重构方案（已实施）
