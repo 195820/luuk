@@ -21,6 +21,7 @@ docs/
 │   ├── phase9-t22-semantic-search.md               # T22 CLIP 语义搜索实施方案（已实施）
 │   ├── phase9-t23-t24-t25-quality-match-jobs.md    # T23/T24/T25 合并实施方案（已实施）
 │   ├── tier1-ai-wiring-hnsw-phase10-plan.md        # Tier 1：ai-wiring 并发修复 / HNSW 验证 / Phase 10 规划（已交付）
+│   ├── tier1-followup-audits-2026-10.md            # Tier 1 后续六路深度审计（JobRunner/采集/EditsCache/推理宿主/量化误差/media:// 安全）
 │   ├── implementation-plan-phase10.md              # Phase 10 蒙版/SAM2/LaMa/人脸/图集补全（draft · 零代码）
 │   ├── Agent架构派生规划-2026-09-22.md              # Agent 架构派生扩展点调研（draft）
 │   ├── 回归测试计划-2026-09-13.md                    # MT-* 回归用例（current）
@@ -98,4 +99,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-10-19（v1.0.0 发版前索引核对：plans/ 实有 13 份、归档件位置修正、全部补 front matter）
+**文档结构更新日期**: 2026-10-19（v1.1.0 发版前索引核对 + 合入后续六路审计：plans/ 实有 14 份、归档件位置修正、全部补 front matter）
