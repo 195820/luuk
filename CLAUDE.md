@@ -10,19 +10,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 🔧 开发命令
 
 ```bash
-conda activate imageviewer  # 激活 Conda 环境（Node.js、Python 运行时依赖）
 npm install            # 安装依赖
-npm run dev            # 开发模式（自动打开 DevTools）
+npm run dev            # 开发模式（自动打开 DevTools，NO_AUTO_DEVTOOLS=1 可关）
 npm run build          # 构建前端 + Electron 打包
 npm run build:dir      # 仅构建前端（不打包）
 npm run preview        # 预览构建结果
 npm run test           # vitest watch 模式
-npm run test:run       # vitest 全量单次运行（当前基线 ~73 files / 807 passed · 2 skipped，须在 imageviewer conda/Node25 环境跑）
+npm run test:run       # vitest 全量单次运行（当前基线 98 files / 1017 passed · 2 skipped · 2 expected-fail，约 45s）
 npm run test:coverage  # 覆盖率报告
+npm run e2e            # Playwright Electron E2E（直调 @playwright/test/cli.js）
 npx tsc --noEmit       # 类型检查（交付门禁：0 错误）
 ```
 
-> **注意**：所有 `npm` 命令执行前，必须先激活 `imageviewer` Conda 环境，否则 Node.js / Python 版本可能不匹配。
+> **环境口径（2026-10-19 实测修正）**：`npm run test:run` / `npx tsc --noEmit` / `npm run dev` / `npm run build` 用 **PATH 上的系统 Node 即可**（实测 v24.16.0 全绿）。原生模块 ABI 错配已由 vitest `globalSetup` 机制解决：`scripts/ensure-test-native.mjs` 会把一份 **Node-ABI** 的 `better_sqlite3.node` 备到 `.test-native/`，经 `BETTER_SQLITE3_NATIVE_BINDING` 显式加载，并把 `node_modules` 内的原二进制**原样还原**，不影响 dev/打包用的 Electron ABI；sharp 在系统 Node 下可直接加载。
+> `imageviewer` Conda 环境（`environment.yml`）**仅在需要 Python 的场景**（`scripts/poc-*` 下的模型导出/下载、生成 relu 等 PoC 脚本）才必须激活；跑测试/构建不再依赖它。旧文档中「所有 npm 命令须先 conda activate，否则大量报错」的约束已失效。
 
 ## 🏗️ 架构设计
 
@@ -295,7 +296,7 @@ e:\luuk\
 11. **ESM-only 依赖**: `trash` / `wallpaper` / `electron-store` 等为 ESM-only，需命名导入并加入 Vite 构建 externals（`vite.config.ts`）
 12. **排序白名单**: 排序字段在三处联合类型须同步修改（types、store、后端校验）
 13. **vitest 动态 import 限制**: jsdom/vm runner 无法对绝对路径文件执行原生 dynamic import，插件类单测需用项目根目录内的 fixtures
-14. **交付门禁**: `npx tsc --noEmit` 零错误 + 全量 vitest 通过（当前基线 807 passed / 2 skipped）；涉及网络的模块（crawler/jev）单测必须零真实网络；全量测试须在 imageviewer conda（Node25/ABI141）环境跑，PATH 上的系统 Node 会因 ABI 错配使 better-sqlite3/sharp 加载失败大量报错
+14. **交付门禁**: `npx tsc --noEmit` 零错误 + 全量 vitest 通过（当前基线 **98 files / 1017 passed / 2 skipped / 2 expected-fail**，2026-10-19 系统 Node v24.16.0 实测）；涉及网络的模块（crawler/jev）单测必须零真实网络。测试无需 conda 环境（见上文「环境口径」，`.test-native` 机制已消除 better-sqlite3/sharp 的 ABI 错配）
 
 ## ⌨️ 快捷键
 

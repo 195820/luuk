@@ -6,6 +6,12 @@ import type { JobState, JobItemState, JobProgress, JobItem } from '../../types'
 /** 批处理大小 */
 const BATCH_SIZE = 10
 
+/**
+ * 自泵分页扫描页大小（DEF-PUMP-01）：每次从 DB 取多少行 pending 作业。必须大于原
+ * `maxConcurrent * 4` 小窗口，否则会被无 handler 的陈旧 pending 作业占满窗口（见 pump）。
+ */
+const PUMP_PAGE = 50
+
 /** 处理器函数类型 */
 type JobItemHandler = (item: JobItem) => Promise<void>
 
@@ -40,6 +46,11 @@ export class JobRunner {
   private pendingExecutions = new Set<Promise<void>>()
   /** 最大并发作业数（P1-9：从 IPC 层下沉为单一真值来源，默认 1）*/
   private maxConcurrent: number
+  /**
+   * 退出标志（N1）：shutdown 后不得再由自泵拉起新作业。否则被 abort 的 executeJob 收尾
+   * 调 pump() 时 runningJobs 已空，会复活其它 pending 作业并与 app.exit(0) 抢写 DB。
+   */
+  private shuttingDown = false
 
   constructor(db: MasterDB, maxConcurrent: number = 1) {
     this.db = db
@@ -163,6 +174,7 @@ export class JobRunner {
 
   /** 关闭所有运行中的作业，等待后台任务完成 */
   async shutdown(): Promise<void> {
+    this.shuttingDown = true
     for (const [jobId, running] of this.runningJobs) {
       running.abortController.abort()
       this.db.updateJobState(jobId, 'paused')
@@ -284,18 +296,32 @@ export class JobRunner {
   /**
    * 自泵（P1-9）：在槽位未满时，从 DB 拉取 pending 且已注册 handler 的作业依次启动。
    * 触发点：executeJob 收尾 / cancel / pause 释放槽位后。
+   *
+   * DEF-PUMP-01（2026-10-19 发版门禁由 E2E PH8-18 坐实）：**分页穿越**而非固定小窗口。
+   * 旧实现只取 `maxConcurrent * 4` 行（默认并发 1 → 窗口 4），而窗口按 priority DESC / created_at ASC
+   * 排序，会被「kind 无注册 handler 而永久 pending」的陈旧作业（插件关闭期入队后从未启用）占满：
+   * 循环对这类行逐个 continue 后窗口耗尽，真正可跑的排队作业永远轮不到→排队饿死（实测：
+   * 队头作业 done、后入队作业被 IPC 直起路径救活，而先入队作业永久 pending）。
+   * 真实用户库同样会积累这类行，故必须分页直到槽位填满或 pending 遍历完。
    */
   private pump(): void {
+    // N1：退出期不再拉起新作业（在飞作业的 abort/paused 由 shutdown 完成）
+    if (this.shuttingDown) return
     if (this.runningJobs.size >= this.maxConcurrent) return
-    const pending = this.db.getPendingJobs(this.maxConcurrent * 4)
-    for (const job of pending) {
-      if (this.runningJobs.size >= this.maxConcurrent) break
-      // 跳过未注册 handler 的（如对应插件未启用），避免 start() 抛错
-      if (!this.handlers.has(job.kind)) continue
-      if (this.runningJobs.has(job.id)) continue
-      void this.start(job.id).catch((err) => {
-        logger.error('JobRunner', `自泵启动作业失败: ${job.id}`, err)
-      })
+    for (let offset = 0; this.runningJobs.size < this.maxConcurrent; offset += PUMP_PAGE) {
+      const pending = this.db.getPendingJobs(PUMP_PAGE, offset)
+      if (pending.length === 0) break
+      for (const job of pending) {
+        if (this.runningJobs.size >= this.maxConcurrent) break
+        // 跳过未注册 handler 的（如对应插件未启用），避免 start() 抛错
+        if (!this.handlers.has(job.kind)) continue
+        if (this.runningJobs.has(job.id)) continue
+        void this.start(job.id).catch((err) => {
+          logger.error('JobRunner', `自泵启动作业失败: ${job.id}`, err)
+        })
+      }
+      // 末页（不足 PUMP_PAGE 行）已遍历完，无更多 pending
+      if (pending.length < PUMP_PAGE) break
     }
   }
 

@@ -15,19 +15,36 @@ docs/
 ├── reference/                   # 稳定参考（长期有效）
 │   └── 架构设计.md               # 系统架构 / 数据库 / IPC / media://
 ├── plans/                       # 实施计划与方向性设计（阶段性，实施完成后归档）
-│   ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
-│   ├── implementation-plan-phase9-agent.md # Phase 9 Agent 体系与智能采集（M0-M3 已交付，M4+ 进行中）
-│   ├── implementation-plan-phase10.md      # Phase 10 蒙版/SAM2/LaMa/人脸/图集补全 实施计划（draft，未开工）
-│   ├── tier1-ai-wiring-hnsw-phase10-plan.md # Tier 1 深度分析：ai-wiring 并发修复 / HNSW 规模化验证 / Phase 10 规划
-│   ├── ai-crawler-direction-2026-q4.md     # Phase 8+ AI 插件化与爬虫方向性设计
-│   ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
-│   └── phase-5-completion.md               # Phase 5 完成记录
+│   ├── ai-crawler-direction-2026-q4.md            # Phase 8-11 AI 插件化与爬虫方向性设计（draft）
+│   ├── implementation-plan-phase9-agent.md         # Phase 9 Agent 体系（approved · M0-M6 已交付）
+│   ├── phase9-t22-text-encoder-poc.md              # T22 前置 PoC：文本塔跨模态可行性（已执行 · GO）
+│   ├── phase9-t22-semantic-search.md               # T22 CLIP 语义搜索实施方案（已实施）
+│   ├── phase9-t23-t24-t25-quality-match-jobs.md    # T23/T24/T25 合并实施方案（已实施）
+│   ├── tier1-ai-wiring-hnsw-phase10-plan.md        # Tier 1：ai-wiring 并发修复 / HNSW 验证 / Phase 10 规划（已交付）
+│   ├── implementation-plan-phase10.md              # Phase 10 蒙版/SAM2/LaMa/人脸/图集补全（draft · 零代码）
+│   ├── Agent架构派生规划-2026-09-22.md              # Agent 架构派生扩展点调研（draft）
+│   ├── 回归测试计划-2026-09-13.md                    # MT-* 回归用例（current）
+│   ├── 全面测试方案-2026-09-19.md                    # 分层测试方案（current）
+│   ├── Phase8人工验收清单-2026-09-19.md              # Phase 8 人工验收 32 项（current）
+│   ├── M-C人工验收执行手册-2026-09-21.md              # M-C 人工验收子集执行手册（current）
+│   └── 自动化测试与P0P1修复报告-2026-09-21.md         # E2E 自动化与 P0/P1 修复报告
 └── archive/                     # 已完成的方案与测试记录（历史快照，不再更新）
-    ├── 测试方案.md               # Phase 1 MVP 测试方案
-    ├── 多媒体模块重构方案.md     # 多媒体重构方案（已实施）
-    ├── 多媒体模块重构测试计划.md # 重构测试执行记录（45/45 PASS）
-    └── superpowers/             # 前端重构 plan/spec（已执行）
+    ├── implementation-plan-2026-q3-q4.md   # Phase 5-7 实施计划（已交付）
+    ├── code-review-2026-q3-q4-phase5-7.md  # Phase 5-7 代码评审报告
+    ├── phase-5-completion.md               # Phase 5 完成记录
+    ├── defect-summary-2026-09-15.md        # Phase 8 缺陷汇总
+    ├── Phase8缺陷修复计划-2026-09-18.md
+    ├── Phase8补全实现方案-2026-09.md
+    ├── 项目状态分析与规划-2026-09-18.md
+    ├── 媒体加载性能提升方案-2026-09.md
+    ├── 测试方案.md                          # Phase 1 MVP 测试方案
+    ├── 多媒体模块重构方案.md
+    ├── 多媒体模块重构测试计划.md             # 重构测试执行记录（45/45 PASS）
+    ├── 文件操作阶段测试执行记录.md
+    └── superpowers/          # 前端重构 plan/spec（已执行，含 2026-08-08 ～ 2026-09-13 各阶段）
 ```
+
+> ⚠️ **已完成并归档的 Phase 5-7 计划、评审报告、Phase 5 完成记录位于 `archive/` 而非 `plans/`**（2026-10-19 核对修正，旧索引树中这三个条目为断链）。
 
 ## 🧭 每类文档怎么用
 
@@ -81,4 +98,4 @@ docs/
 
 ---
 
-**文档结构更新日期**: 2026-10-11
+**文档结构更新日期**: 2026-10-19（v1.0.0 发版前索引核对：plans/ 实有 13 份、归档件位置修正、全部补 front matter）

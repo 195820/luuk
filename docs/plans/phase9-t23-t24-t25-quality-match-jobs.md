@@ -1,11 +1,19 @@
+---
+title: Phase 9 · M5/M6 · T23 + T24 + T25 合并实施方案
+description: AI 标签与 IQA 质量分（T23）、视觉匹配升级（T24）、JobRunner 收编 phash 与批量导出（T25）的任务级实施规格
+type: plan
+status: archived   # 2026-10-08 三项全部交付（目录搬迁待后续独立轮，保持链接稳定）
+updated: 2026-10-19
+---
+
 # Phase 9 · M5/M6 · T23 + T24 + T25 合并实施方案
 
 > **范围**：T23（AI 标签 + IQA 质量分）· T24（视觉匹配升级，增强 T16）· T25（JobRunner 收编 phash + export）
-> **状态**：🔨 已确认，实施中（按 T23 → T24 → T25 顺序）
+> **状态**：✅ 已交付（2026-10-08，T23 → T24 → T25 顺序完成；门禁 tsc 0 错 + 全量 807 测试通过。2026-10-19 复核：当前基线 98 files / 1017 passed）
 > **前序**：T21（CLIP 索引 + vectors.db/HNSW）✅、T22（语义搜索）✅、M4 UI（T17–T20：DiscoverPanel/CrawlSourceManager/AgentSettings）✅、T16 RecommendScorer ✅
 > **口径**：Phase 9 = AI + 采集（爬虫）Agent 统一体系；采集主体含 Telegram（tg-mtproto）已在 M3 交付。本轮为 M5 索引能力的收尾（T23/T24）+ M6 技术债统一（T25）。
 > **预估工时**：T23 ≈ 2 天 · T24 ≈ 2 天 · T25 ≈ 2 天（合计 ≈ 6 天，单人）
-> **门禁不变**：`tsc --noEmit` 0 错 + 全量 vitest 绿（conda Node25/ABI141）；IPC 命名沿用现状；不 push、提交待显式授权。
+> **门禁不变**：`tsc --noEmit` 0 错 + 全量 vitest 绿（系统 Node 即可，`.test-native` 已解决 better-sqlite3 ABI，见 CLAUDE.md 环境口径）；IPC 命名沿用现状；不 push、提交待显式授权。
 
 ---
 

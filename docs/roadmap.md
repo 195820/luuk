@@ -3,13 +3,13 @@ title: 开发路线图
 description: 项目功能优化与开发任务总览 — 优先级、进度、执行顺序、技术选型建议
 type: roadmap
 status: current
-updated: 2026-09-29
+updated: 2026-10-19
 ---
 
 # 开发路线图
 
 > 本文档是项目唯一的任务规划来源,汇总原「功能优化路线图」（08）与「项目后续任务分析」（10），按优先级重新组织。
-> 每项标注当前进度。进度为 **2026-08-30 对照代码核实**，非从旧文档照抄。
+> 每项标注当前进度。进度基线 **2026-10-19 对照代码与实跑门禁核实**（tsc 0 错 + 全量 vitest 98 files / 1017 passed），非从旧文档照抄。
 
 ## 📊 进度图例
 
@@ -86,7 +86,7 @@ updated: 2026-09-29
 - ✅ IPC 暴露 + preload 接口 + `historyStore.ts` + 侧边栏「最近浏览」（缩略图列表、点击跳转原图、清空）
 - ✅ 查看器播放/翻页时自动记录（连续重复自动跳过）
 
-> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。第八轮（插件系统 Phase 8）已交付 — 插件宿主（utilityProcess + MessagePort RPC）/PluginLoader 生命周期/JobRunner 后台作业调度/内存水位线/模型管理器/编辑版本链/内置插件 autotone/Feature Flags，评审 10 项修复完成。第九轮（Agent 体系 Phase 9）进行中 — M0+M1（T1-T7 Agent 基座：数据库迁移 v3/偏好画像/决策层/提案存储/反馈强化/调度循环，Ultra Review 14 项修复）、M2（T8-T10 Jev 决策插件 + 隐私护栏）、M3（T11-T16 采集 Agent 三端接入：爬虫服务/下载器/三级去重/四内置适配器/RecommendScorer 提案闭环）均已交付，全量 552 测试通过；待做：M4 UI 交互层（IPC 能力已就绪）、M5 索引能力（PoC R2/R5/R7 已于 2026-09-29 实测开门，方案据实测改道：向量独立 vectors.db + HNSW 自 Phase 10 提前、int8-only、128px 分块，见计划文档 D14）、M6 JobRunner 收编。计划详见 [plans/implementation-plan-phase9-agent.md](plans/implementation-plan-phase9-agent.md)。
+> 📌 **当前进度**：第一轮（浏览历史 + 评分 + 增量扫描）于 2026-08-16 完成。第二轮（文件操作）于 2026-08-30 完成。技术债清理插入阶段（Phase 1.5）于 2026-08-30 完成 — 归档/小修/测试/性能优化/Store 拆分。第三轮（搜索与发现 Phase 2）于 2026-08-31 完成 — 高级搜索/最近视图/智能分组/pHash 相似图查找，9 Task 共 99 测试通过。第四轮（标签/统计/EXIF Phase 3）于 2026-08-31 完成 — 独立标签系统/库统计面板/EXIF 查看器，8 Task 共 124 测试通过。第五轮（查看器体验强化 Phase 4）于 2026-08-31 完成 — 图片对比模式/全屏沉浸式/相邻图预加载/缓存管理 UI，7 Task 共 135 测试通过。第六轮（搜索增强 + 主题/直方图 Phase 5-6）于 2026-09-12 完成 — 离线库检测/搜索历史与预设/React 节点高亮/主题皮肤系统/图片直方图。第七轮（导出功能 Phase 7）于 2026-09-12 完成 — archiver 依赖引入/ExportService/流式 ZIP 导出/格式转换/进度反馈/ExportDialog UI/幻灯片增强（过渡动画/随机播放/自定义列表/背景音乐）。第八轮（插件系统 Phase 8）已交付 — 插件宿主（utilityProcess + MessagePort RPC）/PluginLoader 生命周期/JobRunner 后台作业调度/内存水位线/模型管理器/编辑版本链/内置插件 autotone/Feature Flags，评审 10 项修复完成。第九轮（Agent 体系 Phase 9）✅ 已完成 — M0+M1（T1-T7 Agent 基座：数据库迁移 v3/偏好画像/决策层/提案存储/反馈强化/调度循环，Ultra Review 14 项修复）、M2（T8-T10 Jev 决策插件 + 隐私护栏）、M3（T11-T16 采集 Agent 三端接入：爬虫服务/下载器/三级去重/四内置适配器/RecommendScorer 提案闭环）均已交付。**M4 UI 交互层（T17-T20：DiscoverPanel/CrawlSourceManager/AgentSettings/AiLabelPanel）、M5 索引能力（T21 CLIP 索引 + vectors.db/HNSW、T22 语义搜索、T23 AI 标签+IQA、T24 视觉匹配升级）、M6 JobRunner 收编（T25）已于 2026-10-08 全部交付**，全量 **1017** 测试通过（2026-10-19 实测）；另 Tier 1（ai-wiring 并发修复 / HNSW 规模化验证 R11 / Phase 10 实施计划）于 2026-10-11 交付。计划详见 [plans/implementation-plan-phase9-agent.md](plans/implementation-plan-phase9-agent.md)。
 
 ---
 
@@ -139,7 +139,7 @@ updated: 2026-09-29
 
 ## 五、Phase 3 — AI / 爬虫（需确认）
 
-> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: draft`，待评审）。下表工时为旧估算，**以该设计文档的分期路线为准**（Phase 8-11），工时留待 `implementation-plan-2027-q1.md`。
+> **方向已定案**：架构方向、插件宿主、数据模型草案与风险验证清单见 [plans/ai-crawler-direction-2026-q4.md](plans/ai-crawler-direction-2026-q4.md)（`status: draft`，待评审）。下表工时为旧估算，**以该设计文档的分期路线为准**：Phase 8（插件宿主）与 Phase 9（Agent/采集/索引）**已交付**，Phase 10 已有任务级计划 [plans/implementation-plan-phase10.md](plans/implementation-plan-phase10.md)（draft，待批准开工），Phase 11（D2 扩散）待前置 R6/R8。
 
 | # | 功能 | 预计工时 |
 |---|------|----------|
@@ -199,7 +199,7 @@ CREATE TABLE album_items (
 
 - [ ] 归档测试方案中的待测试用例：执行记录模板已创建（`archive/文件操作阶段测试执行记录.md`），9 个用例待手动执行
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
-- [x] 补充自动化单元测试：全量 49 files / 552 用例（含文件操作/插件系统/Agent/爬虫回归）
+- [x] 补充自动化单元测试：全量 **98 files / 1017 用例**（含文件操作/插件系统/Agent/爬虫/AI 索引/Tier1 并发回归；2026-10-19 实测）
 
 ### 性能优化
 
@@ -247,13 +247,13 @@ CREATE TABLE album_items (
 | 无配置持久化层 | 主题/缓存/快捷键无法保存 | ✅ 已解决 — `electron-store` 已引入（Phase 1） |
 | `media-registry` 令牌为内存态 | 重启后失效，无法做分享/书签 | 维持「远期需求时再持久化」结论 |
 | 文件夹级增量扫描被暂缓 | 超大库全量扫描成本高（10万张约 7.6 分钟） | 需 watch/归档位机制，暂不实现 |
-| 向量检索若内联 thumbs.db 会全表 SCAN 拖累主链路（R5 实测 P95 4.6s） | 索引查询延迟超红线 | ⬜ 待解 — M5 改道 vectors.db + HNSW（D14，2026-09-29 决策） |
+| 向量检索若内联 thumbs.db 会全表 SCAN 拖累主链路（R5 实测 P95 4.6s） | 索引查询延迟超红线 | ✅ 已解 — M5 改道 vectors.db + HNSW（D14）已于 T21/T22 落地；**遗留：R11 实测随机 512 维 int8 下 recall 崩塌（f32 对照证脚本无 bug），D14 失效判据「不可据此触发」，待 `--from-db` 真实向量复测后拍板是否回退 sqlite-vec** |
 
 ### 工程化欠账
 
 - [x] `scripts/` 目录：`generate-test-data.cjs` 已创建
 - [ ] 归档测试方案中 `TC-THUMB-004/005`、`TC-GRID-001~004`、`TC-PERF-001~003` 未执行（模板已建，待手动执行）
-- [ ] 单元测试（现 552 用例）可持续扩充，交付门禁：tsc 零错误 + 全量 vitest 通过
+- [ ] 单元测试（现 1017 用例）可持续扩充，交付门禁：tsc 零错误 + 全量 vitest 通过（无需 conda 环境，见 CLAUDE.md 环境口径）
 
 ### 性能红线
 
@@ -283,8 +283,10 @@ CREATE TABLE album_items (
 
 **第八轮**：~~插件系统（Phase 8）~~（已交付 — 插件宿主/JobRunner/内存水位线/模型管理器/编辑版本链/内置插件 autotone，评审 10 项修复）
 
-**第九轮 (进行中)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ⬜ M4 UI 交互层（T17-T20）→ ⬜ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）：~~T21 CLIP 索引+vectors.db/HNSW~~ + ~~T22 语义搜索（2026-10-07 交付：真分词器 byte-level BPE 对齐黄金 fixture + 文本塔 int8/fp32 + HNSW 端到端混合配对；`ann.search` 首个生产调用方，W13 技术债清偿）~~ ✅ + ~~T23 AI 标签+IQA（2026-10-08 交付：迁移 v4 + 零模型启发式 IQA + CLIP 零样本人在回路 + AiLabelPanel）~~ ✅ + ~~T24 视觉匹配升级（2026-10-08 交付：RecommendScorer 可选 provider，仅本地媒体出信号）~~ ✅ → ~~M6 JobRunner 收编（T25，2026-10-08 交付：phash 库级作业 + export.batch 复合作业，D-3 仅 phash+export）~~ ✅（全量 807 测试通过）
+**第九轮 (✅ 已完成，2026-10-08 收口 · Tier 1 收尾 2026-10-11)**：~~Agent 基座（M0+M1，T1-T7）→ Jev 决策插件（M2，T8-T10）→ 采集 Agent 三端接入（M3，T11-T16）~~（2026-09-26 交付，全量 552 测试通过）→ ✅ M4 UI 交互层（T17-T20，2026-09 交付）→ ✅ M5 索引能力（T21-T24，PoC R2/R5/R7 已开门 · vectors.db/HNSW 改道）：~~T21 CLIP 索引+vectors.db/HNSW~~ + ~~T22 语义搜索（2026-10-07 交付：真分词器 byte-level BPE 对齐黄金 fixture + 文本塔 int8/fp32 + HNSW 端到端混合配对；`ann.search` 首个生产调用方，W13 技术债清偿）~~ ✅ + ~~T23 AI 标签+IQA（2026-10-08 交付：迁移 v4 + 零模型启发式 IQA + CLIP 零样本人在回路 + AiLabelPanel）~~ ✅ + ~~T24 视觉匹配升级（2026-10-08 交付：RecommendScorer 可选 provider，仅本地媒体出信号）~~ ✅ → ~~M6 JobRunner 收编（T25，2026-10-08 交付：phash 库级作业 + export.batch 复合作业，D-3 仅 phash+export）~~ ✅（当时全量 807 测试通过；**2026-10-19 发版前实测基线：98 files / 1017 passed / 2 skipped / 2 expected-fail，tsc 0 错**）
+
+**第十轮 (待批准开工)**：⬜ Phase 10 蒙版体系与交互编辑（T1 masks 表迁移 v5 → T2 mask-service → T3 SAM2 分割插件 → T4 EditViewer 蒙版画布 → T5 LaMa tile 编排 → T6 去水印接线 → T7 YuNet 人脸检测 → T8 人物视图 → T9/T10 图集补全）——**计划已交付、零代码**（实测：master.db 迁移止于 v4，src 内无 masks/EditViewer），见 [plans/implementation-plan-phase10.md](plans/implementation-plan-phase10.md)；Phase 11 扩散（D2）前置 R6/R8 未完成不得开工。
 
 ---
 
-**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22｜**Phase 8/9 进度回写**：2026-09-29｜**T23-T25 交付回写**：2026-10-08
+**文档创建日期**：2026-03-11（源）｜**合并重写**：2026-08-16｜**架构分析补充**：2026-08-22｜**Phase 8/9 进度回写**：2026-09-29｜**T23-T25 交付回写**：2026-10-08｜**Tier 1 交付回写**：2026-10-11｜**v1.0.0 发版前文档漂移机械修复 + 门禁复测**：2026-10-19

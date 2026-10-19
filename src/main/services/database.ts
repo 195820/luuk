@@ -1239,12 +1239,14 @@ export class MasterDB {
   /**
    * 取待启动作业（P1-9 自泵）：仅 state='pending'，按优先级降序、创建时间升序，限量返回。
    * 避免 getAllJobs() 的全表扫描。
+   * offset 供自泵分页穿越「kind 无注册 handler 而永久 pending」的陈旧作业（DEF-PUMP-01 排队饿死修复）；
+   * 默认 0 保持既有调用点语义不变。
    */
-  getPendingJobs(limit: number = 50): Job[] {
+  getPendingJobs(limit: number = 50, offset: number = 0): Job[] {
     if (!this.db) return []
     const rows = this.db.prepare(
-      "SELECT * FROM jobs WHERE state = 'pending' ORDER BY priority DESC, created_at ASC LIMIT ?"
-    ).all(limit) as any[]
+      "SELECT * FROM jobs WHERE state = 'pending' ORDER BY priority DESC, created_at ASC LIMIT ? OFFSET ?"
+    ).all(limit, offset) as any[]
     return rows.map(r => this.mapJob(r))
   }
 

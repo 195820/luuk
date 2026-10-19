@@ -1,3 +1,11 @@
+---
+title: Tier 1 深度分析与实施计划：ai-wiring 并发修复 / HNSW 规模化验证 / Phase 10 蒙版编辑
+description: 三个分项（并发缺陷修复、R11 HNSW 基准与裁决、Phase 10 任务级计划）的决策完备执行规格与交付状态回填
+type: plan
+status: archived   # 2026-10-11 A/B/C 三部分已交付（目录搬迁待后续独立轮，保持链接稳定）
+updated: 2026-10-19
+---
+
 # Tier 1 深度分析与实施计划：ai-wiring 并发修复 / HNSW 规模化验证 / Phase 10 蒙版编辑
 
 > 本文件是决策完备的执行规格：陌生工程师可自顶向下执行，无需再做设计决策。含未决策项 = 失败，因此每个分叉都已写死结论与理由。所有行号、参数默认值、API 签名均来自当前工作树（HEAD `09137b3`）实测阅读，非估算。
@@ -23,11 +31,11 @@
 
 **测试基线**：808 passed / 2 skipped（73 files，Node v25.9.0，2026-10-10 实测）。本轮所有改动后须回到该基线以上（新增测试全绿 + 存量零回归）。
 
-**环境**：Node 24（ABI 137）系统 PATH 跑 better-sqlite3（ABI 141）会全量报 171 failed —— 环境误报。所有 vitest 运行必须走 imageviewer conda env（Node 25.9.0）：
+**环境**：~~Node 24（ABI 137）系统 PATH 跑 better-sqlite3（ABI 141）会全量报 171 failed，必须走 conda env~~ —— **该约束已于 2026-10-19 作废**：vitest `globalSetup`（`scripts/ensure-test-native.mjs`）自动将一份 Node-ABI 的 `better_sqlite3.node` 备到 `.test-native/` 并经 `BETTER_SQLITE3_NATIVE_BINDING` 加载，同时将 `node_modules` 内的 Electron-ABI 原二进制原样还原。**系统 PATH 上的 Node（实测 v24.16.0）直接跑即可**：
 ```powershell
-powershell -NoProfile -Command '$env:PATH = "D:\ProgramData\miniconda3\envs\imageviewer;D:\ProgramData\miniconda3\envs\imageviewer\Library\bin;D:\ProgramData\miniconda3\envs\imageviewer\Scripts;" + $env:PATH; Set-Location E:\luuk; npm run test:run 2>&1 | Select-Object -Last 6'
+npm run test:run 2>&1 | Select-Object -Last 6   # 2026-10-19 实测：98 files / 1017 passed / 2 skipped / 2 expected-fail
 ```
-`npx tsc --noEmit` 任何 shell 可跑（~11s）。
+`npx tsc --noEmit` 任何 shell 可跑（~11s）。conda `imageviewer` 环境仅 `scripts/poc-*` 的 Python 脚本需要。
 
 **Non-Goals（全部三个分项共用）**：
 - 不重构 ai-wiring 整体架构（engineSessions/queryEpoch 框架已通过 6/8 项不变量审计，只修确认缺陷）
@@ -482,12 +490,12 @@ flowchart LR
 
 ## 5. 假设与口径声明
 
-1. **测试环境**：所有 vitest 须在 imageviewer conda env（Node 25.9.0 / ABI 141）跑；系统 PATH Node 24 会全量 ABI 错配报错（CLAUDE.md 已载，实测确认）。PowerShell 命令模板见 §0。
+1. **测试环境**：全量 vitest 用系统 PATH 上的 Node 即可（`.test-native` + `BETTER_SQLITE3_NATIVE_BINDING` 已消除 better-sqlite3 的 ABI 错配，sharp 可直接加载）——2026-10-19 用 Node v24.16.0 实测 98 files / 1017 passed 全绿。旧口径「必须在 imageviewer conda env（Node 25.9.0 / ABI 141）跑」已作废，PowerShell 命令模板见 §0。
 2. **A-9（dispose 期作业继续跑）不修**：JobRunner 无取消语义，退出场景可接受；若后续 JobRunner 增加取消 API 再收编。已登记为已知限制，不在本轮 Non-Goals 边界内偷偷扩。
 3. **usearch API 形态未实测**（B.1 两种写法兜底的原因）：执行者以 `node_modules/usearch` 实际 .d.ts 为准。这是本计划唯一需要执行时定夺的 API 细节，因为工作树只读约束下不宜 npm 探测。
 4. **SAM2/LaMa 模型资产不在本轮落位**：Part C 是计划文档，模型下载/校验是执行期事；开发期直连 cache 目录惯例（同 CLIP）。
 5. **外网数据引用口径**：SAM2 enc 2.3s/dec 11ms 是 i9 桌面 CPU 实测（方向文档 §8.4 已引）；LaMa ~4.3s/tile、MI-GAN ~0.6s/tile 出自浏览器 WASM 实测（ClearPix 2026），CPU 原生通常快于 WASM，作为上界参考；LaMa fp16 破坏 mask-gating、Real-ESRGAN fp16 提速 4.8× 均为实测教训，量化纪律已写死进 C.1。
-6. **既有文档过时不修**（本轮不扩范围）：`docs/roadmap.md:250` 向量检索仍标 ⬜（实际 T21 已交付）；`docs/defect-summary-2026-09-15.md` 剩余 3/10 已全修且未被 docs/README.md 索引。登记待后续机械修复轮。
+6. **既有文档过时（已于 2026-10-19 机械修复轮处理）**：`docs/roadmap.md` 向量检索行已改 ✅ 并记 R11 遗留、M4-M6 「待做」表述已回写为已交付、测试基线已刷至 98 files / 1017 passed；`docs/defect-summary-2026-09-15.md` 已补入 docs/README.md 索引；plans/ 下 5 份缺 front matter 的文档已补齐。**未做**：已交付计划从 `plans/` 搬迁至 `archive/`（本轮保持链接稳定，待独立轮执行）。
 
 ## 6. 批准后执行注意事项（给执行上下文的交接说明）
 

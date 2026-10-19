@@ -1,3 +1,11 @@
+---
+title: Phase 9 · T22 实施方案：CLIP 语义搜索（文本→ANN→结果）
+description: 查询文本→CLIP 文本塔 embedding→HNSW ANN 召回的任务级实施规格与交付回填
+type: plan
+status: archived   # 2026-10-07 已实施交付（目录搬迁至 archive/ 待后续独立轮，保持链接稳定）
+updated: 2026-10-19
+---
+
 # Phase 9 · T22 实施方案：CLIP 语义搜索（文本→ANN→结果）
 
 > 状态：**✅ 已实施完成**（2026-10-07；门禁 tsc 0 错 + 全量 vitest 绿 + 门控 e2e 生产混合配对通过；提交待授权。实施回填见 §8）

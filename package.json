@@ -1,6 +1,6 @@
 {
   "name": "image-viewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "高清写真图片查看器 - 支持大量图片快速浏览",
   "main": "dist-electron/main.js",
   "type": "module",

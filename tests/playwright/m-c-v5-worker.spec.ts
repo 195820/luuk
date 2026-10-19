@@ -152,13 +152,20 @@ test.describe('A1 真实 Worker 执行与作业队列', () => {
 
   async function waitJob(page: any, jobId: string, timeoutMs = 60000): Promise<any> {
     const start = Date.now()
+    let last: any = null
     while (Date.now() - start < timeoutMs) {
       const r = await page.evaluate((jid: string) => (window as any).electronAPI.jobsGet(jid), jobId)
-      const st = r?.data?.state
-      if (st === 'done' || st === 'failed' || st === 'cancelled') return r?.data
+      last = r?.data
+      const st = last?.state
+      if (st === 'done' || st === 'failed' || st === 'cancelled') return last
       await new Promise(r2 => setTimeout(r2, 300))
     }
-    throw new Error(`jobsGet 等待超时: ${jobId}`)
+    // 超时留痕：带上本作业最后可见状态 + 全量作业简表，便于区分「未被自泵」与「跑了不收尾」
+    const all = await page.evaluate(async () => (await (window as any).electronAPI.jobsList())?.data || [])
+    throw new Error(
+      `jobsGet 等待超时: ${jobId} last=${last?.state ?? 'null'} done=${last?.done ?? '-'} failed=${last?.failed ?? '-'} total=${last?.total ?? '-'} | ` +
+      `全作业=${JSON.stringify(all.map((j: any) => ({ id: String(j.id).slice(0, 8), kind: j.kind, state: j.state, done: j.done })))}`,
+    )
   }
 
   test('PH8-16c pluginsExecute 单图直连真实 Worker → 返回 editId', async ({ page }) => {

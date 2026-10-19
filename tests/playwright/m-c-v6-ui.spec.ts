@@ -94,11 +94,16 @@ test.describe('A2 纯 UI 断言组', () => {
       await page.waitForTimeout(1500)
     }
 
-    // 插件列表出现：应有 3 个内置插件 + 3 个开关
-    await expect(page.locator('text=/共\\s*3\\s*个插件/')).toBeVisible({ timeout: 15000 })
+    // 插件列表出现：条数文案与开关数一致
+    // 内置插件数随版本增长（Phase 8 为 3 个，Phase 9 M3/M5 后为 9 个），
+    // 断言锚定「文案数 == 开关数 且 >= 3」而非硬编码定值，避免新增内置插件时误报产品缺陷
+    const countEl = page.locator('p', { hasText: /共\s*\d+\s*个插件/ }).first()
+    await expect(countEl).toBeVisible({ timeout: 15000 })
+    const declared = Number((await countEl.textContent())?.match(/共\s*(\d+)\s*个插件/)?.[1] ?? -1)
+    expect(declared).toBeGreaterThanOrEqual(3)
     const switches = page.locator('div.overflow-hidden button[role="switch"]')
     await expect(switches.first()).toBeVisible({ timeout: 10000 })
-    expect(await switches.count()).toBe(3)
+    expect(await switches.count()).toBe(declared)
 
     // 打开第一个插件（走真实 Worker setEnabled）→ aria-checked 变 true
     const first = switches.first()

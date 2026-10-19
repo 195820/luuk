@@ -6,6 +6,26 @@
 
 ## [未发布]
 
+---
+
+## [1.1.0] - 2026-10-19
+
+> 首个正式打 tag 的发布版本（Phase 1-9 + Tier 1 累计交付）。上一段 `[1.0.0] - 2026-03-01` 为 MVP 基线记录（未打 tag）。
+> 发版门禁实测：`tsc --noEmit` 0 错 · vitest **98 files / 1017 passed / 2 skipped / 2 expected-fail** · Playwright Electron E2E **全组绿**（含本版本新修的 PH8-18）· `npm run build` 产出 `release/Image Viewer-1.1.0-Setup.exe`。
+
+### 修复
+- **作业自泵排队饿死（DEF-PUMP-01，2026-10-19，v1.1.0 发版门禁由 E2E PH8-18 暴露）**：`JobRunner.pump()` 原只取 `maxConcurrent * 4` 行（默认并发 1 → 窗口 4）pending 作业，按 `priority DESC, created_at ASC` 排序。当窗口被「kind 无注册 handler 而永久 pending」的陈旧作业（插件关闭期入队后从未启用）占满时，循环逐个 `continue` 后窗口耗尽，真正可跑的排队作业永远轮不到——实测现象：队头作业 done、先入队作业永久 pending、后入队作业反而被 IPC 直起路径救活。修复：**分页穿越**（`PUMP_PAGE=50` 逐页直到槽位填满或 pending 遍历完），`MasterDB.getPendingJobs` 新增向后兼容的 `offset` 形参。新增回归单测（失败先行）
+- **退出期自泵复活（N1，2026-10-19 收编）**：`shutdown()` 置 abort/paused + `runningJobs.clear()` 后，被 abort 的 `executeJob` 收尾无条件调 `pump()`，此时槽位已空 → 复活其它 pending 作业并与 `app.exit(0)` 抢写 DB（原登记于《全面测试方案》附「仅登记不修」，因本轮拓宽了自泵扫描范围必须同时收口）。修复：`shuttingDown` 标志位，`pump()` 入口早退；新增回归单测
+- **E2E 可诊断性**：`m-c-v5-worker.spec.ts` 的 `waitJob` 超时消息补齐「本作业最后状态 + 全量作业简表」（本次得以从单次失败直接定位到饿死根因）
+
+### 文档
+- **文档漂移机械修复轮（2026-10-19）**：CLAUDE.md 环境口径修正——全量 vitest **不再需要** imageviewer conda 环境（`scripts/ensure-test-native.mjs` 已自动准备 Node-ABI 的 better-sqlite3 副本并还原 Electron-ABI，系统 Node v24 实测全绿），基线数字刷至 98 files / 1017；`docs/roadmap.md` 中 M4-M6「待做」/向量检索「⬜ 待解」/552 用例等陈旧表述回写为实际交付态，新增第十轮（Phase 10）条目；`docs/README.md` 索引树重建（plans/ 实有 13 份，旧树中 3 个已归档件为断链）；plans/ 下 5 份缺 YAML front matter 的文档补齐；`tier1` 计划 §0/§5.1 与自身「交付状态」节的矛盾环境口径归一
+
+### 已知遗留（本版本不阻放，均已登记）
+- **HNSW 召回裁决悬空（R11）**：200K×512 **随机** int8 向量下 recall 崩塌（f32 对照 recall=1.0 证脚本无 bug），**不可据此触发 D14 回退**；`--from-db` 真实向量复测仍「待实现」，sqlite-vec 回退为「已裁决待实施」
+- **`perHost` 闸门（A-5）**：采计划写死的回退方案 (b)，标 `@deprecated` 且实现恒串行（比声明更保守）；计数信号量改造因与 first-visit 频控退让深度耦合，留独立任务
+- 人工用例 `TC-THUMB-004/005`、`TC-PERF-001~003` 待执行；`imageStore` 巨石 store（541 行）仅部分拆分；文件夹级增量扫描暂缓
+
 ### 修复
 - **AI 接线并发正确性（Tier1-A，2026-10-11，`fix/phase8-defects`）**：修复 6 项经三路只读审计 + 源码逐行复核确认的竞态/泄漏（A-1~A-6），另经代码评审加固 5 处（A-7/A-8 按实测口径登记不单独修）；共 +14 例确定性测试，五 suite 全绿：
   - A-1（P0 内存泄漏）`OnnxClipEngine`/`OnnxClipTextEncoder` 补 `disposedDuringLoad` 三件套：load 在飞期 unload → 新会话建成即释放；评审加固：`load()` 在无会话态显式抛错（不静默 resolve 骗过并发等待者）
